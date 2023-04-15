@@ -49,6 +49,7 @@ config = Script.get_config()
 exec_tmp_dir = Script.get_tmp_dir()
 sudo = AMBARI_SUDO_BINARY
 
+service_name = 'hbase'
 stack_name = status_params.stack_name
 agent_stack_retry_on_unavailability = config['ambariLevelParams']['agent_stack_retry_on_unavailability']
 agent_stack_retry_count = expect("/ambariLevelParams/agent_stack_retry_count", int)
@@ -429,7 +430,8 @@ if enable_ranger_hbase:
 cluster_name = config['clusterName']
 
 # ranger hbase plugin section end
-
+stack_version_formatted_major = status_params.stack_version_formatted
+ranger_plugin_home = format("{stack_root}/{stack_version_formatted_major}/usr/lib/ranger-{service_name}-plugin")
 create_hbase_home_directory = check_stack_feature(StackFeature.HBASE_HOME_DIRECTORY, stack_version_formatted)
 hbase_home_directory = format("/user/{hbase_user}")
 
