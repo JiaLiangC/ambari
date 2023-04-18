@@ -62,7 +62,7 @@ retryAble = default("/commandParams/command_retry_enabled", False)
 
 # log4j version is 2 for hive3; put config files under /etc/hive/conf
 log4j_version = '2'
-
+service_name = 'hive'
 # server configurations
 config = Script.get_config()
 tmp_dir = Script.get_tmp_dir()
@@ -124,6 +124,7 @@ hive_conf_dir = '/etc/hive/conf'
 hive_home = '/usr/lib/hive'
 hive_var_lib = '/var/lib/hive'
 hive_user_home_dir = "/home/hive"
+
 
 # hadoop parameters for stacks that support rolling_upgrade
 if stack_version_formatted_major and check_stack_feature(StackFeature.ROLLING_UPGRADE, stack_version_formatted_major):
@@ -450,8 +451,10 @@ hive_site_config["hive.hook.proto.base-directory"] = hive_hook_proto_base_direct
 core_site_config = dict(config['configurations']['core-site'])
 if format("hadoop.proxyuser.{hive_user}.hosts") not in core_site_config and format("hadoop.proxyuser.{hive_user}.groups") not in core_site_config:
   hive_site_config["hive.metastore.event.db.notification.api.auth"] = "false"
+  # hive_site_config["hive.server2.enable.doAs"] = "false"
 else:
   hive_site_config["hive.metastore.event.db.notification.api.auth"] = "true"
+  # hive_site_config["hive.server2.enable.doAs"] = "true"
 
 ########################################################
 ############# AMS related params #####################
@@ -642,6 +645,7 @@ doAs = config["configurations"]["hive-site"]["hive.server2.enable.doAs"]
 # ranger support xml_configuration flag, instead of depending on ranger xml_configurations_supported/ranger-env, using stack feature
 xml_configurations_supported = check_stack_feature(StackFeature.RANGER_XML_CONFIGURATION, version_for_stack_feature_checks)
 
+ranger_plugin_home = format("{hive_home}/../ranger-{service_name}-plugin")
 # get ranger hive properties if enable_ranger_hive is True
 if enable_ranger_hive:
   # get ranger policy url

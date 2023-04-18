@@ -476,6 +476,7 @@ class HDFSRecommender(service_advisor.ServiceAdvisor):
     """
     Recommend configurations for this service based on HDP 2.6
     """
+    putHdfsSiteProperty = self.putProperty(configurations, "hdfs-site", services)
     if 'hadoop-env' in services['configurations'] and 'hdfs_user' in  services['configurations']['hadoop-env']['properties']:
       hdfs_user = services['configurations']['hadoop-env']['properties']['hdfs_user']
     else:
