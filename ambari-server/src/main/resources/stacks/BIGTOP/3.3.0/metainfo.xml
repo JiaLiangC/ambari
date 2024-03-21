@@ -16,8 +16,17 @@
    limitations under the License.
 -->
 <metainfo>
+<<<<<<< HEAD
     <versions>
 	  <active>true</active>
     </versions>
     <extends>3.2.0</extends>
+=======
+  <versions>
+    <active>true</active>
+  </versions>
+  <extends>3.2.0</extends>
+  <minJdk>1.8</minJdk>
+  <maxJdk>1.8</maxJdk>
+>>>>>>> 52816b1491f4f5ec521d3df253288f92de169f75
 </metainfo>

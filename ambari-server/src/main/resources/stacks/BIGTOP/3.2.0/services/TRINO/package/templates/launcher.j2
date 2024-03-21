@@ -1,0 +1,7 @@
+#!/bin/sh -eu
+
+
+export JAVA_HOME="{{trino_java_home}}"
+export PATH=$JAVA_HOME/bin:$PATH
+
+exec "$(dirname "$0")/launcher.py" "$@"

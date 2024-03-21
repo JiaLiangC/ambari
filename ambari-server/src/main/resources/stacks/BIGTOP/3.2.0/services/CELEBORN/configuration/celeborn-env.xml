@@ -1,0 +1,148 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+-->
+<configuration supports_final="true">
+    <property>
+        <name>celeborn_user</name>
+        <display-name>Celeborn User</display-name>
+        <value>celeborn</value>
+        <property-type>USER</property-type>
+        <value-attributes>
+            <type>user</type>
+            <overridable>false</overridable>
+            <user-groups>
+                <property>
+                    <type>cluster-env</type>
+                    <name>user_group</name>
+                </property>
+                <property>
+                    <type>celeborn-env</type>
+                    <name>celeborn_group</name>
+                </property>
+            </user-groups>
+        </value-attributes>
+        <on-ambari-upgrade add="true"/>
+    </property>
+    <property>
+        <name>celeborn_group</name>
+        <display-name>Celeborn Group</display-name>
+        <value>hadoop</value>
+        <property-type>GROUP</property-type>
+        <description>celeborn group</description>
+        <value-attributes>
+            <type>user</type>
+        </value-attributes>
+        <on-ambari-upgrade add="true"/>
+    </property>
+    <property>
+        <name>celeborn_log_dir</name>
+        <display-name>Celeborn Log directory</display-name>
+        <value>/var/log/celeborn</value>
+        <description>Celeborn Log Dir</description>
+        <value-attributes>
+            <type>directory</type>
+        </value-attributes>
+        <on-ambari-upgrade add="true"/>
+    </property>
+    <property>
+        <name>celeborn_pid_dir</name>
+        <display-name>Celeborn PID directory</display-name>
+        <value>/var/run/celeborn</value>
+        <description>Celeborn Log Dir</description>
+        <value-attributes>
+            <type>directory</type>
+        </value-attributes>
+        <on-ambari-upgrade add="true"/>
+    </property>
+ 
+   <property>
+    <name>celeborn_keytab</name>
+    <description>Celeborn keytab path</description>
+    <on-ambari-upgrade add="false"/>
+  </property>
+  <property>
+    <name>celeborn_principal</name>
+    <description>Celeborn principal</description>
+    <property-type>KERBEROS_PRINCIPAL</property-type>
+    <on-ambari-upgrade add="false"/>
+  </property> 
+
+
+    <!-- celeborn-env.sh -->
+    <property>
+        <name>content</name>
+        <description>This is the jinja template for celeborn-env.sh file</description>
+        <value>
+#!/usr/bin/env bash
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# - CELEBORN_MASTER_MEMORY, to set how much total memory of master (e.g. 1000m, 2g)
+# - CELEBORN_WORKER_MEMORY, to set how much total memory of workers (e.g. 1000m, 2g)
+# - CELEBORN_WORKER_OFFHEAP_MEMORY, to set how much total off-heap memory of workers (e.g. 1000m, 2g)
+# - CELEBORN_MASTER_JAVA_OPTS
+# - CELEBORN_WORKER_JAVA_OPTS
+# - CELEBORN_PID_DIR
+# - CELEBORN_LOG_DIR
+# - CELEBORN_PREFER_JEMALLOC, to enable jemalloc memory allocator
+# - CELEBORN_JEMALLOC_PATH, to set jemalloc library path
+
+# Example:
+# CELEBORN_MASTER_MEMORY=2g
+# CELEBORN_WORKER_MEMORY=2g
+# CELEBORN_WORKER_OFFHEAP_MEMORY=4g
+# CELEBORN_WORKER_JAVA_OPTS="-XX:-PrintGC -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps -Xloggc:gc-worker.out -Dio.netty.leakDetectionLevel=advanced"
+# CELEBORN_MASTER_JAVA_OPTS="-XX:-PrintGC -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps -Xloggc:gc-master.out -Dio.netty.leakDetectionLevel=advanced"
+# CELEBORN_PID_DIR="$CELEBORN_HOME/pids"
+# CELEBORN_LOG_DIR="$CELEBORN_HOME/logs"
+# CELEBORN_PREFER_JEMALLOC="true"
+# CELEBORN_JEMALLOC_PATH="/path/to/libjemalloc.so"
+
+
+CELEBORN_PID_DIR={{celeborn_pid_dir}}
+CELEBORN_LOG_DIR={{celeborn_log_dir}}
+
+CELEBORN_MASTER_MEMORY=1g
+CELEBORN_WORKER_MEMORY=1g
+CELEBORN_WORKER_OFFHEAP_MEMORY=2g
+
+export HADOOP_CONF_DIR=/etc/hadoop/conf
+        </value>
+        <value-attributes>
+            <type>content</type>
+        </value-attributes>
+        <on-ambari-upgrade add="true"/>
+    </property>
+</configuration>

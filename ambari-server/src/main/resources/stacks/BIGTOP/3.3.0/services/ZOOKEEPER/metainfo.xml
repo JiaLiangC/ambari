@@ -20,7 +20,23 @@
   <services>
     <service>
       <name>ZOOKEEPER</name>
+<<<<<<< HEAD
       <version>3.8.1-1</version>
     </service>
   </services>
 </metainfo>
+=======
+      <version>3.7.2</version>
+
+      <quickLinksConfigurations-dir>quicklinks</quickLinksConfigurations-dir>
+        <quickLinksConfigurations>
+          <quickLinksConfiguration>
+          <fileName>quicklinks.json</fileName>
+          <default>true</default>
+        </quickLinksConfiguration>
+      </quickLinksConfigurations>
+      
+    </service>
+  </services>
+</metainfo>
+>>>>>>> 52816b1491f4f5ec521d3df253288f92de169f75

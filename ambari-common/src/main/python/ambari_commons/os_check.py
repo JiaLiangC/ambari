@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''
 Licensed to the Apache Software Foundation (ASF) under one
@@ -22,6 +22,8 @@ import re
 import os
 import sys
 import platform
+import distro
+
 
 def _get_windows_version():
   """
@@ -164,9 +166,7 @@ class OS_CONST_TYPE(type):
     raise Exception("Unknown class property '%s'" % name)
 
 
-class OSConst:
-  __metaclass__ = OS_CONST_TYPE
-
+class OSConst(metaclass=OS_CONST_TYPE):
   systemd_redhat_os_major_versions = ["7"]
 
 
@@ -197,12 +197,12 @@ class OSCheck:
       # linux distribution
       PYTHON_VER = sys.version_info[0] * 10 + sys.version_info[1]
 
-      if PYTHON_VER <= 26:
-        raise RuntimeError("Python 2.6 or less not supported")
+      if sys.version_info[0] < 3:
+        raise RuntimeError("Python 2 or less not supported")
       elif _is_redhat_linux():
-        distribution = platform.dist()
+        distribution = distro.linux_distribution()
       else:
-        distribution = platform.linux_distribution()
+        distribution = distro.linux_distribution()
 
     if distribution[0] == '':
       distribution = advanced_check(distribution)
@@ -252,9 +252,29 @@ class OSCheck:
     # special cases
     if _is_oracle_linux():
       operatingSystem = 'oraclelinux'
+    elif  operatingSystem.startswith('ubuntu'):
+      operatingSystem = 'ubuntu'
     elif operatingSystem.startswith('suse linux enterprise server'):
       operatingSystem = 'sles'
     elif operatingSystem.startswith('red hat enterprise linux'):
+      operatingSystem = 'redhat'
+    elif operatingSystem.startswith('kylin linux'):
+      operatingSystem = 'redhat'
+    elif operatingSystem.startswith('rocky linux'):
+      operatingSystem = 'redhat'
+    elif operatingSystem.startswith('uos'):
+      operatingSystem = 'redhat'
+    elif operatingSystem.startswith('uniontech'):
+      operatingSystem = 'redhat'
+    elif operatingSystem.startswith('anolis'):
+      operatingSystem = 'redhat'
+    elif operatingSystem.startswith('asianux server'):
+      operatingSystem = 'redhat'
+    elif operatingSystem.startswith('bclinux'):
+      operatingSystem = 'redhat'
+    elif operatingSystem.startswith('bigcloud enterprise linux'):
+      operatingSystem = 'redhat'
+    elif operatingSystem.startswith('openeuler'):
       operatingSystem = 'redhat'
     elif operatingSystem.startswith('darwin'):
       operatingSystem = 'mac'
@@ -305,11 +325,43 @@ class OSCheck:
   def _get_os_version():
     # Read content from /etc/*-release file
     # Full release name
+    # Read content from /etc/*-release file
+    # Full release name
     dist = OSCheck.os_distribution()
-    dist = dist[1]
-    
-    if dist:
-      return dist
+
+    version = dist[1]
+    operatingSystem = dist[0].lower()
+
+    if version:
+      if operatingSystem.startswith('kylin linux'):
+        #kylin v10
+        if version == 'V10':
+          version = '8'
+      elif operatingSystem.startswith('anolis'):
+        if version == '20':
+          version = '8'
+      elif operatingSystem.startswith('uos'):
+        #uos 20
+        if version == '20':
+          version = '8'
+      elif operatingSystem.startswith('uniontech'):
+        #uos 20
+        if version == '20':
+          version = '8'
+      elif operatingSystem.startswith('openeuler'):
+        #openeuler 22
+        version = '8'
+      elif operatingSystem.startswith('bclinux'):
+        version = '8'
+      elif version.startswith('4.0.'):
+        #support nfs (zhong ke fang de)
+        version = '8'
+      elif len(version.split(".")) > 2 :
+        #support 8.4.0
+        version = version.split(".")[0]
+      if OSCheck._get_os_type() == 'redhat' and  int(float(version)) > 8 :
+        raise Exception("operatingSystem cannot supoort: " + dist)
+      return version
     else:
       raise Exception("Cannot detect os version. Exiting...")
 
@@ -365,7 +417,7 @@ class OSCheck:
      This is safe check for redhat family, doesn't generate exception
     """
     return OSCheck.is_in_family(OSCheck.get_os_family(), OSConst.REDHAT_FAMILY)
-  
+
   @staticmethod
   def is_in_family(current_family, family):
     try:

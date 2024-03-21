@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -39,6 +39,8 @@ from resource_management.core.exceptions import Fail
 from ambari_commons.constants import AMBARI_SUDO_BINARY
 from resource_management.core import shell
 from resource_management.core.logger import Logger
+from resource_management.core.utils import PasswordString
+from shlex import split
 
 
 # WARNING. If you are adding a new host check that is used by cleanup, add it to BEFORE_CLEANUP_HOST_CHECKS
@@ -136,7 +138,7 @@ class CheckHost(Script):
       try :
         java_home_check_structured_output = self.execute_java_home_available_check(config)
         structured_output[CHECK_JAVA_HOME] = java_home_check_structured_output
-      except Exception, exception:
+      except Exception as exception:
         Logger.exception("There was an unexpected error while checking for the Java home location: " + str(exception))
         structured_output[CHECK_JAVA_HOME] = {"exit_code" : 1, "message": str(exception)}
 
@@ -144,7 +146,7 @@ class CheckHost(Script):
       try :
         db_connection_check_structured_output = self.execute_db_connection_check(config, tmp_dir)
         structured_output[CHECK_DB_CONNECTION] = db_connection_check_structured_output
-      except Exception, exception:
+      except Exception as exception:
         Logger.exception("There was an unknown error while checking database connectivity: " + str(exception))
         structured_output[CHECK_DB_CONNECTION] = {"exit_code" : 1, "message": str(exception)}
 
@@ -152,14 +154,14 @@ class CheckHost(Script):
       try :
         host_resolution_structured_output = self.execute_host_resolution_check(config)
         structured_output[CHECK_HOST_RESOLUTION] = host_resolution_structured_output
-      except Exception, exception :
+      except Exception as exception :
         Logger.exception("There was an unknown error while checking IP address lookups: " + str(exception))
         structured_output[CHECK_HOST_RESOLUTION] = {"exit_code" : 1, "message": str(exception)}
     if CHECK_LAST_AGENT_ENV in check_execute_list:
       try :
         last_agent_env_structured_output = self.execute_last_agent_env_check()
         structured_output[CHECK_LAST_AGENT_ENV] = last_agent_env_structured_output
-      except Exception, exception :
+      except Exception as exception :
         Logger.exception("There was an unknown error while checking last host environment details: " + str(exception))
         structured_output[CHECK_LAST_AGENT_ENV] = {"exit_code" : 1, "message": str(exception)}
         
@@ -170,7 +172,7 @@ class CheckHost(Script):
         installed_packages, repos = self.execute_existing_repos_and_installed_packages_check(config)
         structured_output[CHECK_INSTALLED_PACKAGES] = installed_packages
         structured_output[CHECK_EXISTING_REPOS] = repos
-      except Exception, exception :
+      except Exception as exception :
         Logger.exception("There was an unknown error while checking installed packages and existing repositories: " + str(exception))
         structured_output[CHECK_INSTALLED_PACKAGES] = {"exit_code" : 1, "message": str(exception)}
         structured_output[CHECK_EXISTING_REPOS] = {"exit_code" : 1, "message": str(exception)}
@@ -180,7 +182,7 @@ class CheckHost(Script):
       try :
         transparent_huge_page_structured_output = self.execute_transparent_huge_page_check(config)
         structured_output[CHECK_TRANSPARENT_HUGE_PAGE] = transparent_huge_page_structured_output
-      except Exception, exception :
+      except Exception as exception :
         Logger.exception("There was an unknown error while getting transparent huge page data: " + str(exception))
         structured_output[CHECK_TRANSPARENT_HUGE_PAGE] = {"exit_code" : 1, "message": str(exception)}
 
@@ -366,7 +368,7 @@ class CheckHost(Script):
       java_dir = os.path.dirname(java_home)
       try:
         download_file(jdk_url, jdk_download_target)
-      except Exception, e:
+      except Exception as e:
         message = "Error downloading JDK from Ambari Server resources. Check network access to " \
                   "Ambari Server.\n" + str(e)
         Logger.exception(message)
@@ -380,7 +382,7 @@ class CheckHost(Script):
         install_path = [java_dir]
         try:
           Execute(install_cmd, path = install_path)
-        except Exception, e:
+        except Exception as e:
           message = "Error installing java.\n" + str(e)
           Logger.exception(message)
           db_connection_check_structured_output = {"exit_code" : 1, "message": message}
@@ -398,10 +400,10 @@ class CheckHost(Script):
           Directory(java_dir)
           Execute(chmod_cmd, not_if = format("test -e {java_exec}"), sudo = True)
           Execute(install_cmd, not_if = format("test -e {java_exec}"))
-          File(format("{java_home}/bin/java"), mode=0755, cd_access="a")
+          File(format("{java_home}/bin/java"), mode=0o755, cd_access="a")
           Directory(java_home, owner=getpass.getuser(), recursive_ownership=True)
           Execute(('chmod', '-R', '755', java_home), sudo = True)
-        except Exception, e:
+        except Exception as e:
           message = "Error installing java.\n" + str(e)
           Logger.exception(message)
           db_connection_check_structured_output = {"exit_code" : 1, "message": message}
@@ -413,7 +415,7 @@ class CheckHost(Script):
     try:
       download_file(check_db_connection_url, check_db_connection_path)
 
-    except Exception, e:
+    except Exception as e:
       message = "Error downloading DBConnectionVerification.jar from Ambari Server resources. Check network access to " \
                 "Ambari Server.\n" + str(e)
       Logger.exception(message)
@@ -431,7 +433,7 @@ class CheckHost(Script):
         # unpack tar.gz jdbc which was donaloaded
         untar_sqla_type2_driver = ('tar', '-xvf', jdbc_path, '-C', agent_cache_dir)
         Execute(untar_sqla_type2_driver, sudo = True)
-    except Exception, e:
+    except Exception as e:
       message = format("Error: Ambari Server cannot download the database JDBC driver and is unable to test the " \
                 "database connection. You must run ambari-server setup --jdbc-db={db_name} " \
                 "--jdbc-driver=/path/to/your/{db_name}/driver.jar on the Ambari Server host to make the JDBC " \
@@ -453,7 +455,7 @@ class CheckHost(Script):
       db_connection_check_command = "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0}{1} {2}".format(agent_cache_dir,
                                                                 LIBS_PATH_IN_ARCHIVE_SQLA, db_connection_check_command)
 
-    code, out = shell.call(db_connection_check_command)
+    code, out = shell.call(split(db_connection_check_command, comments=True), shell=False)
 
     if code == 0:
       db_connection_check_structured_output = {"exit_code" : 0, "message": "DB connection check completed successfully!" }
@@ -485,7 +487,7 @@ class CheckHost(Script):
       try:
         host = host.strip()
         socket.gethostbyname(host)
-      except socket.error,exception:
+      except socket.error as exception:
         successCount -= 1
         failedCount += 1
 

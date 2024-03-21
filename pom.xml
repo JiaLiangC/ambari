@@ -99,6 +99,17 @@
   </properties>
   <pluginRepositories>
     <pluginRepository>
+      <id>aliyun-public</id>
+      <name>aliyun nexus</name>
+      <url>http://maven.aliyun.com/nexus/content/groups/public/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </pluginRepository>
+    <pluginRepository>
       <id>maven2-repository.dev.java.net</id>
       <name>Java.net Repository for Maven</name>
       <url>https://download.java.net/maven/2/</url>
@@ -125,34 +136,42 @@
 
   <repositories>
     <repository>
-      <id>oss.sonatype.org</id>
-      <name>OSS Sonatype Staging</name>
-      <url>https://oss.sonatype.org/content/groups/staging</url>
+      <id>aliyun-central</id>
+      <url>https://maven.aliyun.com/repository/central</url>
     </repository>
     <repository>
-      <id>spring-milestones</id>
-      <name>Spring Milestones</name>
-      <url>https://repo.spring.io/milestone</url>
-      <snapshots>
-        <enabled>false</enabled>
-      </snapshots>
+      <id>aliyun-public</id>
+      <url>https://maven.aliyun.com/repository/public</url>
     </repository>
     <repository>
-      <id>ASF Staging</id>
-      <url>https://repository.apache.org/content/groups/staging/</url>
+      <id>aliyun-snapshots</id>
+      <url>https://maven.aliyun.com/repository/apache-snapshots</url>
     </repository>
     <repository>
-      <id>ASF Snapshots</id>
-      <url>https://repository.apache.org/content/repositories/snapshots/</url>
-      <snapshots>
-        <enabled>true</enabled>
-      </snapshots>
-      <releases>
-        <enabled>false</enabled>
-      </releases>
+      <id>apache-spring-plugin</id>
+      <url>https://maven.aliyun.com/repository/spring-plugin</url>
+    </repository>
+    <repository>
+      <id>aliyun-spring</id>
+      <url>https://maven.aliyun.com/repository/spring</url>
+    </repository>
+    <repository>
+      <id>aliyun-google</id>
+      <url>https://maven.aliyun.com/repository/google</url>
+    </repository>
+    <repository>
+      <id>aliyun-gradle-plugin</id>
+      <url>https://maven.aliyun.com/repository/gradle-plugin</url>
+    </repository>
+    <repository>
+      <id>aliyun-jcenter</id>
+      <url>https://maven.aliyun.com/repository/jcenter</url>
+    </repository>
+    <repository>
+      <id>aliyun-releases</id>
+      <url>https://maven.aliyun.com/repository/releases</url>
     </repository>
   </repositories>
-
   <build>
     <pluginManagement>
       <plugins>

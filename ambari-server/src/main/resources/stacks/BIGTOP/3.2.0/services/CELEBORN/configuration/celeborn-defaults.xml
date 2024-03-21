@@ -1,0 +1,193 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+-->
+<configuration supports_final="true">
+
+  <property>
+    <name>celeborn.master.port</name>
+    <description>celeborn.master.port</description>
+    <value>9097</value>
+    <on-ambari-upgrade add="true"/>
+  </property>
+
+  <property>
+    <name>celeborn.master.ratis.port</name>
+    <description>celeborn.master.ratis.port</description>
+    <value>9872</value>
+    <on-ambari-upgrade add="true"/>
+  </property>
+
+  <property>
+    <name>celeborn.master.ha.ratis.raft.server.storage.dir</name>
+    <display-name>celeborn.master.ha.ratis.raft.server.storage.dir</display-name>
+    <value>/mnt/disk1/celeborn_ratis/</value>
+    <description/>
+    <value-attributes>
+      <type>directory</type>
+      <overridable>false</overridable>
+    </value-attributes>
+    <on-ambari-upgrade add="false"/>
+  </property>
+
+  <property>
+    <name>celeborn.worker.storage.dirs</name>
+    <description>If Celeborn workers have local disks and HDFS. Following configs should be added.
+Celeborn will use local disks until local disk become unavailable to gain the best performance.
+Increase Celeborn's off-heap memory if Celeborn write to HDFS.
+If Celeborn workers have local disks, use following config.
+Disk type is HDD by default.
+example: /mnt/disk1:disktype=SSD,/mnt/disk2:disktype=SSD</description>
+    <value>/mnt/disk1</value>
+    <on-ambari-upgrade add="true"/>
+  </property>
+
+  <property>
+    <name>celeborn.storage.activeTypes</name>
+    <description># If Celeborn workers don't have local disks. You can use HDFS.
+# Do not set `celeborn.worker.storage.dirs` and use following configs.</description>
+    <value>HDFS</value>
+    <on-ambari-upgrade add="true"/>
+  </property>
+
+  <property>
+    <name>celeborn.storage.hdfs.dir</name>
+    <description>celeborn.storage.hdfs.dir</description>
+    <value>/celeborn</value>
+    <on-ambari-upgrade add="true"/>
+  </property>
+
+  <property>
+    <name>celeborn.storage.hdfs.kerberos.keytab</name>
+    <description>celeborn.storage.hdfs.kerberos.keytab</description>
+    <on-ambari-upgrade add="false"/>
+  </property>
+  <property>
+    <name>celeborn.storage.hdfs.kerberos.principal</name>
+    <description># Either principal/keytab or valid TGT cache is required to access kerberized HDFS</description>
+    <property-type>KERBEROS_PRINCIPAL</property-type>
+    <on-ambari-upgrade add="false"/>
+  </property>  
+
+
+  <property>
+    <name>celeborn.quota.enabled</name>
+    <description>celeborn.quota.enabled</description>
+    <value>fasle</value>
+    <on-ambari-upgrade add="false"/>
+  </property> 
+    <property>
+        <name>content</name>
+        <description>metrics.properties</description>
+        <value>
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# used by client and worker to connect to master
+#celeborn.master.endpoints clb-1:9097,clb-2:9097,clb-3:9097
+celeborn.master.endpoints {{celeborn_master_endpoints}}
+
+# used by master nodes to bootstrap, every node should know the topology of whole cluster, for each node,
+# `celeborn.master.ha.node.id` should be unique, and `celeborn.master.ha.node.(id).host` is required.
+
+celeborn.master.ha.enabled  {{celeborn_master_ha_enabled}}
+{{celeborn_master_endpoints_config}}
+
+#celeborn.master.ha.enabled true
+#celeborn.master.ha.node.id 1
+#celeborn.master.ha.node.1.host clb-1
+#celeborn.master.ha.node.1.port 9097
+#celeborn.master.ha.node.1.ratis.port 9872
+#celeborn.master.ha.node.2.host clb-2
+#celeborn.master.ha.node.2.port 9097
+#celeborn.master.ha.node.2.ratis.port 9872
+#celeborn.master.ha.node.3.host clb-3
+#celeborn.master.ha.node.3.port 9097
+#celeborn.master.ha.node.3.ratis.port 9872
+celeborn.master.ha.ratis.raft.server.storage.dir {{celeborn_master_ha_ratis_raft_server_storage_dir}}
+
+celeborn.metrics.enabled true
+# If you want to use HDFS as shuffle storage, make sure that flush buffer size is at least 4MB or larger.
+celeborn.worker.flusher.buffer.size 256k
+
+# If Celeborn workers have local disks and HDFS. Following configs should be added.
+# Celeborn will use local disks until local disk become unavailable to gain the best performance.
+# Increase Celeborn's off-heap memory if Celeborn write to HDFS.
+# If Celeborn workers have local disks, use following config.
+# Disk type is HDD by default.
+#celeborn.worker.storage.dirs /mnt/disk1:disktype=SSD,/mnt/disk2:disktype=SSD
+celeborn.worker.storage.dirs {{celeborn_worker_storage_dirs}}
+
+# If Celeborn workers don't have local disks. You can use HDFS.
+# Do not set `celeborn.worker.storage.dirs` and use following configs.
+celeborn.storage.activeTypes {{celeborn_storage_activeTypes}}
+celeborn.worker.sortPartition.threads 64
+celeborn.worker.commitFiles.timeout 240s
+celeborn.worker.commitFiles.threads 128
+celeborn.master.slot.assign.policy roundrobin
+celeborn.rpc.askTimeout 240s
+celeborn.worker.flusher.hdfs.buffer.size 4m
+celeborn.storage.hdfs.dir {{celeborn_storage_hdfs_dir}}
+celeborn.worker.replicate.fastFail.duration 240s
+
+# If your hosts have disk raid or use lvm, set celeborn.worker.monitor.disk.enabled to false
+celeborn.worker.monitor.disk.enabled false
+
+
+# if you are using Celeborn for flink, these settings will be needed
+celeborn.worker.directMemoryRatioForReadBuffer 0.4
+celeborn.worker.directMemoryRatioToResume 0.6
+# these setting will affect performance. 
+# If there is enough off-heap memory, you can try to increase read buffers.
+# Read buffer max memory usage for a data partition is `taskmanager.memory.segment-size * readBuffersMax`
+celeborn.worker.partition.initial.readBuffersMin 512
+celeborn.worker.partition.initial.readBuffersMax 1024
+celeborn.worker.readBuffer.allocationWait 10ms
+# Currently, shuffle partitionSplit is not supported, so you should disable split in celeborn worker side or set `celeborn.client.shuffle.partitionSplit.threshold` to a high value in flink client side.
+celeborn.worker.shuffle.partitionSplit.enabled false
+
+# Either principal/keytab or valid TGT cache is required to access kerberized HDFS
+celeborn.storage.hdfs.kerberos.principal {{celeborn_storage_hdfs_kerberos_principal}}
+celeborn.storage.hdfs.kerberos.keytab {{celeborn_storage_hdfs_kerberos_keytab}}
+
+celeborn.quota.enabled {{celeborn_quota_enabled}}
+celeborn.client.push.replicate.enabled false
+
+        </value>
+        <value-attributes>
+            <type>content</type>
+        </value-attributes>
+        <on-ambari-upgrade add="true"/>
+    </property>
+</configuration>

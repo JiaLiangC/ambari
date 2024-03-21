@@ -58,5 +58,4 @@ App.ApplicationView = Em.View.extend({
       });
     }
   }.observes('App.router.mainController.isClusterDataLoaded')
-
 });

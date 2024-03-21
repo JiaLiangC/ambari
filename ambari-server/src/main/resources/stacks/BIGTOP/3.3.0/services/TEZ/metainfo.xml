@@ -16,6 +16,7 @@
    limitations under the License.
 -->
 <metainfo>
+<<<<<<< HEAD
   <schemaVersion>2.0</schemaVersion>
   <services>
     <service>
@@ -25,3 +26,13 @@
     </service>
   </services>
 </metainfo>
+=======
+    <schemaVersion>2.0</schemaVersion>
+    <services>
+        <service>
+            <name>TEZ</name>
+            <version>0.10.2</version>
+        </service>
+    </services>
+</metainfo>
+>>>>>>> 52816b1491f4f5ec521d3df253288f92de169f75

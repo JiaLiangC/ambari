@@ -21,13 +21,10 @@ window.App = require('app');
 
 require('config');
 
-var browserLanguage = '';
-
 try {
-  browserLanguage = navigator.language.slice(0, 2);
-  require('locales/' + browserLanguage +'/messages');
+  require('locales/zh/messages');
 } catch (error) {
-  require('messages');
+  require('locales/default_messages');
 }
 
 require('utils');

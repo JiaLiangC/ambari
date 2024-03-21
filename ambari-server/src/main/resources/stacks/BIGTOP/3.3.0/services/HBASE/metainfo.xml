@@ -20,7 +20,14 @@
   <services>
     <service>
       <name>HBASE</name>
+<<<<<<< HEAD
       <version>2.5.3-1</version>
     </service>
   </services>
 </metainfo>
+=======
+      <version>2.4.17</version>
+    </service>
+  </services>
+</metainfo>
+>>>>>>> 52816b1491f4f5ec521d3df253288f92de169f75

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -20,8 +20,7 @@ limitations under the License.
 
 # Python Imports
 import os
-from urlparse import urlparse
-
+from urllib.parse import urlparse
 # Local Imports
 import status_params
 
@@ -62,7 +61,7 @@ retryAble = default("/commandParams/command_retry_enabled", False)
 
 # log4j version is 2 for hive3; put config files under /etc/hive/conf
 log4j_version = '2'
-
+service_name = 'hive'
 # server configurations
 config = Script.get_config()
 tmp_dir = Script.get_tmp_dir()
@@ -164,7 +163,7 @@ hive_user_nproc_limit = default("/configurations/hive-env/hive_user_nproc_limit"
 hive_tar_source = "{0}/{1}/hive/hive.tar.gz".format(STACK_ROOT_PATTERN, STACK_VERSION_PATTERN)
 hive_tar_dest_file = "/{0}/apps/{1}/hive/hive.tar.gz".format(STACK_NAME_PATTERN,STACK_VERSION_PATTERN)
 
-tarballs_mode = 0444
+tarballs_mode = 0o444
 
 purge_tables = "false"
 # Starting from stack version for feature hive_purge_table drop should be executed with purge
@@ -192,7 +191,7 @@ if credential_store_enabled:
     raise Exception("hadoop.security.credential.provider.path property should be set")
 else:
   hive_metastore_user_passwd = config['configurations']['hive-site']['javax.jdo.option.ConnectionPassword']
-hive_metastore_user_passwd = unicode(hive_metastore_user_passwd) if not is_empty(hive_metastore_user_passwd) else hive_metastore_user_passwd
+hive_metastore_user_passwd = str(hive_metastore_user_passwd) if not is_empty(hive_metastore_user_passwd) else hive_metastore_user_passwd
 hive_metastore_db_type = config['configurations']['hive-env']['hive_database_type']
 hive_db_schma_name = config['configurations']['hive-site']['ambari.hive.db.schema.name']
 
@@ -401,7 +400,7 @@ process_name = status_params.process_name
 hive_env_sh_template = config['configurations']['hive-env']['content']
 
 hive_hdfs_user_dir = format("/user/{hive_user}")
-hive_hdfs_user_mode = 0755
+hive_hdfs_user_mode = 0o755
 hive_metastore_warehouse_dir = config['configurations']['hive-site']["hive.metastore.warehouse.dir"]
 hive_metastore_warehouse_external_dir = config['configurations']['hive-site']["hive.metastore.warehouse.external.dir"]
 whs_dir_protocol = urlparse(hive_metastore_warehouse_dir).scheme
@@ -443,17 +442,6 @@ hive_site_config["hive.execution.engine"] = "tez"
 hive_site_config["hive.metastore.db.type"] = hive_metastore_db_type.upper()
 hive_site_config["hive.hook.proto.base-directory"] = hive_hook_proto_base_directory
 
-########################################################
-# https://issues.apache.org/jira/browse/HIVE-19740
-# This is not a bug but after 2.x hive.metastore.event.db.notification.api.auth is true by default so if you just upgrade the version in a kerberized cluster, hiverserver2 will probably not be able to connect to the metastore. As specified here this can solved by setting hive.metastore.event.db.notification.api.auth to false or adding something like this to your core.xml or hive-site.xml:
-########################################################
-core_site_config = dict(config['configurations']['core-site'])
-if format("hadoop.proxyuser.{hive_user}.hosts") not in core_site_config and format("hadoop.proxyuser.{hive_user}.groups") not in core_site_config:
-  hive_site_config["hive.metastore.event.db.notification.api.auth"] = "false"
-  hive_site_config["hive.server2.enable.doAs"] = "false"
-else:
-  hive_site_config["hive.metastore.event.db.notification.api.auth"] = "true"
-  hive_site_config["hive.server2.enable.doAs"] = "true"
 
 ########################################################
 ############# AMS related params #####################
@@ -546,9 +534,9 @@ templeton_jar = config['configurations']['webhcat-site']['templeton.jar']
 webhcat_server_host = config['clusterHostInfo']['webhcat_server_hosts']
 
 hcat_hdfs_user_dir = format("/user/{webhcat_user}")
-hcat_hdfs_user_mode = 0755
+hcat_hdfs_user_mode = 0o755
 webhcat_hdfs_user_dir = format("/user/{webhcat_user}")
-webhcat_hdfs_user_mode = 0755
+webhcat_hdfs_user_mode = 0o755
 
 #Webhcat log4j properties
 webhcat_log_maxfilesize = default("/configurations/webhcat-log4j/webhcat_log_maxfilesize", 256)
@@ -644,6 +632,7 @@ doAs = config["configurations"]["hive-site"]["hive.server2.enable.doAs"]
 # ranger support xml_configuration flag, instead of depending on ranger xml_configurations_supported/ranger-env, using stack feature
 xml_configurations_supported = check_stack_feature(StackFeature.RANGER_XML_CONFIGURATION, version_for_stack_feature_checks)
 
+ranger_plugin_home = format("{hive_home}/../ranger-{service_name}-plugin")
 # get ranger hive properties if enable_ranger_hive is True
 if enable_ranger_hive:
   # get ranger policy url

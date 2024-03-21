@@ -1,0 +1,135 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+-->
+<configuration supports_final="true">
+    <property>
+        <name>kyuubi.frontend.rest.bind.port</name>
+        <value>10099</value>
+        <description>
+            Port of the machine on which to run the REST frontend service.
+        </description>
+        <on-ambari-upgrade add="true"/>
+    </property>
+    <property>
+        <name>kyuubi.frontend.thrift.binary.bind.port</name>
+        <value>10009</value>
+        <description>
+            Port of the machine on which to run the thrift frontend service via binary protocol.
+        </description>
+        <on-ambari-upgrade add="true"/>
+    </property>
+    <property>
+        <name>kyuubi.ha.zookeeper.session.timeout</name>
+        <value>600000</value>
+        <description>
+            The timeout(ms) of a connected session to be idled
+        </description>
+        <on-ambari-upgrade add="true"/>
+    </property>
+    <property>
+        <name>kyuubi.session.engine.initialize.timeout</name>
+        <value>300000</value>
+        <description>
+            Timeout for starting the background engine, e.g. SparkSQLEngine.
+        </description>
+        <on-ambari-upgrade add="true"/>
+    </property>
+    <property>
+        <name>kyuubi.authentication</name>
+        <value>{{kyuubi_authentication}}</value>
+        <description>
+            Client authentication types.
+NOSASL: raw transport.
+NONE: no authentication check.
+KERBEROS: Kerberos/GSSAPI authentication.
+LDAP: Lightweight Directory Access Protocol authentication.
+        </description>
+        <on-ambari-upgrade add="true"/>
+    </property>
+    <property>
+        <name>spark.master</name>
+        <value>yarn</value>
+        <description>
+            The deploying mode of spark application.
+        </description>
+        <on-ambari-upgrade add="true"/>
+    </property>
+    <property>
+        <name>spark.submit.deployMode</name>
+        <value>client</value>
+        <description>spark submit deploy mode</description>
+        <on-ambari-upgrade add="true"/>
+    </property>
+    <property>
+        <name>spark.yarn.queue</name>
+        <value>default</value>
+        <description>
+            The name of the YARN queue to which the application is submitted.
+        </description>
+        <depends-on>
+            <property>
+                <type>capacity-scheduler</type>
+                <name>yarn.scheduler.capacity.root.queues</name>
+            </property>
+        </depends-on>
+        <on-ambari-upgrade add="false"/>
+    </property>
+    <property>
+        <name>spark.yarn.driver.memory</name>
+        <value>1g</value>
+        <description>spark yarn driver momory</description>
+        <on-ambari-upgrade add="false"/>
+    </property>
+    <property>
+        <name>spark.executor.memory</name>
+        <value>1g</value>
+        <description>spark.executor.memory</description>
+        <on-ambari-upgrade add="false"/>
+    </property>
+
+
+    <property>
+        <name>kyuubi.ha.client.class</name>
+        <value>org.apache.kyuubi.ha.client.zookeeper.ZookeeperDiscoveryClient</value>
+        <description>Class name for service discovery client.
+Zookeeper: org.apache.kyuubi.ha.client.zookeeper.ZookeeperDiscoveryClient
+Etcd: org.apache.kyuubi.ha.client.etcd.EtcdDiscoveryClient</description>
+        <on-ambari-upgrade add="false"/>
+    </property>
+     <property>
+        <name>kyuubi.ha.addresses</name>
+        <value>{{cluster_zookeeper_quorum}}</value>
+        <description>The connection string for the discovery ensemble</description>
+        <on-ambari-upgrade add="false"/>
+    </property>
+    <property>
+        <name>kyuubi.ha.zookeeper.quorum</name>
+        <value>{{cluster_zookeeper_quorum}}</value>
+        <description>(deprecated) The connection string for the zookeeper ensemble</description>
+        <on-ambari-upgrade add="false"/>
+    </property>
+    <property>
+        <name>kyuubi.ha.namespace</name>
+        <value>kyuubi</value>
+        <description>The root directory for the service to deploy its instance uri</description>
+        <on-ambari-upgrade add="false"/>
+    </property>
+
+</configuration>

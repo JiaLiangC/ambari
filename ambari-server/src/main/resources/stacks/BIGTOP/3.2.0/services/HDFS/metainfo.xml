@@ -23,7 +23,7 @@
       <displayName>HDFS</displayName>
       <serviceType>HDFS</serviceType> <!-- This tag is used only for main fileSystem service. It sets filesystem schema for ambari -->
       <comment>Apache Hadoop Distributed File System</comment>
-      <version>3.3.4-1</version>
+      <version>3.3.5-1</version>
 
       <components>
         <component>
@@ -280,11 +280,33 @@
             </customCommand>
           </customCommands>
         </component>
+
+        <component>
+          <name>HTTPFS_GATEWAY</name>
+          <displayName>HTTPFS gateway</displayName>
+          <category>MASTER</category>
+          <cardinality>0+</cardinality>
+          <commandScript>
+            <script>scripts/httpfs_component.py</script>
+            <scriptType>PYTHON</scriptType>
+            <timeout>600</timeout>
+          </commandScript>
+          <dependencies>
+            <dependency>
+              <name>HDFS/HDFS_CLIENT</name>
+              <scope>host</scope>
+              <auto-deploy>
+                <enabled>true</enabled>
+              </auto-deploy>
+            </dependency>
+          </dependencies>
+        </component>
+
       </components>
 
       <osSpecifics>
         <osSpecific>
-          <osFamily>redhat7</osFamily>
+          <osFamily>redhat7,redhat8</osFamily>
           <packages>
             <package>
               <name>hadoop_${stack_version}</name>
@@ -303,6 +325,38 @@
             </package>
             <package>
               <name>libtirpc-devel</name>
+            </package>
+            <package>
+              <name>ranger_${stack_version}-hdfs-plugin</name>
+            </package>
+            <package>
+              <name>hadoop_${stack_version}-httpfs</name>
+            </package>
+          </packages>
+        </osSpecific>
+        <osSpecific>
+          <osFamily>ubuntu22</osFamily>
+          <packages>
+            <package>
+              <name>hadoop-${stack_version}</name>
+            </package>
+            <package>
+              <name>hadoop-${stack_version}-client</name>
+            </package>
+            <package>
+              <name>libsnappy1</name>
+            </package>
+            <package>
+              <name>libsnappy-dev</name>
+            </package>
+            <package>
+              <name>libhdfs0</name>
+            </package>
+            <package>
+              <name>libhdfs0-dev</name>
+            </package>
+            <package>
+              <name>ranger-${stack_version}-hdfs-plugin</name>
             </package>
           </packages>
         </osSpecific>
@@ -327,6 +381,9 @@
         <config-type>ranger-hdfs-audit</config-type>
         <config-type>ranger-hdfs-policymgr-ssl</config-type>
         <config-type>ranger-hdfs-security</config-type>
+        <config-type>httpfs-log4j</config-type>
+        <config-type>httpfs-env</config-type>
+        <config-type>httpfs-site</config-type>
       </configuration-dependencies>
       <restartRequiredAfterRackChange>true</restartRequiredAfterRackChange>
 

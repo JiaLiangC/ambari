@@ -69,12 +69,6 @@ limitations under the License.
     <on-ambari-upgrade add="false"/>
   </property>
   <property>
-    <name>hive.load.data.owner</name>
-    <value>spark</value>
-    <description></description>
-    <on-ambari-upgrade add="false"/>
-  </property>
-  <property>
     <name>hive.exec.scratchdir</name>
     <value>/tmp/spark</value>
     <description></description>

@@ -1,0 +1,26 @@
+{
+  "name": "default",
+  "description": "default quick links configuration",
+  "configuration": {
+    "protocol":
+    {
+      "type":"http"
+    },
+
+    "links": [
+      {
+        "name": "dinky-application-ui",
+        "label": "Dinky Web UI",
+        "requires_user_name": "false",
+        "component_name": "DINKY_SERVER",
+        "url": "%@://%@:%@",
+        "port":{
+          "http_property": "server.port",
+          "http_default_port": "8888",
+          "regex": "^(\\d+)$",
+          "site": "dinky-application-ui"
+        }
+      }
+    ]
+  }
+}

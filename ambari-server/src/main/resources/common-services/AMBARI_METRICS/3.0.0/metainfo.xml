@@ -143,7 +143,7 @@
 
       <osSpecifics>
         <osSpecific>
-          <osFamily>redhat7,amazonlinux2,redhat6,suse11,suse12</osFamily>
+          <osFamily>redhat7,redhat8,openeuler22</osFamily>
           <packages>
             <package>
               <name>ambari-metrics-collector</name>
@@ -169,30 +169,7 @@
           </packages>
         </osSpecific>
         <osSpecific>
-          <osFamily>redhat7,redhat6,amazonlinux2</osFamily>
-          <packages>
-            <package>
-              <name>python-kerberos</name>
-            </package>
-          </packages>
-        </osSpecific>
-        <osSpecific>
-          <osFamily>debian7,ubuntu12,ubuntu14</osFamily>
-          <packages>
-            <package>
-              <name>ambari-metrics-assembly</name>
-              <skipUpgrade>true</skipUpgrade>
-            </package>
-            <package>
-              <name>gcc</name>
-            </package>
-            <package>
-              <name>libsnappy1*</name>
-            </package>
-          </packages>
-        </osSpecific>
-        <osSpecific>
-          <osFamily>ubuntu16</osFamily>
+          <osFamily>ubuntu22</osFamily>
           <packages>
             <package>
               <name>ambari-metrics-assembly</name>
@@ -203,23 +180,6 @@
             </package>
             <package>
               <name>libsnappy1v5*</name>
-            </package>
-          </packages>
-        </osSpecific>
-        <osSpecific>
-          <osFamily>winsrv6</osFamily>
-          <packages>
-            <package>
-              <name>ambari-metrics-collector</name>
-              <skipUpgrade>true</skipUpgrade>
-            </package>
-            <package>
-              <name>ambari-metrics-monitor</name>
-              <skipUpgrade>true</skipUpgrade>
-            </package>
-            <package>
-              <name>ambari-metrics-hadoop-sink</name>
-              <skipUpgrade>true</skipUpgrade>
             </package>
           </packages>
         </osSpecific>

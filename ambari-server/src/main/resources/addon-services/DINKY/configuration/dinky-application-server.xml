@@ -1,0 +1,141 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+# -*- coding: utf-8 -*-
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+-->
+<configuration>
+    <!--   server port  -->
+    <property require-input="true">
+        <name>server.port</name>
+        <value>8888</value>
+        <property-type>
+            <type>PORT</type>
+            <default-port>8888</default-port>
+        </property-type>
+        <on-ambari-upgrade add="true"/>
+    </property>
+
+    <!--   flink big version    -->
+    <property require-input="true">
+        <name>flink.big.version</name>
+        <value>1.17</value>
+        <description>
+            en: The version of flink big version such as: 1.18, 1.17, 1.16, 1.15, 1.14
+            Note: The version of flink big version must be consistent with the version of flink big version installed on
+            the cluster.
+            |
+            zh: Flink大版本号，如：1.18, 1.17, 1.16, 1.15, 1.14
+            注意：Flink大版本号必须与集群上安装的Flink大版本号保持一致。
+        </description>
+        <value-attributes>
+            <type>value-list</type>
+            <entries>
+                <entry>
+                    <value>1.14</value>
+                </entry>
+                <entry>
+                    <value>1.15</value>
+                </entry>
+                <entry>
+                    <value>1.16</value>
+                </entry>
+                <entry>
+                    <value>1.17</value>
+                </entry>
+            </entries>
+        </value-attributes>
+        <on-ambari-upgrade add="true"/>
+    </property>
+
+    <!--   数据库类型    -->
+    <property require-input="true">
+        <name>spring.profiles.active</name>
+        <value>mysql</value>
+        <description>
+            en: The type of database to use. Valid values are mysql, postgresql , you must input the mysql/postgresql
+            information.| zh: 数据库类型，可选值为mysql, postgresql,必须输入mysql/postgresql的信息。
+        </description>
+        <value-attributes>
+            <type>value-list</type>
+            <entries>
+                <entry>
+                    <value>mysql</value>
+                    <description>
+                        en: mysql database | zh: mysql数据库
+                    </description>
+                </entry>
+                <entry>
+                    <value>pgsql</value>
+                    <description>
+                        en: postgresql database | zh: postgresql数据库
+                    </description>
+                </entry>
+            </entries>
+        </value-attributes>
+        <on-ambari-upgrade add="true"/>
+    </property>
+
+    <!--   数据库主机  -->
+    <property require-input="true">
+        <name>spring.datasource.database.host</name>
+        <value>127.0.0.1</value>
+        <description>
+            en: DataBase host ip/hostname | zh: 数据库主机ip/主机名
+        </description>
+        <on-ambari-upgrade add="true"/>
+    </property>
+
+    <!--   数据库端口  -->
+    <property require-input="true">
+        <name>spring.datasource.database.port</name>
+        <value>3306</value>
+        <description>
+            en: DataBase port | zh: 数据库端口
+        </description>
+        <property-type>PORT</property-type>
+        <on-ambari-upgrade add="true"/>
+    </property>
+
+    <!--   数据库名称  -->
+    <property require-input="true">
+        <name>spring.datasource.database.name</name>
+        <value>dinky</value>
+        <description>
+            en: DataBase Name | zh: 数据库名称
+        </description>
+        <on-ambari-upgrade add="true"/>
+    </property>
+
+    <!--   数据库用户名  -->
+    <property require-input="true">
+        <name>spring.datasource.database.username</name>
+        <value>dinky</value>
+        <description>
+            en: DataBase UserName | zh: 数据库用户名
+        </description>
+        <on-ambari-upgrade add="true"/>
+    </property>
+
+    <!--   数据库密码  -->
+    <property require-input="true">
+        <name>spring.datasource.database.password</name>
+        <value>dinky1234!2</value>
+        <description>
+            en: DataBase Password | zh: 数据库密码
+        </description>
+        <property-type>PASSWORD</property-type>
+        <on-ambari-upgrade add="true"/>
+    </property>
+</configuration>

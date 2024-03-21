@@ -48,7 +48,10 @@ module.exports = function(config){
 
     plugins : [
             'karma-jasmine',
+<<<<<<< HEAD
             'karma-chrome-launcher',
+=======
+>>>>>>> 52816b1491f4f5ec521d3df253288f92de169f75
             'karma-ng-html2js-preprocessor'
             ],
 

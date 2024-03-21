@@ -1,0 +1,6 @@
+{
+  "general_deps" : {
+    "_comment" : "dependencies for HTTPFS",
+	"HUE_SERVER-START" : ["HTTPFS_GATEWAY-START","NAMENODE-START"]
+  }
+}

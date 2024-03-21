@@ -78,7 +78,7 @@ class BasicAuth:
   def __init__(self, user, password):
     self.header = Header(
       'Authorization', 
-      'Basic %s' % base64.encodestring('%s:%s' % (user, password)).replace('\n', ''))
+      'Basic {}'.format(base64.b64encode(f'{user}:{password}'.encode()).decode().replace('\n', '')))
 
   def authenticate(self, request):
     self.header.add_to(request)

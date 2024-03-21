@@ -1,0 +1,76 @@
+{
+  "services": [
+    {
+      "name": "KYUUBI",
+      "identities": [
+        {
+          "name": "kyuubi_smokeuser",
+          "reference": "/smokeuser"
+        },
+        {
+          "name": "kyuubiuser",
+          "principal": {
+            "value": "${kyuubi-env/kyuubi_user}${principal_suffix}@${realm}",
+            "type" : "user",
+            "local_username" : "${kyuubi-env/kyuubi_user}"
+          },
+          "keytab": {
+            "file": "${keytab_dir}/kyuubi.headless.keytab",
+            "owner": {
+              "name": "${kyuubi-env/kyuubi_user}",
+              "access": "r"
+            },
+            "group": {
+              "name": "${cluster-env/user_group}",
+              "access": ""
+            }
+          }
+        },
+        {
+          "name": "kyuubi_service_keytab",
+          "principal": {
+            "value": "kyuubi/_HOST@${realm}",
+            "type" : "service",
+            "configuration": "kyuubi-defaults/kyuubi.kinit.principal",
+            "local_username" : "${kyuubi-env/kyuubi_user}"
+          },
+          "keytab": {
+            "file": "${keytab_dir}/kyuubi.service.keytab",
+            "owner": {
+              "name": "${kyuubi-env/kyuubi_user}",
+              "access": "r"
+            },
+            "group": {
+              "name": "${cluster-env/user_group}",
+              "access": ""
+            },
+            "configuration": "kyuubi-defaults/kyuubi.kinit.keytab"
+          }
+        }
+      ],
+      "configurations": [
+        {
+          "kyuubi-defaults": {
+            "kyuubi.authentication": "KERBEROS",
+            "kyuubi.kinit.keytab": "${keytab_dir}/kyuubi.service.keytab",
+            "kyuubi.kinit.principal": "kyuubi/_HOST@${realm}",
+            "kyuubi.ha.zookeeper.acl.enabled": "true",
+            "kyuubi.ha.zookeeper.auth.keytab": "${keytab_dir}/kyuubi.service.keytab",
+            "kyuubi.ha.zookeeper.auth.principal": "kyuubi/_HOST@${realm}",
+            "kyuubi.ha.zookeeper.auth.type": "KERBEROS",
+            "kyuubi.ha.zookeeper.engine.auth.type": "KERBEROS"
+            
+          }
+        }
+      ],
+      "components": [
+        {
+          "name": "KYUUBI_SERVER"
+        },
+        {
+          "name": "KYUUBI_CLIENT"
+        }
+      ]
+    }
+  ]
+}

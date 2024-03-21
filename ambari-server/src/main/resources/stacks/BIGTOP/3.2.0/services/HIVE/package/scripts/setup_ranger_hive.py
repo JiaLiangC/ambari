@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -47,7 +47,7 @@ def setup_ranger_hive(upgrade_type = None):
                            action="create_on_execute",
                            owner=params.hdfs_user,
                            group=params.hdfs_user,
-                           mode=0755,
+                           mode=0o755,
                            recursive_chmod=True
         )
         params.HdfsResource("/ranger/audit/hiveServer2",
@@ -55,16 +55,16 @@ def setup_ranger_hive(upgrade_type = None):
                            action="create_on_execute",
                            owner=params.hive_user,
                            group=params.hive_user,
-                           mode=0700,
+                           mode=0o700,
                            recursive_chmod=True
         )
         params.HdfsResource(None, action="execute")
-      except Exception, err:
+      except Exception as err:
         Logger.exception("Audit directory creation in HDFS for HIVE Ranger plugin failed with error:\n{0}".format(err))
 
     api_version='v2'
 
-    setup_ranger_plugin('hive-server2', 'hive', params.ranger_previous_jdbc_jar,
+    setup_ranger_plugin('hive-server2', params.service_name, params.ranger_previous_jdbc_jar,
                         params.ranger_downloaded_custom_connector, params.ranger_driver_curl_source,
                         params.ranger_driver_curl_target, params.java64_home,
                         params.repo_name, params.hive_ranger_plugin_repo,
@@ -82,7 +82,7 @@ def setup_ranger_hive(upgrade_type = None):
                         is_security_enabled = params.security_enabled,
                         is_stack_supports_ranger_kerberos = params.stack_supports_ranger_kerberos,
                         component_user_principal=params.hive_principal if params.security_enabled else None,
-                        component_user_keytab=params.hive_server2_keytab if params.security_enabled else None)
+                        component_user_keytab=params.hive_server2_keytab if params.security_enabled else None,plugin_home=params.ranger_plugin_home)
   else:
     Logger.info('Ranger Hive plugin is not enabled')
 

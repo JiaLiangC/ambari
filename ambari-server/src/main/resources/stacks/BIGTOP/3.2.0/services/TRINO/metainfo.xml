@@ -1,0 +1,123 @@
+<?xml version="1.0"?>
+<!--Licensed to the Apache Software Foundation (ASF) under one
+* or more contributor license agreements.  See the NOTICE file
+* distributed with this work for additional information
+* regarding copyright ownership.  The ASF licenses this file
+* to you under the Apache License, Version 2.0 (the
+* "License"); you may not use this file except in compliance
+* with the License.  You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+-->
+<metainfo>
+  <schemaVersion>2.0</schemaVersion>
+  <services>
+    <service>
+      <name>TRINO</name>
+      <displayName>TRINO</displayName>
+      <comment>Trino is an open source distributed SQL query engine for running
+        interactive analytic queries against data sources of all sizes ranging
+        from gigabytes to petabytes. </comment>
+      <version>428</version>
+      <components>
+        <component>
+          <name>TRINO_COORDINATOR</name>
+          <displayName>Trino coordinator</displayName>
+          <category>MASTER</category>
+          <cardinality>1</cardinality>
+          <versionAdvertised>true</versionAdvertised>
+          <commandScript>
+            <script>scripts/trino_coordinator.py</script>
+            <scriptType>PYTHON</scriptType>
+            <timeout>600</timeout>
+          </commandScript>
+        </component>
+
+        <component>
+          <name>TRINO_WORKER</name>
+          <displayName>Trino worker</displayName>
+          <category>SLAVE</category>
+          <cardinality>1+</cardinality>
+          <versionAdvertised>true</versionAdvertised>
+          <commandScript>
+            <script>scripts/trino_worker.py</script>
+            <scriptType>PYTHON</scriptType>
+          </commandScript>
+        </component>
+
+
+        <component>
+          <name>TRINO_CLI</name>
+          <displayName>Trino command line interface</displayName>
+          <category>CLIENT</category>
+          <cardinality>1+</cardinality>
+          <versionAdvertised>true</versionAdvertised>
+          <commandScript>
+            <script>scripts/trino_cli.py</script>
+            <scriptType>PYTHON</scriptType>
+          </commandScript>
+        </component>
+      </components>
+
+      <configuration-dependencies>
+        <config-type>node.properties</config-type>
+        <config-type>config.properties</config-type>
+        <config-type>jvm.config</config-type>
+        <config-type>trino-env</config-type>
+      </configuration-dependencies>
+
+      <commandScript>
+        <script>scripts/service_check.py</script>
+        <scriptType>PYTHON</scriptType>
+        <timeout>300</timeout>
+      </commandScript>
+
+      <quickLinksConfigurations>
+        <quickLinksConfiguration>
+          <fileName>quicklinks.json</fileName>
+          <default>true</default>
+        </quickLinksConfiguration>
+      </quickLinksConfigurations>
+
+
+      <osSpecifics>
+        <osSpecific>
+          <osFamily>redhat9,redhat8,redhat7,amazonlinux2,redhat6,suse11,suse12</osFamily>
+          <packages>
+            <package>
+              <name>trino_${stack_version}</name>
+            </package>
+            <package>
+              <name>trino_${stack_version}-cli</name>
+            </package>
+            <package>
+              <name>trino_${stack_version}-server</name>
+            </package>
+          </packages>
+        </osSpecific>
+        <osSpecific>
+          <osFamily>debian7,debian9,ubuntu12,ubuntu14,ubuntu16,ubuntu18</osFamily>
+          <packages>
+            <package>
+              <name>trino_${stack_version}</name>
+            </package>
+            <package>
+              <name>trino_${stack_version}-cli</name>
+            </package>
+            <package>
+              <name>trino_${stack_version}-server</name>
+            </package>
+          </packages>
+        </osSpecific>
+      </osSpecifics>
+
+    </service>
+  </services>
+</metainfo>

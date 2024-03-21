@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -42,7 +42,7 @@ def setup_ranger_hbase(upgrade_type=None, service_name="hbase-master"):
                            action="create_on_execute",
                            owner=params.hdfs_user,
                            group=params.hdfs_user,
-                           mode=0755,
+                           mode=0o755,
                            recursive_chmod=True
         )
         params.HdfsResource("/ranger/audit/hbaseMaster",
@@ -50,7 +50,7 @@ def setup_ranger_hbase(upgrade_type=None, service_name="hbase-master"):
                            action="create_on_execute",
                            owner=params.hbase_user,
                            group=params.hbase_user,
-                           mode=0700,
+                           mode=0o700,
                            recursive_chmod=True
         )
         params.HdfsResource("/ranger/audit/hbaseRegional",
@@ -58,16 +58,16 @@ def setup_ranger_hbase(upgrade_type=None, service_name="hbase-master"):
                            action="create_on_execute",
                            owner=params.hbase_user,
                            group=params.hbase_user,
-                           mode=0700,
+                           mode=0o700,
                            recursive_chmod=True
         )
         params.HdfsResource(None, action="execute")
-      except Exception, err:
+      except Exception as err:
         Logger.exception("Audit directory creation in HDFS for HBASE Ranger plugin failed with error:\n{0}".format(err))
 
     api_version = 'v2'
 
-    setup_ranger_plugin('hbase-client', 'hbase', params.previous_jdbc_jar, params.downloaded_custom_connector,
+    setup_ranger_plugin('hbase-client', params.service_name, params.previous_jdbc_jar, params.downloaded_custom_connector,
                         params.driver_curl_source, params.driver_curl_target, params.java64_home,
                         params.repo_name, params.hbase_ranger_plugin_repo,
                         params.ranger_env, params.ranger_plugin_properties,
@@ -84,6 +84,6 @@ def setup_ranger_hbase(upgrade_type=None, service_name="hbase-master"):
                         is_security_enabled = params.security_enabled,
                         is_stack_supports_ranger_kerberos = params.stack_supports_ranger_kerberos if params.security_enabled else None,
                         component_user_principal=params.ranger_hbase_principal if params.security_enabled else None,
-                        component_user_keytab=params.ranger_hbase_keytab if params.security_enabled else None)
+                        component_user_keytab=params.ranger_hbase_keytab if params.security_enabled else None,plugin_home=params.ranger_plugin_home)
   else:
     Logger.info('Ranger HBase plugin is not enabled')

@@ -1,0 +1,29 @@
+{
+  "KYUUBI": {
+    "service": [],
+    "KYUUBI_SEVER": [
+      {
+        "name": "kyuubi_server_status",
+        "label": "Kyuubi Server",
+        "description": "This host-level alert is triggered if the Kyuubi Server cannot be determined to be up.",
+        "interval": 1,
+        "scope": "ANY",
+        "source": {
+          "type": "SCRIPT",
+          "path": "BIGTOP/3.2.0/services/KYUUBI/package/scripts/alerts/alert_kyuubi_server_port.py",
+          "parameters": [
+            {
+              "name": "check.command.timeout",
+              "display_name": "Command Timeout",
+              "value": 120.0,
+              "type": "NUMERIC",
+              "description": "The maximum time before check command will be killed by timeout",
+              "units": "seconds",
+              "threshold": "CRITICAL"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

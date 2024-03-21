@@ -1,0 +1,50 @@
+{
+  "services": [
+    {
+      "name": "CELEBORN",
+      "identities": [
+        {
+          "name": "celeborn_smokeuser",
+          "reference": "/smokeuser"
+        },
+        {
+          "name": "celeborn_user",
+          "principal": {
+            "value": "${celeborn-env/celeborn_user}${principal_suffix}@${realm}",
+            "type" : "user",
+            "local_username" : "${celeborn-env/celeborn_user}",
+            "configuration": "celeborn-env/celeborn_principal"
+          },
+          "keytab": {
+            "file": "${keytab_dir}/celeborn.headless.keytab",
+            "owner": {
+              "name": "${celeborn-env/celeborn_user}",
+              "access": "r"
+            },
+            "group": {
+              "name": "${cluster-env/user_group}",
+              "access": "r"
+            },
+            "configuration": "celeborn-env/celeborn_keytab"
+          }
+        }
+      ],
+      "configurations": [
+        {
+          "celeborn-defaults": {
+            "celeborn.storage.hdfs.kerberos.keytab": "${keytab_dir}/celeborn.headless.keytab",
+            "celeborn.storage.hdfs.kerberos.principal": "${celeborn-env/celeborn_user}${principal_suffix}@${realm}"         
+          }
+        }
+      ],
+      "components": [
+        {
+          "name": "CELEBORN_MASTER"
+        },
+        {
+          "name": "CELEBORN_WORKER"
+        }
+      ]
+    }
+  ]
+}

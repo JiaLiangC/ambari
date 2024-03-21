@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -49,7 +49,12 @@ def setup_ranger_plugin(component_select_name, service_name, previous_jdbc_jar,
                         xa_audit_db_password, ssl_truststore_password,
                         ssl_keystore_password, api_version=None, stack_version_override = None, skip_if_rangeradmin_down = True,
                         is_security_enabled = False, is_stack_supports_ranger_kerberos = False,
-                        component_user_principal = None, component_user_keytab = None, cred_lib_path_override = None, cred_setup_prefix_override = None):
+                        component_user_principal = None, component_user_keytab = None, cred_lib_path_override = None, cred_setup_prefix_override = None, plugin_home = None):
+
+  if not plugin_home:
+    stack_root = Script.get_stack_root()
+    service_name = str(service_name).lower()
+    plugin_home = format('{stack_root}/{stack_version}/ranger-{service_name}-plugin/')
 
   if audit_db_is_enabled and component_driver_curl_source is not None and not component_driver_curl_source.endswith("/None"):
     if previous_jdbc_jar and os.path.isfile(previous_jdbc_jar):
@@ -57,7 +62,7 @@ def setup_ranger_plugin(component_select_name, service_name, previous_jdbc_jar,
 
     File(component_downloaded_custom_connector,
       content = DownloadSource(component_driver_curl_source),
-      mode = 0644
+      mode = 0o644
     )
 
     Execute(('cp', '--remove-destination', component_downloaded_custom_connector, component_driver_curl_target),
@@ -65,7 +70,7 @@ def setup_ranger_plugin(component_select_name, service_name, previous_jdbc_jar,
       sudo=True
     )
 
-    File(component_driver_curl_target, mode=0644)
+    File(component_driver_curl_target, mode=0o644)
 
   if policymgr_mgr_url.endswith('/'):
     policymgr_mgr_url = policymgr_mgr_url.rstrip('/')
@@ -101,14 +106,14 @@ def setup_ranger_plugin(component_select_name, service_name, previous_jdbc_jar,
     File(format('{component_conf_dir}/ranger-security.xml'),
       owner = component_user,
       group = component_group,
-      mode = 0644,
+      mode = 0o644,
       content = InlineTemplate(format('<ranger>\n<enabled>{current_datetime}</enabled>\n</ranger>'))
     )
 
     Directory([os.path.join('/etc', 'ranger', repo_name), os.path.join('/etc', 'ranger', repo_name, 'policycache')],
       owner = component_user,
       group = component_group,
-      mode=0775,
+      mode=0o775,
       create_parents = True,
       cd_access = 'a'
     )
@@ -117,7 +122,7 @@ def setup_ranger_plugin(component_select_name, service_name, previous_jdbc_jar,
       File(os.path.join('/etc', 'ranger', repo_name, 'policycache', format('{cache_service}_{repo_name}.json')),
         owner = component_user,
         group = component_group,
-        mode = 0644
+        mode = 0o644
       )
 
     # remove plain-text password from xml configs
@@ -134,7 +139,7 @@ def setup_ranger_plugin(component_select_name, service_name, previous_jdbc_jar,
       configuration_attributes=plugin_audit_attributes,
       owner = component_user,
       group = component_group,
-      mode=0744)
+      mode=0o744)
 
     XmlConfig(format('ranger-{service_name}-security.xml'),
       conf_dir=component_conf_dir,
@@ -142,7 +147,7 @@ def setup_ranger_plugin(component_select_name, service_name, previous_jdbc_jar,
       configuration_attributes=plugin_security_attributes,
       owner = component_user,
       group = component_group,
-      mode=0744)
+      mode=0o744)
 
     # remove plain-text password from xml configs
     plugin_password_properties = ['xasecure.policymgr.clientssl.keystore.password', 'xasecure.policymgr.clientssl.truststore.password']
@@ -160,7 +165,7 @@ def setup_ranger_plugin(component_select_name, service_name, previous_jdbc_jar,
         configuration_attributes=plugin_policymgr_ssl_attributes,
         owner = component_user,
         group = component_group,
-        mode=0744)
+        mode=0o744)
     else:
       XmlConfig("ranger-policymgr-ssl.xml",
         conf_dir=component_conf_dir,
@@ -168,11 +173,11 @@ def setup_ranger_plugin(component_select_name, service_name, previous_jdbc_jar,
         configuration_attributes=plugin_policymgr_ssl_attributes,
         owner = component_user,
         group = component_group,
-        mode=0744)
+        mode=0o744)
 
     setup_ranger_plugin_keystore(service_name, audit_db_is_enabled, stack_version, credential_file,
               xa_audit_db_password, ssl_truststore_password, ssl_keystore_password,
-              component_user, component_group, java_home, cred_lib_path_override, cred_setup_prefix_override)
+              component_user, component_group, java_home, cred_lib_path_override, cred_setup_prefix_override,plugin_home)
 
   else:
     File(format('{component_conf_dir}/ranger-security.xml'),
@@ -192,20 +197,17 @@ def setup_ranger_plugin_jar_symblink(stack_version, service_name, component_list
       sudo=True)
 
 def setup_ranger_plugin_keystore(service_name, audit_db_is_enabled, stack_version, credential_file, xa_audit_db_password,
-                                ssl_truststore_password, ssl_keystore_password, component_user, component_group, java_home, cred_lib_path_override = None, cred_setup_prefix_override = None):
-
-  stack_root = Script.get_stack_root()
-  service_name = str(service_name).lower()
+                                ssl_truststore_password, ssl_keystore_password, component_user, component_group, java_home, cred_lib_path_override = None, cred_setup_prefix_override = None,plugin_home=None):
 
   if cred_lib_path_override is not None:
     cred_lib_path = cred_lib_path_override
   else:
-    cred_lib_path = format('{stack_root}/{stack_version}/ranger-{service_name}-plugin/install/lib/*')
+    cred_lib_path = format('{plugin_home}/install/lib/*')
 
   if cred_setup_prefix_override is not None:
     cred_setup_prefix = cred_setup_prefix_override
   else:
-    cred_setup_prefix = (format('{stack_root}/{stack_version}/ranger-{service_name}-plugin/ranger_credential_helper.py'), '-l', cred_lib_path)
+    cred_setup_prefix = (format('{plugin_home}/ranger_credential_helper.py'), '-l', cred_lib_path)
 
   if audit_db_is_enabled:
     cred_setup = cred_setup_prefix + ('-f', credential_file, '-k', 'auditDBCred', '-v', PasswordString(xa_audit_db_password), '-c', '1')
@@ -220,7 +222,7 @@ def setup_ranger_plugin_keystore(service_name, audit_db_is_enabled, stack_versio
   File(credential_file,
     owner = component_user,
     group = component_group,
-    mode = 0640
+    mode = 0o640
   )
 
   dot_jceks_crc_file_path = os.path.join(os.path.dirname(credential_file), "." + os.path.basename(credential_file) + ".crc")
@@ -229,7 +231,7 @@ def setup_ranger_plugin_keystore(service_name, audit_db_is_enabled, stack_versio
     owner = component_user,
     group = component_group,
     only_if = format("test -e {dot_jceks_crc_file_path}"),
-    mode = 0640
+    mode = 0o640
   )
 
 def setup_configuration_file_for_required_plugins(component_user, component_group, create_core_site_path,
@@ -241,7 +243,7 @@ def setup_configuration_file_for_required_plugins(component_user, component_grou
     configuration_attributes = configuration_attributes,
     owner = component_user,
     group = component_group,
-    mode = 0644,
+    mode = 0o644,
     xml_include_file = xml_include_file
   )
 
@@ -296,7 +298,7 @@ def generate_ranger_service_config(ranger_plugin_properties):
   ranger_plugin_properties_copy = {}
   ranger_plugin_properties_copy.update(ranger_plugin_properties)
 
-  for key, value in ranger_plugin_properties_copy.iteritems():
+  for key, value in ranger_plugin_properties_copy.items():
     if key.startswith("ranger.service.config.param."):
       modify_key_name = key.replace("ranger.service.config.param.","")
       custom_service_config_dict[modify_key_name] = value
@@ -317,7 +319,7 @@ def get_policycache_service_name(service_name, repo_name, cache_service_list):
             Logger.warning("If service name for {0} is not created on Ranger Admin, then to re-create it delete policy cache file: {1}".format(service_name, policycache_json_file))
             service_name_exist_flag = True
             break
-  except Exception, err:
+  except Exception as err:
     Logger.error("Error occurred while fetching service name from policy cache file.\nError: {0}".format(err))
 
   return service_name_exist_flag

@@ -920,7 +920,7 @@
         <envClassifier>win</envClassifier>
         <dirsep>\</dirsep>
         <pathsep>;</pathsep>
-        <executable.python>python</executable.python>
+        <executable.python>python3</executable.python>
         <executable.shell>cmd</executable.shell>
         <fileextension.shell>cmd</fileextension.shell>
         <fileextension.dot.shell-default>.cmd</fileextension.dot.shell-default>
@@ -1159,6 +1159,11 @@
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-compress</artifactId>
       <version>1.21</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-text</artifactId>
+      <version>1.10.0</version>
     </dependency>
     <dependency>
       <groupId>uk.com.robust-it</groupId>

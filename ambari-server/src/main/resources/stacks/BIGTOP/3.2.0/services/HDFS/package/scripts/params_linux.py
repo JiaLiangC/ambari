@@ -49,8 +49,36 @@ from resource_management.libraries.functions.namenode_ha_utils import get_proper
 config = Script.get_config()
 tmp_dir = Script.get_tmp_dir()
 
+
+
+######### httpfs
+ignore_groupsusers_create = default("/configurations/cluster-env/ignore_groupsusers_create", False)
+#smoke_user = default("/configurations/cluster-env/smokeuser", "ambari-qa")
+smoke_user_principal = default("/configurations/cluster-env/smokeuser_principal_name", "")
+#smoke_user_keytab = default("/configurations/cluster-env/smokeuser_keytab", "")
+#kinit_path_local = get_kinit_path(default("/configurations/kerberos-env/executable_search_paths", None))
+
+httpfs_user = config['configurations']['httpfs-env']['httpfs_user']
+httpfs_group = config['configurations']['httpfs-env']['httpfs_group']
+httpfs_conf_dir = config['configurations']['httpfs-env']['conf_dir']
+httpfs_pid_dir = "/var/run/hadoop/httpfs"
+httpfs_pid_file = f"{httpfs_pid_dir}/hadoop-{httpfs_user}-httpfs.pid"
+httpfs_temp_dir = "/tmp/httpfs"
+
+httpfs_server_host = config['clusterHostInfo']['httpfs_gateway_hosts'][0]
+httpfs_server_port = config['configurations']['httpfs-env']['port']
+httpfs_log_dir = config['configurations']['httpfs-env']['httpfs_log_dir']
+
+httpfs_env_template = config['configurations']['httpfs-env']['content']
+httpfs_log4j_content = config['configurations']['httpfs-log4j']['content']
+
+_authentication = config['configurations']['core-site']['hadoop.security.authentication']
+
+
+
 architecture = get_architecture()
 
+service_name = 'hdfs'
 stack_name = status_params.stack_name
 stack_root = Script.get_stack_root()
 upgrade_direction = default("/commandParams/upgrade_direction", None)
@@ -247,7 +275,7 @@ hdfs_site = config['configurations']['hdfs-site']
 
 
 if namenode_federation_enabled(hdfs_site):
-  jn_edits_dirs = get_properties_for_all_nameservices(hdfs_site, 'dfs.journalnode.edits.dir').values()
+  jn_edits_dirs = list(get_properties_for_all_nameservices(hdfs_site, 'dfs.journalnode.edits.dir').values())
 else:
   jn_edits_dirs = [config['configurations']['hdfs-site']['dfs.journalnode.edits.dir']]
 
@@ -258,7 +286,7 @@ namenode_dirs_created_stub_dir = hdfs_log_dir
 namenode_dirs_stub_filename = "namenode_dirs_created"
 
 smoke_hdfs_user_dir = format("/user/{smoke_user}")
-smoke_hdfs_user_mode = 0770
+smoke_hdfs_user_mode = 0o770
 
 hdfs_namenode_format_disabled = default("/configurations/cluster-env/hdfs_namenode_format_disabled", False)
 hdfs_namenode_formatted_mark_suffix = "/namenode-formatted/"
@@ -314,7 +342,7 @@ namenode_rpc = None
 dfs_ha_namemodes_ids_list = []
 other_namenode_id = None
 
-for ns, dfs_ha_namenode_ids in dfs_ha_namenode_ids_all_ns.iteritems():
+for ns, dfs_ha_namenode_ids in dfs_ha_namenode_ids_all_ns.items():
   found = False
   if not is_empty(dfs_ha_namenode_ids):
     dfs_ha_namemodes_ids_list = dfs_ha_namenode_ids.split(",")
@@ -439,7 +467,7 @@ is_https_enabled = is_https_enabled_in_hdfs(config['configurations']['hdfs-site'
                                             config['configurations']['hdfs-site']['dfs.https.enable'])
 
 # ranger hdfs plugin section start
-
+ranger_plugin_home = format("{hadoop_home}/../ranger-{service_name}-plugin")
 # ranger host
 ranger_admin_hosts = default("/clusterHostInfo/ranger_admin_hosts", [])
 has_ranger_admin = not len(ranger_admin_hosts) == 0

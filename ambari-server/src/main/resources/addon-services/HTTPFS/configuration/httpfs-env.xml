@@ -1,0 +1,129 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+    <property>
+        <name>httpfs_user</name>
+        <value>httpfs</value>
+        <property-type>USER</property-type>
+        <description>Httpfs User</description>
+        <value-attributes>
+            <type>user</type>
+            <overridable>false</overridable>
+            <user-groups>
+                <property>
+                    <type>cluster-env</type>
+                    <name>user_group</name>
+                </property>
+            </user-groups>
+        </value-attributes>
+        <on-ambari-upgrade add="true"/>
+    </property>
+    <property>
+        <name>httpfs_group</name>
+        <value>hadoop</value>
+        <property-type>GROUP</property-type>
+        <description>Httpfs Group</description>
+    </property>
+	<property>
+		<name>port</name>
+		<value>14000</value>
+		<display-name>Port</display-name>
+		<description>The HTTP port for the HTTPFS server.</description>
+	</property>
+	<property>
+		<name>conf_dir</name>
+		<value>/etc/hadoop-httpfs/conf</value>
+		<display-name>Configuration directory</display-name>
+		<description>Configuration directory</description>
+	</property>
+	<property>
+		<name>httpfs_log_dir</name>
+		<value>/var/log/hadoop/httpfs</value>
+		<display-name>Log dir</display-name>
+		<description>Logging directory</description>
+	</property>
+	<property>
+		<name>content</name>
+		<description>This is the jinja template for httpfs-env.sh file</description>
+		<value>
+#!/usr/bin/env bash
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License. See accompanying LICENSE file.
+#
+
+# Set httpfs specific environment variables here.
+#
+# hadoop-env.sh is read prior to this file.
+#
+
+# HTTPFS config directory
+#
+# export HTTPFS_CONFIG=${HADOOP_CONF_DIR}
+
+# HTTPFS log directory
+#
+# export HTTPFS_LOG=${HADOOP_LOG_DIR}
+
+# HTTPFS temporary directory
+#
+# export HTTPFS_TEMP=${HADOOP_HDFS_HOME}/temp
+
+# The HTTP port used by HTTPFS
+#
+# export HTTPFS_HTTP_PORT=14000
+
+# The maximum number of HTTP handler threads
+#
+# export HTTPFS_MAX_THREADS=1000
+
+# The hostname HttpFS server runs on
+#
+# export HTTPFS_HTTP_HOSTNAME=$(hostname -f)
+
+# The maximum size of HTTP header
+#
+# export HTTPFS_MAX_HTTP_HEADER_SIZE=65536
+
+# Whether SSL is enabled
+#
+# export HTTPFS_SSL_ENABLED=false
+
+# The location of the SSL keystore if using SSL
+#
+# export HTTPFS_SSL_KEYSTORE_FILE=${HOME}/.keystore
+
+# The password of the SSL keystore if using SSL
+#
+# export HTTPFS_SSL_KEYSTORE_PASS=password
+
+export HTTPFS_HTTP_PORT={{ httpfs_server_port }} 
+
+source /etc/hadoop/conf/hadoop-env.sh
+
+### Added to assist with locating the right configuration directory
+export HTTPFS_CONFIG=/etc/hadoop-httpfs/conf
+
+### Removing the original HARD CODED Version reference
+export HADOOP_HOME=${HADOOP_HOME:-/usr/bigtop/current/hadoop-client}
+export HADOOP_LIBEXEC_DIR=${HADOOP_HOME}/libexec
+
+# Set log directory
+export HTTPFS_LOG={{ httpfs_log_dir }}
+
+# Set a tmp directory for httpfs to store interim files
+export HTTPFS_TEMP=/tmp/httpfs
+
+</value>
+	</property>
+</configuration>
+

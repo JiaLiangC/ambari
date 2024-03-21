@@ -1,6 +1,96 @@
 {
   "BIGTOP": {
     "stack-select": {
+      "CELEBORN": {
+        "CELEBORN_MASTER": {
+          "STACK-SELECT-PACKAGE": "celeborn",
+          "INSTALL": [
+            "celeborn"
+          ],
+          "PATCH": [
+            "celeborn"
+          ],
+          "STANDARD": [
+            "celeborn"
+          ]
+        },
+        "CELEBORN_WORKER": {
+          "STACK-SELECT-PACKAGE": "celeborn",
+          "INSTALL": [
+            "celeborn"
+          ],
+          "PATCH": [
+            "celeborn"
+          ],
+          "STANDARD": [
+            "celeborn"
+          ]
+        }
+      },
+      "ALLUXIO": {
+        "ALLUXIO_MASTER": {
+          "STACK-SELECT-PACKAGE": "alluxio",
+          "INSTALL": [
+            "alluxio"
+          ],
+          "PATCH": [
+            "alluxio"
+          ],
+          "STANDARD": [
+            "alluxio"
+          ]
+        },
+        "ALLUXIO_WORKER": {
+          "STACK-SELECT-PACKAGE": "alluxio",
+          "INSTALL": [
+            "alluxio"
+          ],
+          "PATCH": [
+            "alluxio"
+          ],
+          "STANDARD": [
+            "alluxio"
+          ]
+        }
+      },
+      "TRINO": {
+        "TRINO_COORDINATOR": {
+          "STACK-SELECT-PACKAGE": "trino",
+          "INSTALL": [
+            "trino"
+          ],
+          "PATCH": [
+            "trino"
+          ],
+          "STANDARD": [
+            "trino"
+          ]
+        },
+        "TRINO_WORKER": {
+          "STACK-SELECT-PACKAGE": "trino",
+          "INSTALL": [
+            "trino"
+          ],
+          "PATCH": [
+            "trino"
+          ],
+          "STANDARD": [
+            "trino"
+          ]
+        },
+        "TRINO_CLI": {
+          "STACK-SELECT-PACKAGE": "trino-cli",
+          "INSTALL": [
+            "trino-cli"
+          ],
+          "PATCH": [
+            "trino-cli"
+          ],
+          "STANDARD": [
+            "trino-cli"
+          ]
+        }
+      },
       "HBASE": {
         "HBASE_CLIENT": {
           "STACK-SELECT-PACKAGE": "hbase-client",
@@ -203,6 +293,20 @@
           ]
         }
       },
+      "KNOX": {
+        "KNOX_GATEWAY": {
+          "STACK-SELECT-PACKAGE": "knox-server",
+          "INSTALL": [
+            "knox-server"
+          ],
+          "PATCH": [
+            "knox-server"
+          ],
+          "STANDARD": [
+            "knox-server"
+          ]
+        }
+      },
       "MAPREDUCE2": {
         "HISTORYSERVER": {
           "STACK-SELECT-PACKAGE": "hadoop-mapreduce-historyserver",
@@ -271,6 +375,20 @@
           ]
         }
       },
+      "KYUUBI": {
+        "KYUUBI_SERVER": {
+          "STACK-SELECT-PACKAGE": "kyuubi-server",
+          "INSTALL": [
+            "kyuubi-server"
+          ],
+          "PATCH": [
+            "kyuubi-server"
+          ],
+          "STANDARD": [
+            "kyuubi-server"
+          ]
+        }
+      },
       "FLINK": {
         "FLINK_CLIENT": {
           "STACK-SELECT-PACKAGE": "flink-client",
@@ -295,6 +413,72 @@
           ],
           "STANDARD": [
             "flink-historyserver"
+          ]
+        }
+      },
+      "KYUUBI": {
+        "KYUUBI_SERVER": {
+          "STACK-SELECT-PACKAGE": "kyuubi-server",
+          "INSTALL": [
+            "kyuubi-server"
+          ],
+          "PATCH": [
+            "kyuubi-server"
+          ],
+          "STANDARD": [
+            "kyuubi-server"
+          ]
+        }
+      },
+      "RANGER": {
+        "RANGER_ADMIN": {
+          "STACK-SELECT-PACKAGE": "ranger-admin",
+          "INSTALL": [
+            "ranger-admin"
+          ],
+          "PATCH": [
+            "ranger-admin"
+          ],
+          "STANDARD": [
+            "ranger-admin"
+          ]
+        },
+        "RANGER_TAGSYNC": {
+          "STACK-SELECT-PACKAGE": "ranger-tagsync",
+          "INSTALL": [
+            "ranger-tagsync"
+          ],
+          "PATCH": [
+            "ranger-tagsync"
+          ],
+          "STANDARD": [
+            "ranger-tagsync"
+          ]
+        },
+        "RANGER_USERSYNC": {
+          "STACK-SELECT-PACKAGE": "ranger-usersync",
+          "INSTALL": [
+            "ranger-usersync"
+          ],
+          "PATCH": [
+            "ranger-usersync"
+          ],
+          "STANDARD": [
+            "ranger-usersync"
+          ]
+        }
+      },
+      "RANGER_KMS": {
+        "RANGER_KMS_SERVER": {
+          "STACK-SELECT-PACKAGE": "ranger-kms",
+          "INSTALL": [
+            "ranger-kms"
+          ],
+          "PATCH": [
+            "ranger-kms"
+          ],
+          "STANDARD": [
+            "ranger-kms"
           ]
         }
       },
@@ -327,11 +511,34 @@
         }
       },
       "YARN": {
+        "APP_TIMELINE_SERVER": {
+          "STACK-SELECT-PACKAGE": "hadoop-yarn-timelineserver",
+          "INSTALL": [
+            "hadoop-yarn-timelineserver"
+          ],
+          "PATCH": [
+            "hadoop-yarn-timelineserver"
+          ],
+          "STANDARD": [
+            "hadoop-yarn-timelineserver"
+          ]
+        },
+        "TIMELINE_READER": {
+          "STACK-SELECT-PACKAGE": "hadoop-yarn-timelinereader",
+          "INSTALL": [
+            "hadoop-yarn-timelinereader"
+          ],
+          "PATCH": [
+            "hadoop-yarn-timelinereader"
+          ],
+          "STANDARD": [
+            "hadoop-yarn-timelinereader"
+          ]
+        },
         "NODEMANAGER": {
           "STACK-SELECT-PACKAGE": "hadoop-yarn-nodemanager",
           "INSTALL": [
-            "hadoop-yarn-nodemanager",
-            "hadoop-client"
+            "hadoop-yarn-nodemanager"
           ],
           "PATCH": [
             "hadoop-yarn-nodemanager"
@@ -343,8 +550,7 @@
         "RESOURCEMANAGER": {
           "STACK-SELECT-PACKAGE": "hadoop-yarn-resourcemanager",
           "INSTALL": [
-            "hadoop-yarn-resourcemanager",
-            "hadoop-client"
+            "hadoop-yarn-resourcemanager"
           ],
           "PATCH": [
             "hadoop-yarn-resourcemanager"
@@ -356,14 +562,25 @@
         "YARN_CLIENT": {
           "STACK-SELECT-PACKAGE": "hadoop-yarn-client",
           "INSTALL": [
-            "hadoop-yarn-client",
-            "hadoop-client"
+            "hadoop-yarn-client"
           ],
           "PATCH": [
             "hadoop-yarn-client"
           ],
           "STANDARD": [
             "hadoop-client"
+          ]
+        },
+        "YARN_REGISTRY_DNS": {
+          "STACK-SELECT-PACKAGE": "hadoop-yarn-registrydns",
+          "INSTALL": [
+            "hadoop-yarn-registrydns"
+          ],
+          "PATCH": [
+            "hadoop-yarn-registrydns"
+          ],
+          "STANDARD": [
+            "hadoop-yarn-registrydns"
           ]
         }
       },
@@ -451,6 +668,13 @@
           "component": "kafka-broker"
         }
       ],
+      "knox": [
+        {
+          "conf_dir": "/etc/knox/conf",
+          "current_dir": "{0}/current/knox-server/conf",
+          "component": "knox-server"
+        }
+      ],
       "phoenix": [
         {
           "conf_dir": "/etc/phoenix/conf",
@@ -458,11 +682,42 @@
           "component": "phoenix-client"
         }
       ],
+       "ranger-admin": [
+        {
+          "conf_dir": "/etc/ranger/admin/conf",
+          "current_dir": "{0}/current/ranger-admin/conf"
+        }
+      ],
+      "ranger-kms": [
+        {
+          "conf_dir": "/etc/ranger/kms/conf",
+          "current_dir": "{0}/current/ranger-kms/conf"
+        }
+      ],
+      "ranger-tagsync": [
+        {
+          "conf_dir": "/etc/ranger/tagsync/conf",
+          "current_dir": "{0}/current/ranger-tagsync/conf"
+        }
+      ],
+      "ranger-usersync": [
+        {
+          "conf_dir": "/etc/ranger/usersync/conf",
+          "current_dir": "{0}/current/ranger-usersync/conf"
+        }
+      ],
       "spark": [
         {
           "conf_dir": "/etc/spark/conf",
           "current_dir": "{0}/current/spark-client/conf",
           "component": "spark-client"
+        }
+      ],
+      "kyuubi": [
+        {
+          "conf_dir": "/etc/kyuubi/conf",
+          "current_dir": "{0}/current/kyuubi-server/conf",
+          "component": "kyuubi-server"
         }
       ],
       "flink": [
@@ -521,8 +776,17 @@
           "kafka"
         ]
       },
+      "KNOX": {
+        "packages": ["knox"]
+      },
       "MAPREDUCE2": {
         "packages": []
+      },
+      "RANGER": {
+        "packages": ["ranger-admin", "ranger-usersync", "ranger-tagsync"]
+      },
+      "RANGER_KMS": {
+        "packages": ["ranger-kms"]
       },
       "SPARK": {
         "packages": [
