@@ -94,13 +94,6 @@ pipeline {
 
         stage('Parallel Unit Tests') {
             parallel {
-                 stage('Ambari WebUI Tests') {
-                    steps {
-                        withEnv(['CHROME_BIN=/usr/bin/chromium-browser']) {
-                            sh 'mvn -T 2C -am test -pl ambari-web,ambari-admin -Dmaven.artifact.threads=10 -Drat.skip'
-                        }
-                    }
-                }
                 stage('Ambari Agent Tests') {
                     steps {
                         sh 'pip3 install distro'
@@ -110,8 +103,15 @@ pipeline {
 
                 stage('Ambari Server PyTests') {
                     steps {
-                        sh 'mvn -am test -pl ambari-server -DskipSurefireTests -Dmaven.test.failure.ignore -Dmaven.artifact.threads=10 -Drat.skip -Dcheckstyle.skip'
+                        sh 'mvn clean -am test -pl ambari-server -DskipSurefireTests -Dmaven.test.failure.ignore -Dmaven.artifact.threads=10 -Drat.skip -Dcheckstyle.skip -DskipAdminWebTests=true'
                     }
+                }
+            }
+        }
+        stage('Ambari WebUI Tests') {
+            steps {
+                withEnv(['CHROME_BIN=/usr/bin/chromium-browser']) {
+                    sh 'mvn -T 2C -am test -pl ambari-web,ambari-admin -Dmaven.artifact.threads=10 -Drat.skip'
                 }
             }
         }

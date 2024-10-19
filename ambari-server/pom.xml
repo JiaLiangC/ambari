@@ -1138,6 +1138,11 @@
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
+      <artifactId>ambari-admin</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
       <artifactId>ambari-server-spi</artifactId>
       <version>${project.version}</version>
     </dependency>
