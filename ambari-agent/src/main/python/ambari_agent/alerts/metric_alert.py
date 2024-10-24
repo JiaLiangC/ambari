@@ -293,6 +293,7 @@ def f(args):
     if 'value' in jmx_info:
       realcode = REALCODE_REGEXP.sub('args[\g<2>]', jmx_info['value'])
       if not self.safeChecker.is_safe_expression(realcode):
+        logger.exception(f"The expression {realcode} is not safe,blocked by checker")
         raise Exception(f"The expression {realcode} is not safe")
       self.custom_module =  imp.new_module(str(uuid.uuid4()))
       code = self.DYNAMIC_CODE_TEMPLATE.format(realcode)

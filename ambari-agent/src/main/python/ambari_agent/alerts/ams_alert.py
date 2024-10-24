@@ -216,6 +216,7 @@ def f(args):
     if 'value' in metric_info:
       realcode = REALCODE_REGEXP.sub('args[\g<2>][k]', metric_info['value'])
       if not self.safeChecker.is_safe_expression(realcode):
+        logger.exception(f"AmsMetric: Value expression {realcode} is not safe,blocked by checker")
         raise Exception(f"AmsMetric: Value expression {realcode} is not safe")
 
       self.custom_value_module =  imp.new_module(str(uuid.uuid4()))
@@ -225,6 +226,7 @@ def f(args):
     if 'compute' in metric_info:
       realcode = metric_info['compute']
       if not self.safeChecker.is_safe_expression(realcode):
+        logger.exception(f"AmsMetric: compute expression {realcode} is not safe,blocked by checker")
         raise Exception(f"AmsMetric: compute expression {realcode} is not safe")
       self.custom_compute_module =  imp.new_module(str(uuid.uuid4()))
       code = self.DYNAMIC_CODE_COMPUTE_TEMPLATE.format(realcode)
