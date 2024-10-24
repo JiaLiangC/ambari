@@ -21,6 +21,8 @@ import ast
 from abc import ABC, abstractmethod
 from typing import Set, Dict, Callable, List
 
+import logging
+logger = logging.getLogger(__name__)
 """
 This module provides a framework for checking the safety of Python code expressions.
 It includes abstract base classes for defining rule templates, concrete rule implementations,
@@ -135,7 +137,7 @@ class ASTChecker:
                 # If that fails, try to parse as a statement
                 tree = ast.parse(code, mode='exec')
             except SyntaxError:
-                print(f"Syntax error in expression: {code}")
+                logger.info(f"Syntax error in expression: {code}")
                 return False
 
         return self.is_safe_node(tree)
@@ -184,22 +186,22 @@ class ASTChecker:
         :return: True if the node is allowed, False otherwise.
         """
         if not isinstance(node, tuple(self.allowed_node_types)):
-            print(f"Node type not allowed: {type(node).__name__}")
+            logger.info(f"Node type not allowed: {type(node).__name__}")
             return False
 
         if isinstance(node, ast.Name):
             if node.id not in self.allowed_names and node.id not in self.allowed_functions:
-                print(f"Name not allowed: {node.id}")
+                logger.info(f"Name not allowed: {node.id}")
                 return False
         elif isinstance(node, ast.Call):
             if not isinstance(node.func, ast.Name) or node.func.id not in self.allowed_functions:
-                print(f"Function call not allowed: {ast.dump(node.func)}")
+                logger.info(f"Function call not allowed: {ast.dump(node.func)}")
                 return False
 
         node_type = type(node)
         if node_type in self.custom_checks:
             if not self.custom_checks[node_type](node):
-                print(f"Custom check failed for node: {ast.dump(node)}")
+                logger.info(f"Custom check failed for node: {ast.dump(node)}")
                 return False
 
         # Recursively check child nodes
@@ -217,10 +219,10 @@ class ASTChecker:
         """
         try:
             tree = ast.parse(code, mode='eval')
-            print("AST Tree:")
+            logger.info("AST Tree:")
             self._print_node(tree, "", True)
         except SyntaxError:
-            print(f"Syntax error in expression: {code}")
+            logger.info(f"Syntax error in expression: {code}")
 
     def _print_node(self, node: ast.AST, prefix: str, is_last: bool):
         """
