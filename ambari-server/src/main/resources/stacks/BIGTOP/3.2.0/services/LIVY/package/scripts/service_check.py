@@ -31,31 +31,31 @@ CHECK_COMMAND_TIMEOUT_DEFAULT = 60.0
 
 
 class LivyServiceCheck(Script):
-    def service_check(self, env):
-        import params
+  def service_check(self, env):
+    import params
 
-        env.set_params(params)
+    env.set_params(params)
 
-        if params.has_livyserver:
-            live_livyserver_host = ""
-            for livyserver_host in params.livy_livyserver_hosts:
-                try:
-                    Execute(
-                        format(
-                            "curl -s -o /dev/null -w'%{{http_code}}' --negotiate -u: -k {livy_http_scheme}://{livyserver_host}:{livy_livyserver_port}/sessions | grep 200"
-                        ),
-                        tries=3,
-                        try_sleep=1,
-                        logoutput=True,
-                        user=params.smoke_user,
-                    )
-                    live_livyserver_host = livyserver_host
-                    break
-                except:
-                    pass
-            if len(params.livy_livyserver_hosts) > 0 and live_livyserver_host == "":
-                raise Fail("Connection to all Livy servers failed")
+    if params.has_livyserver:
+      live_livyserver_host = ""
+      for livyserver_host in params.livy_livyserver_hosts:
+        try:
+          Execute(
+            format(
+              "curl -s -o /dev/null -w'%{{http_code}}' --negotiate -u: -k {livy_http_scheme}://{livyserver_host}:{livy_livyserver_port}/sessions | grep 200"
+            ),
+            tries=3,
+            try_sleep=1,
+            logoutput=True,
+            user=params.smoke_user,
+          )
+          live_livyserver_host = livyserver_host
+          break
+        except:
+          pass
+      if len(params.livy_livyserver_hosts) > 0 and live_livyserver_host == "":
+        raise Fail("Connection to all Livy servers failed")
 
 
 if __name__ == "__main__":
-    LivyServiceCheck().execute()
+  LivyServiceCheck().execute()

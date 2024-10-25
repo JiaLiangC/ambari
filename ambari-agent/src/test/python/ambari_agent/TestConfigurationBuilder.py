@@ -26,12 +26,12 @@ from ambari_agent.InitializerModule import InitializerModule
 
 
 class TestConfigurationBuilder(TestCase):
-    @patch(
-        "ambari_agent.hostname.public_hostname",
-        new=MagicMock(return_value="c6401.ambari.apache.org"),
-    )
-    def test_public_fqdn(self):
-        initializer_module = InitializerModule()
+  @patch(
+    "ambari_agent.hostname.public_hostname",
+    new=MagicMock(return_value="c6401.ambari.apache.org"),
+  )
+  def test_public_fqdn(self):
+    initializer_module = InitializerModule()
 
-        config_builder = ConfigurationBuilder(initializer_module)
-        self.assertEqual("c6401.ambari.apache.org", config_builder.public_fqdn)
+    config_builder = ConfigurationBuilder(initializer_module)
+    self.assertEqual("c6401.ambari.apache.org", config_builder.public_fqdn)

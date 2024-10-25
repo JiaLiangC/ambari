@@ -23,46 +23,46 @@ import sys
 from hbase import hbase
 from hbase_service import hbase_service
 from resource_management.libraries.functions.check_process_status import (
-    check_process_status,
+  check_process_status,
 )
 
 
 class HbaseRegionServer(Script):
-    def install(self, env):
-        self.install_packages(env)
+  def install(self, env):
+    self.install_packages(env)
 
-    def configure(self, env, action=None):
-        import params
+  def configure(self, env, action=None):
+    import params
 
-        env.set_params(params)
+    env.set_params(params)
 
-        hbase("regionserver", action)
+    hbase("regionserver", action)
 
-    def start(self, env):
-        import params
+  def start(self, env):
+    import params
 
-        env.set_params(params)
-        self.configure(env, action="start")  # for security
+    env.set_params(params)
+    self.configure(env, action="start")  # for security
 
-        hbase_service("regionserver", action="start")
+    hbase_service("regionserver", action="start")
 
-    def stop(self, env):
-        import params
+  def stop(self, env):
+    import params
 
-        env.set_params(params)
+    env.set_params(params)
 
-        hbase_service("regionserver", action="stop")
+    hbase_service("regionserver", action="stop")
 
-    def status(self, env):
-        import status_params
+  def status(self, env):
+    import status_params
 
-        env.set_params(status_params)
-        pid_file = format("{pid_dir}/hbase-{hbase_user}-regionserver.pid")
-        check_process_status(pid_file)
+    env.set_params(status_params)
+    pid_file = format("{pid_dir}/hbase-{hbase_user}-regionserver.pid")
+    check_process_status(pid_file)
 
-    def decommission(self, env):
-        print("Decommission not yet implemented!")
+  def decommission(self, env):
+    print("Decommission not yet implemented!")
 
 
 if __name__ == "__main__":
-    HbaseRegionServer().execute()
+  HbaseRegionServer().execute()

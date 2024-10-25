@@ -25,32 +25,30 @@ logger = logging.getLogger(__name__)
 
 
 class CommandStatusReporter(threading.Thread):
-    def __init__(self, initializer_module):
-        self.initializer_module = initializer_module
-        self.commandStatuses = initializer_module.commandStatuses
-        self.stop_event = initializer_module.stop_event
-        self.command_reports_interval = (
-            initializer_module.config.command_reports_interval
-        )
-        threading.Thread.__init__(self)
+  def __init__(self, initializer_module):
+    self.initializer_module = initializer_module
+    self.commandStatuses = initializer_module.commandStatuses
+    self.stop_event = initializer_module.stop_event
+    self.command_reports_interval = initializer_module.config.command_reports_interval
+    threading.Thread.__init__(self)
 
-    def run(self):
-        """
-        Run an endless loop which reports all the commands results (IN_PROGRESS, FAILED, COMPLETE) every self.command_reports_interval seconds.
-        """
-        if self.command_reports_interval == 0:
-            logger.warn(
-                "CommandStatusReporter is turned off. Some functionality might not work correctly."
-            )
-            return
+  def run(self):
+    """
+    Run an endless loop which reports all the commands results (IN_PROGRESS, FAILED, COMPLETE) every self.command_reports_interval seconds.
+    """
+    if self.command_reports_interval == 0:
+      logger.warn(
+        "CommandStatusReporter is turned off. Some functionality might not work correctly."
+      )
+      return
 
-        while not self.stop_event.is_set():
-            try:
-                if self.initializer_module.is_registered:
-                    self.commandStatuses.report()
-            except:
-                logger.exception("Exception in CommandStatusReporter. Re-running it")
+    while not self.stop_event.is_set():
+      try:
+        if self.initializer_module.is_registered:
+          self.commandStatuses.report()
+      except:
+        logger.exception("Exception in CommandStatusReporter. Re-running it")
 
-            self.stop_event.wait(self.command_reports_interval)
+      self.stop_event.wait(self.command_reports_interval)
 
-        logger.info("CommandStatusReporter has successfully finished")
+    logger.info("CommandStatusReporter has successfully finished")

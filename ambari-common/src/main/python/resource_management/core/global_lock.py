@@ -32,15 +32,15 @@ __GLOBAL_LOCKS = {LOCK_TYPE_KERBEROS: threading.RLock()}
 
 
 def get_lock(lock_type):
-    """
-    Gets the global lock associated with the specified type. This does not actually acquire
-    the lock, it simply returns the RLock instance. It is up to the caller to invoke RLock.acquire()
-    and RLock.release() correctly.
-    :param lock_type:
-    :return: a global threading.RLock() instance
-    :rtype: threading.RLock()
-    """
-    if lock_type not in __GLOBAL_LOCKS:
-        raise Fail("There is no global lock associated with {0}".format(str(lock_type)))
+  """
+  Gets the global lock associated with the specified type. This does not actually acquire
+  the lock, it simply returns the RLock instance. It is up to the caller to invoke RLock.acquire()
+  and RLock.release() correctly.
+  :param lock_type:
+  :return: a global threading.RLock() instance
+  :rtype: threading.RLock()
+  """
+  if lock_type not in __GLOBAL_LOCKS:
+    raise Fail("There is no global lock associated with {0}".format(str(lock_type)))
 
-    return __GLOBAL_LOCKS[lock_type]
+  return __GLOBAL_LOCKS[lock_type]

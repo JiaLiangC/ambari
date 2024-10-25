@@ -20,8 +20,8 @@ limitations under the License.
 
 from ambari_commons.constants import AMBARI_SUDO_BINARY
 from resource_management.libraries.functions.version import (
-    format_stack_version,
-    compare_versions,
+  format_stack_version,
+  compare_versions,
 )
 from resource_management.core.system import System
 from resource_management.libraries.script.script import Script
@@ -34,7 +34,7 @@ sudo = AMBARI_SUDO_BINARY
 
 stack_version_unformatted = config["clusterLevelParams"]["stack_version"]
 agent_stack_retry_on_unavailability = config["ambariLevelParams"][
-    "agent_stack_retry_on_unavailability"
+  "agent_stack_retry_on_unavailability"
 ]
 agent_stack_retry_count = expect("/ambariLevelParams/agent_stack_retry_count", int)
 stack_version_formatted = format_stack_version(stack_version_unformatted)
@@ -94,7 +94,7 @@ is_hsnode_master = hostname in hs_host
 is_hbase_master = hostname in hbase_master_hosts
 is_slave = hostname in slave_hosts
 if has_ganglia_server:
-    ganglia_server_host = ganglia_server_hosts[0]
+  ganglia_server_host = ganglia_server_hosts[0]
 
 hbase_tmp_dir = "/tmp/hbase-hbase"
 
@@ -105,25 +105,25 @@ security_enabled = config["configurations"]["cluster-env"]["security_enabled"]
 java_home = config["ambariLevelParams"]["java_home"]
 artifact_dir = format("{tmp_dir}/AMBARI-artifacts/")
 jdk_name = default(
-    "/ambariLevelParams/jdk_name", None
+  "/ambariLevelParams/jdk_name", None
 )  # None when jdk is already installed by user
 jce_policy_zip = default(
-    "/ambariLevelParams/jce_name", None
+  "/ambariLevelParams/jce_name", None
 )  # None when jdk is already installed by user
 jce_location = config["ambariLevelParams"]["jdk_location"]
 jdk_location = config["ambariLevelParams"]["jdk_location"]
 ignore_groupsusers_create = default(
-    "/configurations/cluster-env/ignore_groupsusers_create", False
+  "/configurations/cluster-env/ignore_groupsusers_create", False
 )
 host_sys_prepped = default("/ambariLevelParams/host_sys_prepped", False)
 
 smoke_user_dirs = format(
-    "/tmp/hadoop-{smoke_user},/tmp/hsperfdata_{smoke_user},/home/{smoke_user},/tmp/{smoke_user},/tmp/sqoop-{smoke_user}"
+  "/tmp/hadoop-{smoke_user},/tmp/hsperfdata_{smoke_user},/home/{smoke_user},/tmp/{smoke_user},/tmp/sqoop-{smoke_user}"
 )
 if has_hbase_masters:
-    hbase_user_dirs = format(
-        "/home/{hbase_user},/tmp/{hbase_user},/usr/bin/{hbase_user},/var/log/{hbase_user},{hbase_tmp_dir}"
-    )
+  hbase_user_dirs = format(
+    "/home/{hbase_user},/tmp/{hbase_user},/usr/bin/{hbase_user},/var/log/{hbase_user},{hbase_tmp_dir}"
+  )
 # repo params
 repo_info = config["hostLevelParams"]["repoInfo"]
 service_repo_info = default("/hostLevelParams/service_repo_info", None)

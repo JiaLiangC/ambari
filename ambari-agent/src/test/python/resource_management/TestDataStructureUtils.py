@@ -24,28 +24,28 @@ from resource_management.libraries.functions.data_structure_utils import KeyNotF
 
 
 class TestDictUtils(TestCase):
-    def test_get_nested(self):
-        dict_ = {1: {2: {3: "data"}}}
-        empty_dict = {}
+  def test_get_nested(self):
+    dict_ = {1: {2: {3: "data"}}}
+    empty_dict = {}
 
-        self.assertEqual("data", get_from_dict(dict_, (1, 2, 3)))
-        self.assertEqual("data", get_from_dict(dict_, [1, 2, 3]))
+    self.assertEqual("data", get_from_dict(dict_, (1, 2, 3)))
+    self.assertEqual("data", get_from_dict(dict_, [1, 2, 3]))
 
-        self.assertEqual({3: "data"}, get_from_dict(dict_, (1, 2)))
+    self.assertEqual({3: "data"}, get_from_dict(dict_, (1, 2)))
 
-        self.assertEqual({2: {3: "data"}}, get_from_dict(dict_, 1))
+    self.assertEqual({2: {3: "data"}}, get_from_dict(dict_, 1))
 
-        self.assertEqual(KeyNotFound, get_from_dict(dict_, (1, 2, 0)))
-        self.assertEqual(KeyNotFound, get_from_dict(dict_, [1, 2, 0]))
-        self.assertEqual(KeyNotFound, get_from_dict(dict_, (1, 0, 3)))
-        self.assertEqual(KeyNotFound, get_from_dict(dict_, (1, 2, 3, 4)))
-        self.assertEqual(KeyNotFound, get_from_dict(dict_, (0, 2)))
+    self.assertEqual(KeyNotFound, get_from_dict(dict_, (1, 2, 0)))
+    self.assertEqual(KeyNotFound, get_from_dict(dict_, [1, 2, 0]))
+    self.assertEqual(KeyNotFound, get_from_dict(dict_, (1, 0, 3)))
+    self.assertEqual(KeyNotFound, get_from_dict(dict_, (1, 2, 3, 4)))
+    self.assertEqual(KeyNotFound, get_from_dict(dict_, (0, 2)))
 
-        self.assertEqual(
-            "default", get_from_dict(dict_, (0, 2, 3), default_value="default")
-        )
-        self.assertEqual(
-            "default", get_from_dict(empty_dict, (0, 2, 3), default_value="default")
-        )
+    self.assertEqual(
+      "default", get_from_dict(dict_, (0, 2, 3), default_value="default")
+    )
+    self.assertEqual(
+      "default", get_from_dict(empty_dict, (0, 2, 3), default_value="default")
+    )
 
-        self.assertEqual(KeyNotFound, get_from_dict(empty_dict, [1]))
+    self.assertEqual(KeyNotFound, get_from_dict(empty_dict, [1]))

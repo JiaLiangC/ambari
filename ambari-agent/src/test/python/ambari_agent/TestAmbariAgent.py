@@ -26,83 +26,83 @@ import AmbariConfig
 from mock.mock import MagicMock, patch, ANY
 
 with patch("distro.linux_distribution", return_value=("Suse", "11", "Final")):
-    from ambari_agent import AmbariAgent
+  from ambari_agent import AmbariAgent
 
 
 class TestAmbariAgent(unittest.TestCase):
-    @patch.object(subprocess, "Popen")
-    @patch("os.path.isfile")
-    @patch("os.remove")
-    def test_main(self, os_remove_mock, os_path_isfile_mock, subprocess_popen_mock):
-        facter1 = MagicMock()
-        facter2 = MagicMock()
-        subprocess_popen_mock.side_effect = [facter1, facter2]
-        facter1.returncode = 77
-        facter2.returncode = 55
-        os_path_isfile_mock.return_value = True
-        if not ("PYTHON" in os.environ):
-            os.environ["PYTHON"] = "test/python/path"
-        sys.argv[0] = "test data"
-        AmbariAgent.main()
+  @patch.object(subprocess, "Popen")
+  @patch("os.path.isfile")
+  @patch("os.remove")
+  def test_main(self, os_remove_mock, os_path_isfile_mock, subprocess_popen_mock):
+    facter1 = MagicMock()
+    facter2 = MagicMock()
+    subprocess_popen_mock.side_effect = [facter1, facter2]
+    facter1.returncode = 77
+    facter2.returncode = 55
+    os_path_isfile_mock.return_value = True
+    if not ("PYTHON" in os.environ):
+      os.environ["PYTHON"] = "test/python/path"
+    sys.argv[0] = "test data"
+    AmbariAgent.main()
 
-        self.assertTrue(subprocess_popen_mock.called)
-        self.assertTrue(subprocess_popen_mock.call_count == 2)
-        self.assertTrue(facter1.communicate.called)
-        self.assertTrue(facter2.communicate.called)
-        self.assertTrue(os_path_isfile_mock.called)
-        self.assertTrue(os_path_isfile_mock.call_count == 2)
-        self.assertTrue(os_remove_mock.called)
+    self.assertTrue(subprocess_popen_mock.called)
+    self.assertTrue(subprocess_popen_mock.call_count == 2)
+    self.assertTrue(facter1.communicate.called)
+    self.assertTrue(facter2.communicate.called)
+    self.assertTrue(os_path_isfile_mock.called)
+    self.assertTrue(os_path_isfile_mock.call_count == 2)
+    self.assertTrue(os_remove_mock.called)
+
+  #
+  # Test AmbariConfig.getLogFile() for ambari-agent
+  #
+  def test_logfile_location(self):
+    #
+    # Test without $AMBARI_AGENT_LOG_DIR
+    #
+    log_folder = "/var/log/ambari-agent"
+    log_file = "ambari-agent.log"
+    with patch.dict("os.environ", {}):
+      self.assertEqual(
+        os.path.join(log_folder, log_file),
+        AmbariConfig.AmbariConfig.getLogFile(),
+      )
 
     #
-    # Test AmbariConfig.getLogFile() for ambari-agent
+    # Test with $AMBARI_AGENT_LOG_DIR
     #
-    def test_logfile_location(self):
-        #
-        # Test without $AMBARI_AGENT_LOG_DIR
-        #
-        log_folder = "/var/log/ambari-agent"
-        log_file = "ambari-agent.log"
-        with patch.dict("os.environ", {}):
-            self.assertEqual(
-                os.path.join(log_folder, log_file),
-                AmbariConfig.AmbariConfig.getLogFile(),
-            )
+    log_folder = "/myloglocation/log"
+    log_file = "ambari-agent.log"
+    with patch.dict("os.environ", {"AMBARI_AGENT_LOG_DIR": log_folder}):
+      self.assertEqual(
+        os.path.join(log_folder, log_file),
+        AmbariConfig.AmbariConfig.getLogFile(),
+      )
+    pass
 
-        #
-        # Test with $AMBARI_AGENT_LOG_DIR
-        #
-        log_folder = "/myloglocation/log"
-        log_file = "ambari-agent.log"
-        with patch.dict("os.environ", {"AMBARI_AGENT_LOG_DIR": log_folder}):
-            self.assertEqual(
-                os.path.join(log_folder, log_file),
-                AmbariConfig.AmbariConfig.getLogFile(),
-            )
-        pass
+  #
+  # Test AmbariConfig.getOutFile() for ambari-agent
+  #
+  def test_outfile_location(self):
+    #
+    # Test without $AMBARI_AGENT_OUT_DIR
+    #
+    out_folder = "/var/log/ambari-agent"
+    out_file = "ambari-agent.out"
+    with patch.dict("os.environ", {}):
+      self.assertEqual(
+        os.path.join(out_folder, out_file),
+        AmbariConfig.AmbariConfig.getOutFile(),
+      )
 
     #
-    # Test AmbariConfig.getOutFile() for ambari-agent
+    # Test with $AMBARI_AGENT_OUT_DIR
     #
-    def test_outfile_location(self):
-        #
-        # Test without $AMBARI_AGENT_OUT_DIR
-        #
-        out_folder = "/var/log/ambari-agent"
-        out_file = "ambari-agent.out"
-        with patch.dict("os.environ", {}):
-            self.assertEqual(
-                os.path.join(out_folder, out_file),
-                AmbariConfig.AmbariConfig.getOutFile(),
-            )
-
-        #
-        # Test with $AMBARI_AGENT_OUT_DIR
-        #
-        out_folder = "/myoutlocation/out"
-        out_file = "ambari-agent.out"
-        with patch.dict("os.environ", {"AMBARI_AGENT_LOG_DIR": out_folder}):
-            self.assertEqual(
-                os.path.join(out_folder, out_file),
-                AmbariConfig.AmbariConfig.getOutFile(),
-            )
-        pass
+    out_folder = "/myoutlocation/out"
+    out_file = "ambari-agent.out"
+    with patch.dict("os.environ", {"AMBARI_AGENT_LOG_DIR": out_folder}):
+      self.assertEqual(
+        os.path.join(out_folder, out_file),
+        AmbariConfig.AmbariConfig.getOutFile(),
+      )
+    pass

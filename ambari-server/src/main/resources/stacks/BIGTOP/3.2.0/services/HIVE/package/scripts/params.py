@@ -38,29 +38,29 @@ from resource_management.libraries.functions import get_kinit_path
 from resource_management.libraries.functions import StackFeature
 from resource_management.libraries.functions import upgrade_summary
 from resource_management.libraries.functions.copy_tarball import (
-    STACK_ROOT_PATTERN,
-    STACK_NAME_PATTERN,
-    STACK_VERSION_PATTERN,
+  STACK_ROOT_PATTERN,
+  STACK_NAME_PATTERN,
+  STACK_VERSION_PATTERN,
 )
 from resource_management.libraries.functions.copy_tarball import (
-    get_sysprep_skip_copy_tarballs_hdfs,
+  get_sysprep_skip_copy_tarballs_hdfs,
 )
 from resource_management.libraries.functions.default import default
 from resource_management.libraries.functions.expect import expect
 from resource_management.libraries.functions.format import format
 from resource_management.libraries.functions.get_architecture import get_architecture
 from resource_management.libraries.functions.get_not_managed_resources import (
-    get_not_managed_resources,
+  get_not_managed_resources,
 )
 from resource_management.libraries.functions.get_port_from_url import get_port_from_url
 from resource_management.libraries.functions.is_empty import is_empty
 from resource_management.libraries.functions.setup_ranger_plugin_xml import (
-    get_audit_configs,
-    generate_ranger_service_config,
+  get_audit_configs,
+  generate_ranger_service_config,
 )
 from resource_management.libraries.functions.stack_features import check_stack_feature
 from resource_management.libraries.functions.stack_features import (
-    get_stack_feature_version,
+  get_stack_feature_version,
 )
 from resource_management.libraries.resources.hdfs_resource import HdfsResource
 from resource_management.libraries.script.script import Script
@@ -70,7 +70,7 @@ from resource_management.libraries.functions import stack_select
 
 host_sys_prepped = default("/ambariLevelParams/host_sys_prepped", False)
 sysprep_skip_hive_schema_create = host_sys_prepped and default(
-    "/configurations/cluster-env/sysprep_skip_hive_schema_create", False
+  "/configurations/cluster-env/sysprep_skip_hive_schema_create", False
 )
 sysprep_skip_copy_tarballs_hdfs = get_sysprep_skip_copy_tarballs_hdfs()
 retryAble = default("/commandParams/command_retry_enabled", False)
@@ -86,13 +86,13 @@ sudo = AMBARI_SUDO_BINARY
 
 credential_store_enabled = False
 if "credentialStoreEnabled" in config:
-    credential_store_enabled = config["credentialStoreEnabled"]
+  credential_store_enabled = config["credentialStoreEnabled"]
 
 stack_root = status_params.stack_root
 stack_name = status_params.stack_name
 stack_name_uppercase = stack_name.upper()
 agent_stack_retry_on_unavailability = config["ambariLevelParams"][
-    "agent_stack_retry_on_unavailability"
+  "agent_stack_retry_on_unavailability"
 ]
 agent_stack_retry_count = expect("/ambariLevelParams/agent_stack_retry_count", int)
 
@@ -123,13 +123,13 @@ version_for_stack_feature_checks = get_stack_feature_version(config)
 # Upgrade direction
 upgrade_direction = default("/commandParams/upgrade_direction", None)
 stack_supports_ranger_kerberos = check_stack_feature(
-    StackFeature.RANGER_KERBEROS_SUPPORT, version_for_stack_feature_checks
+  StackFeature.RANGER_KERBEROS_SUPPORT, version_for_stack_feature_checks
 )
 stack_supports_ranger_audit_db = check_stack_feature(
-    StackFeature.RANGER_AUDIT_DB_SUPPORT, version_for_stack_feature_checks
+  StackFeature.RANGER_AUDIT_DB_SUPPORT, version_for_stack_feature_checks
 )
 stack_supports_ranger_hive_jdbc_url_change = check_stack_feature(
-    StackFeature.RANGER_HIVE_PLUGIN_JDBC_URL, version_for_stack_feature_checks
+  StackFeature.RANGER_HIVE_PLUGIN_JDBC_URL, version_for_stack_feature_checks
 )
 # stack_supports_atlas_hook_for_hive_interactive = check_stack_feature(StackFeature.HIVE_INTERACTIVE_ATLAS_HOOK_REQUIRED, version_for_stack_feature_checks)
 
@@ -150,10 +150,10 @@ hive_user_home_dir = "/home/hive"
 
 # hadoop parameters for stacks that support rolling_upgrade
 if stack_version_formatted_major and check_stack_feature(
-    StackFeature.ROLLING_UPGRADE, stack_version_formatted_major
+  StackFeature.ROLLING_UPGRADE, stack_version_formatted_major
 ):
-    hive_home = format("{stack_root}/current/hive-client")
-    zk_home = format("{stack_root}/{stack_version_formatted_major}/usr/lib/zookeeper")
+  hive_home = format("{stack_root}/current/hive-client")
+  zk_home = format("{stack_root}/{stack_version_formatted_major}/usr/lib/zookeeper")
 
 zk_bin_dir = format("{zk_home}/bin")
 hive_bin_dir = format("{hive_home}/bin")
@@ -168,10 +168,8 @@ hive_server2_hive_lib = None
 heap_dump_enabled = default("/configurations/hive-env/enable_heap_dump", None)
 heap_dump_opts = ""  # Empty if 'heap_dump_enabled' is False.
 if heap_dump_enabled:
-    heap_dump_path = default("/configurations/hive-env/heap_dump_location", "/tmp")
-    heap_dump_opts = (
-        " -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=" + heap_dump_path
-    )
+  heap_dump_path = default("/configurations/hive-env/heap_dump_location", "/tmp")
+  heap_dump_opts = " -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=" + heap_dump_path
 
 # Hive Interactive related paths
 # hive_interactive_var_lib = '/var/lib/hive2'
@@ -183,20 +181,20 @@ hive_metastore_site_supported = False
 limits_conf_dir = "/etc/security/limits.d"
 
 hive_user_nofile_limit = default(
-    "/configurations/hive-env/hive_user_nofile_limit", "32000"
+  "/configurations/hive-env/hive_user_nofile_limit", "32000"
 )
 hive_user_nproc_limit = default(
-    "/configurations/hive-env/hive_user_nproc_limit", "16000"
+  "/configurations/hive-env/hive_user_nproc_limit", "16000"
 )
 
 # --- Tarballs ---
 # DON'T CHANGE THESE VARIABLE NAMES
 # Values don't change from those in copy_tarball.py
 hive_tar_source = "{0}/{1}/hive/hive.tar.gz".format(
-    STACK_ROOT_PATTERN, STACK_VERSION_PATTERN
+  STACK_ROOT_PATTERN, STACK_VERSION_PATTERN
 )
 hive_tar_dest_file = "/{0}/apps/{1}/hive/hive.tar.gz".format(
-    STACK_NAME_PATTERN, STACK_VERSION_PATTERN
+  STACK_NAME_PATTERN, STACK_VERSION_PATTERN
 )
 
 tarballs_mode = 0o444
@@ -204,54 +202,51 @@ tarballs_mode = 0o444
 purge_tables = "false"
 # Starting from stack version for feature hive_purge_table drop should be executed with purge
 if check_stack_feature(StackFeature.HIVE_PURGE_TABLE, version_for_stack_feature_checks):
-    purge_tables = "true"
+  purge_tables = "true"
 
 if check_stack_feature(
-    StackFeature.HIVE_METASTORE_SITE_SUPPORT, version_for_stack_feature_checks
+  StackFeature.HIVE_METASTORE_SITE_SUPPORT, version_for_stack_feature_checks
 ):
-    hive_metastore_site_supported = True
+  hive_metastore_site_supported = True
 
 execute_path = (
-    os.environ["PATH"] + os.pathsep + hive_bin_dir + os.pathsep + hadoop_bin_dir
+  os.environ["PATH"] + os.pathsep + hive_bin_dir + os.pathsep + hadoop_bin_dir
 )
 
 hive_metastore_user_name = config["configurations"]["hive-site"][
-    "javax.jdo.option.ConnectionUserName"
+  "javax.jdo.option.ConnectionUserName"
 ]
 hive_jdbc_connection_url = config["configurations"]["hive-site"][
-    "javax.jdo.option.ConnectionURL"
+  "javax.jdo.option.ConnectionURL"
 ]
 
 jdk_location = config["ambariLevelParams"]["jdk_location"]
 
 if credential_store_enabled:
-    if (
-        "hadoop.security.credential.provider.path"
-        in config["configurations"]["hive-site"]
-    ):
-        cs_lib_path = config["configurations"]["hive-site"]["credentialStoreClassPath"]
-        java_home = config["ambariLevelParams"]["java_home"]
-        alias = "javax.jdo.option.ConnectionPassword"
-        provider_path = config["configurations"]["hive-site"][
-            "hadoop.security.credential.provider.path"
-        ]
-        hive_metastore_user_passwd = PasswordString(
-            get_password_from_credential_store(
-                alias, provider_path, cs_lib_path, java_home, jdk_location
-            )
-        )
-    else:
-        raise Exception(
-            "hadoop.security.credential.provider.path property should be set"
-        )
-else:
-    hive_metastore_user_passwd = config["configurations"]["hive-site"][
-        "javax.jdo.option.ConnectionPassword"
+  if (
+    "hadoop.security.credential.provider.path" in config["configurations"]["hive-site"]
+  ):
+    cs_lib_path = config["configurations"]["hive-site"]["credentialStoreClassPath"]
+    java_home = config["ambariLevelParams"]["java_home"]
+    alias = "javax.jdo.option.ConnectionPassword"
+    provider_path = config["configurations"]["hive-site"][
+      "hadoop.security.credential.provider.path"
     ]
+    hive_metastore_user_passwd = PasswordString(
+      get_password_from_credential_store(
+        alias, provider_path, cs_lib_path, java_home, jdk_location
+      )
+    )
+  else:
+    raise Exception("hadoop.security.credential.provider.path property should be set")
+else:
+  hive_metastore_user_passwd = config["configurations"]["hive-site"][
+    "javax.jdo.option.ConnectionPassword"
+  ]
 hive_metastore_user_passwd = (
-    str(hive_metastore_user_passwd)
-    if not is_empty(hive_metastore_user_passwd)
-    else hive_metastore_user_passwd
+  str(hive_metastore_user_passwd)
+  if not is_empty(hive_metastore_user_passwd)
+  else hive_metastore_user_passwd
 )
 hive_metastore_db_type = config["configurations"]["hive-env"]["hive_database_type"]
 hive_db_schma_name = config["configurations"]["hive-site"]["ambari.hive.db.schema.name"]
@@ -263,15 +258,15 @@ hive_user = config["configurations"]["hive-env"]["hive_user"]
 # is it a restart command
 is_restart_command = False
 if "roleCommand" in config and "CUSTOM_COMMAND" == config["roleCommand"]:
-    if (
-        "custom_command" in config["commandParams"]
-        and "RESTART" == config["commandParams"]["custom_command"]
-    ):
-        is_restart_command = True
+  if (
+    "custom_command" in config["commandParams"]
+    and "RESTART" == config["commandParams"]["custom_command"]
+  ):
+    is_restart_command = True
 
 # JDBC driver jar name
 hive_jdbc_driver = config["configurations"]["hive-site"][
-    "javax.jdo.option.ConnectionDriverName"
+  "javax.jdo.option.ConnectionDriverName"
 ]
 java_share_dir = "/usr/share/java"
 hive_database_name = config["configurations"]["hive-env"]["hive_database_name"]
@@ -279,11 +274,11 @@ hive_database = config["configurations"]["hive-env"]["hive_database"]
 hive_use_existing_db = hive_database.startswith("Existing")
 
 default_connectors_map = {
-    "com.microsoft.sqlserver.jdbc.SQLServerDriver": "sqljdbc4.jar",
-    "com.mysql.jdbc.Driver": "mysql-connector-java.jar",
-    "org.postgresql.Driver": "postgresql-jdbc.jar",
-    "oracle.jdbc.driver.OracleDriver": "ojdbc.jar",
-    "sap.jdbc4.sqlanywhere.IDriver": "sajdbc4.jar",
+  "com.microsoft.sqlserver.jdbc.SQLServerDriver": "sqljdbc4.jar",
+  "com.mysql.jdbc.Driver": "mysql-connector-java.jar",
+  "org.postgresql.Driver": "postgresql-jdbc.jar",
+  "oracle.jdbc.driver.OracleDriver": "ojdbc.jar",
+  "sap.jdbc4.sqlanywhere.IDriver": "sajdbc4.jar",
 }
 
 # NOT SURE THAT IT'S A GOOD IDEA TO USE PATH TO CLASS IN DRIVER, MAYBE IT WILL BE BETTER TO USE DB TYPE.
@@ -291,44 +286,44 @@ default_connectors_map = {
 sqla_db_used = False
 hive_previous_jdbc_jar_name = None
 if hive_jdbc_driver == "com.microsoft.sqlserver.jdbc.SQLServerDriver":
-    jdbc_jar_name = default("/ambariLevelParams/custom_mssql_jdbc_name", None)
-    hive_previous_jdbc_jar_name = default(
-        "/ambariLevelParams/previous_custom_mssql_jdbc_name", None
-    )
+  jdbc_jar_name = default("/ambariLevelParams/custom_mssql_jdbc_name", None)
+  hive_previous_jdbc_jar_name = default(
+    "/ambariLevelParams/previous_custom_mssql_jdbc_name", None
+  )
 elif hive_jdbc_driver == "com.mysql.jdbc.Driver":
-    jdbc_jar_name = default("/ambariLevelParams/custom_mysql_jdbc_name", None)
-    hive_previous_jdbc_jar_name = default(
-        "/ambariLevelParams/previous_custom_mysql_jdbc_name", None
-    )
+  jdbc_jar_name = default("/ambariLevelParams/custom_mysql_jdbc_name", None)
+  hive_previous_jdbc_jar_name = default(
+    "/ambariLevelParams/previous_custom_mysql_jdbc_name", None
+  )
 elif hive_jdbc_driver == "com.mysql.cj.jdbc.Driver":
-    jdbc_jar_name = default("/ambariLevelParams/custom_mysql_jdbc_name", None)
-    hive_previous_jdbc_jar_name = default(
-        "/ambariLevelParams/previous_custom_mysql_jdbc_name", None
-    )
+  jdbc_jar_name = default("/ambariLevelParams/custom_mysql_jdbc_name", None)
+  hive_previous_jdbc_jar_name = default(
+    "/ambariLevelParams/previous_custom_mysql_jdbc_name", None
+  )
 elif hive_jdbc_driver == "org.postgresql.Driver":
-    jdbc_jar_name = default("/ambariLevelParams/custom_postgres_jdbc_name", None)
-    hive_previous_jdbc_jar_name = default(
-        "/ambariLevelParams/previous_custom_postgres_jdbc_name", None
-    )
+  jdbc_jar_name = default("/ambariLevelParams/custom_postgres_jdbc_name", None)
+  hive_previous_jdbc_jar_name = default(
+    "/ambariLevelParams/previous_custom_postgres_jdbc_name", None
+  )
 elif hive_jdbc_driver == "oracle.jdbc.driver.OracleDriver":
-    jdbc_jar_name = default("/ambariLevelParams/custom_oracle_jdbc_name", None)
-    hive_previous_jdbc_jar_name = default(
-        "/ambariLevelParams/previous_custom_oracle_jdbc_name", None
-    )
+  jdbc_jar_name = default("/ambariLevelParams/custom_oracle_jdbc_name", None)
+  hive_previous_jdbc_jar_name = default(
+    "/ambariLevelParams/previous_custom_oracle_jdbc_name", None
+  )
 elif hive_jdbc_driver == "sap.jdbc4.sqlanywhere.IDriver":
-    jdbc_jar_name = default("/ambariLevelParams/custom_sqlanywhere_jdbc_name", None)
-    hive_previous_jdbc_jar_name = default(
-        "/ambariLevelParams/previous_custom_sqlanywhere_jdbc_name", None
-    )
-    sqla_db_used = True
+  jdbc_jar_name = default("/ambariLevelParams/custom_sqlanywhere_jdbc_name", None)
+  hive_previous_jdbc_jar_name = default(
+    "/ambariLevelParams/previous_custom_sqlanywhere_jdbc_name", None
+  )
+  sqla_db_used = True
 else:
-    raise Fail(format("JDBC driver '{hive_jdbc_driver}' not supported."))
+  raise Fail(format("JDBC driver '{hive_jdbc_driver}' not supported."))
 
 default_mysql_jar_name = "mysql-connector-java.jar"
 default_mysql_target = format("{hive_lib_dir}/{default_mysql_jar_name}")
 hive_previous_jdbc_jar = format("{hive_lib_dir}/{hive_previous_jdbc_jar_name}")
 if not hive_use_existing_db:
-    jdbc_jar_name = default_mysql_jar_name
+  jdbc_jar_name = default_mysql_jar_name
 
 
 downloaded_custom_connector = format("{tmp_dir}/{jdbc_jar_name}")
@@ -337,7 +332,7 @@ hive_jdbc_target = format("{hive_lib_dir}/{jdbc_jar_name}")
 
 # during upgrade / downgrade, use the specific version to copy the JDBC JAR to
 if upgrade_direction:
-    hive_jdbc_target = format("{hive_lib_dir}/{jdbc_jar_name}")
+  hive_jdbc_target = format("{hive_lib_dir}/{jdbc_jar_name}")
 
 
 driver_curl_source = format("{jdk_location}/{jdbc_jar_name}")
@@ -346,20 +341,20 @@ driver_curl_source = format("{jdk_location}/{jdbc_jar_name}")
 # but in RU if <stack-selector-tool> is called and the restart fails, then this means that current pointer
 # is now pointing to the upgraded version location; that's bad for the cp command
 version_for_source_jdbc_file = upgrade_summary.get_source_version(
-    default_version=version_for_stack_feature_checks
+  default_version=version_for_stack_feature_checks
 )
 source_jdbc_file = format(
-    "{stack_root}/{version_for_source_jdbc_file}/hive/lib/{jdbc_jar_name}"
+  "{stack_root}/{version_for_source_jdbc_file}/hive/lib/{jdbc_jar_name}"
 )
 
 check_db_connection_jar_name = "DBConnectionVerification.jar"
 check_db_connection_jar = format("/usr/lib/ambari-agent/{check_db_connection_jar_name}")
 hive_jdbc_drivers_list = [
-    "com.microsoft.sqlserver.jdbc.SQLServerDriver",
-    "com.mysql.jdbc.Driver",
-    "org.postgresql.Driver",
-    "oracle.jdbc.driver.OracleDriver",
-    "sap.jdbc4.sqlanywhere.IDriver",
+  "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+  "com.mysql.jdbc.Driver",
+  "org.postgresql.Driver",
+  "oracle.jdbc.driver.OracleDriver",
+  "sap.jdbc4.sqlanywhere.IDriver",
 ]
 
 prepackaged_jdbc_name = "ojdbc6.jar"
@@ -370,10 +365,10 @@ jdbc_libs_dir = format("{hive_lib_dir}/native/lib64")
 lib_dir_available = os.path.exists(jdbc_libs_dir)
 
 if sqla_db_used:
-    jars_path_in_archive = format("{tmp_dir}/sqla-client-jdbc/java/*")
-    libs_path_in_archive = format("{tmp_dir}/sqla-client-jdbc/native/lib64/*")
-    downloaded_custom_connector = format("{tmp_dir}/{jdbc_jar_name}")
-    libs_in_hive_lib = format("{jdbc_libs_dir}/*")
+  jars_path_in_archive = format("{tmp_dir}/sqla-client-jdbc/java/*")
+  libs_path_in_archive = format("{tmp_dir}/sqla-client-jdbc/native/lib64/*")
+  downloaded_custom_connector = format("{tmp_dir}/{jdbc_jar_name}")
+  libs_in_hive_lib = format("{jdbc_libs_dir}/*")
 
 
 # Start, Common Hosts and Ports
@@ -382,7 +377,7 @@ ambari_server_hostname = config["ambariLevelParams"]["ambari_server_host"]
 hive_metastore_hosts = default("/clusterHostInfo/hive_metastore_hosts", [])
 hive_metastore_host = hive_metastore_hosts[0] if len(hive_metastore_hosts) > 0 else None
 hive_metastore_port = get_port_from_url(
-    config["configurations"]["hive-site"]["hive.metastore.uris"]
+  config["configurations"]["hive-site"]["hive.metastore.uris"]
 )
 
 hive_server_hosts = default("/clusterHostInfo/hive_server_hosts", [])
@@ -390,36 +385,36 @@ hive_server_host = hive_server_hosts[0] if len(hive_server_hosts) > 0 else None
 
 
 hive_transport_mode = config["configurations"]["hive-site"][
-    "hive.server2.transport.mode"
+  "hive.server2.transport.mode"
 ]
 
 if hive_transport_mode.lower() == "http":
-    hive_server_port = config["configurations"]["hive-site"][
-        "hive.server2.thrift.http.port"
-    ]
+  hive_server_port = config["configurations"]["hive-site"][
+    "hive.server2.thrift.http.port"
+  ]
 else:
-    hive_server_port = default(
-        "/configurations/hive-site/hive.server2.thrift.port", "10000"
-    )
+  hive_server_port = default(
+    "/configurations/hive-site/hive.server2.thrift.port", "10000"
+  )
 
 hive_url = format("jdbc:hive2://{hive_server_host}:{hive_server_port}")
 hive_http_endpoint = default(
-    "/configurations/hive-site/hive.server2.thrift.http.path", "cliservice"
+  "/configurations/hive-site/hive.server2.thrift.http.path", "cliservice"
 )
 hive_server_principal = config["configurations"]["hive-site"][
-    "hive.server2.authentication.kerberos.principal"
+  "hive.server2.authentication.kerberos.principal"
 ]
 hive_server2_authentication = config["configurations"]["hive-site"][
-    "hive.server2.authentication"
+  "hive.server2.authentication"
 ]
 
 # ssl options
 hive_ssl = default("/configurations/hive-site/hive.server2.use.SSL", False)
 hive_ssl_keystore_path = default(
-    "/configurations/hive-site/hive.server2.keystore.path", None
+  "/configurations/hive-site/hive.server2.keystore.path", None
 )
 hive_ssl_keystore_password = default(
-    "/configurations/hive-site/hive.server2.keystore.password", None
+  "/configurations/hive-site/hive.server2.keystore.password", None
 )
 # hive_interactive_ssl_keystore_path = default('/configurations/hive-interactive-site/hive.server2.keystore.path', None)
 # hive_interactive_ssl_keystore_password = default('/configurations/hive-interactive-site/hive.server2.keystore.password', None)
@@ -429,24 +424,24 @@ smoke_test_sql = format("{tmp_dir}/hiveserver2.sql")
 smoke_test_path = format("{tmp_dir}/hiveserver2Smoke.sh")
 smoke_user_keytab = config["configurations"]["cluster-env"]["smokeuser_keytab"]
 smokeuser_principal = config["configurations"]["cluster-env"][
-    "smokeuser_principal_name"
+  "smokeuser_principal_name"
 ]
 
 fs_root = config["configurations"]["core-site"]["fs.defaultFS"]
 security_enabled = config["configurations"]["cluster-env"]["security_enabled"]
 
 kinit_path_local = get_kinit_path(
-    default("/configurations/kerberos-env/executable_search_paths", None)
+  default("/configurations/kerberos-env/executable_search_paths", None)
 )
 hive_metastore_keytab_path = config["configurations"]["hive-site"][
-    "hive.metastore.kerberos.keytab.file"
+  "hive.metastore.kerberos.keytab.file"
 ]
 hive_metastore_principal = config["configurations"]["hive-site"][
-    "hive.metastore.kerberos.principal"
+  "hive.metastore.kerberos.principal"
 ]
 
 hive_server2_keytab = config["configurations"]["hive-site"][
-    "hive.server2.authentication.kerberos.keytab"
+  "hive.server2.authentication.kerberos.keytab"
 ]
 
 # hive_env
@@ -461,17 +456,17 @@ hive_conf_dirs_list = [hive_conf_dir]
 # These are the folders to which the configs will be written to.
 ranger_hive_ssl_config_file = os.path.join(hive_conf_dir, "ranger-policymgr-ssl.xml")
 if (
-    status_params.role == "HIVE_METASTORE"
-    and hive_metastore_hosts is not None
-    and hostname in hive_metastore_hosts
+  status_params.role == "HIVE_METASTORE"
+  and hive_metastore_hosts is not None
+  and hostname in hive_metastore_hosts
 ):
-    hive_conf_dirs_list.append(hive_conf_dir)
+  hive_conf_dirs_list.append(hive_conf_dir)
 elif (
-    status_params.role == "HIVE_SERVER"
-    and hive_server_hosts is not None
-    and hostname in hive_server_hosts
+  status_params.role == "HIVE_SERVER"
+  and hive_server_hosts is not None
+  and hostname in hive_server_hosts
 ):
-    hive_conf_dirs_list.append(hive_conf_dir)
+  hive_conf_dirs_list.append(hive_conf_dir)
 
 # Starting hiveserver2
 start_hiveserver2_script = "startHiveserver2.sh.j2"
@@ -495,14 +490,14 @@ start_metastore_path = format("{tmp_dir}/start_metastore_script")
 hadoop_heapsize = config["configurations"]["hadoop-env"]["hadoop_heapsize"]
 
 if check_stack_feature(
-    StackFeature.HIVE_ENV_HEAPSIZE, version_for_stack_feature_checks
+  StackFeature.HIVE_ENV_HEAPSIZE, version_for_stack_feature_checks
 ):
-    hive_heapsize = config["configurations"]["hive-env"]["hive.heapsize"]
+  hive_heapsize = config["configurations"]["hive-env"]["hive.heapsize"]
 else:
-    hive_heapsize = config["configurations"]["hive-site"]["hive.heapsize"]
+  hive_heapsize = config["configurations"]["hive-site"]["hive.heapsize"]
 
 hive_metastore_heapsize = config["configurations"]["hive-env"][
-    "hive.metastore.heapsize"
+  "hive.metastore.heapsize"
 ]
 
 java64_home = config["ambariLevelParams"]["java_home"]
@@ -527,7 +522,7 @@ hive_log_level = default("/configurations/hive-env/hive.log.level", "INFO")
 # parquet-logging.properties
 parquet_logging_properties = None
 if "parquet-logging" in config["configurations"]:
-    parquet_logging_properties = config["configurations"]["parquet-logging"]["content"]
+  parquet_logging_properties = config["configurations"]["parquet-logging"]["content"]
 
 process_name = status_params.process_name
 hive_env_sh_template = config["configurations"]["hive-env"]["content"]
@@ -535,27 +530,27 @@ hive_env_sh_template = config["configurations"]["hive-env"]["content"]
 hive_hdfs_user_dir = format("/user/{hive_user}")
 hive_hdfs_user_mode = 0o755
 hive_metastore_warehouse_dir = config["configurations"]["hive-site"][
-    "hive.metastore.warehouse.dir"
+  "hive.metastore.warehouse.dir"
 ]
 hive_metastore_warehouse_external_dir = config["configurations"]["hive-site"][
-    "hive.metastore.warehouse.external.dir"
+  "hive.metastore.warehouse.external.dir"
 ]
 whs_dir_protocol = urlparse(hive_metastore_warehouse_dir).scheme
 hive_exec_scratchdir = config["configurations"]["hive-site"]["hive.exec.scratchdir"]
 
 # Hive and Tez hook directories
 hive_hook_proto_base_directory = format(
-    config["configurations"]["hive-site"]["hive.hook.proto.base-directory"]
+  config["configurations"]["hive-site"]["hive.hook.proto.base-directory"]
 )
 tez_hook_proto_base_directory = format(
-    "{hive_metastore_warehouse_external_dir}/sys.db/"
+  "{hive_metastore_warehouse_external_dir}/sys.db/"
 )
 
 
 # for create_hdfs_directory
 hdfs_user_keytab = config["configurations"]["hadoop-env"]["hdfs_user_keytab"]
 hdfs_principal_name = default(
-    "/configurations/hadoop-env/hdfs_principal_name", "missing_principal"
+  "/configurations/hadoop-env/hdfs_principal_name", "missing_principal"
 ).replace("_HOST", hostname)
 
 # Tez-related properties
@@ -569,15 +564,15 @@ tez_local_lib_jars = "/usr/lib/tez/lib/*.jar"
 tez_lib_uris = default("/configurations/tez-site/tez.lib.uris", None)
 
 if OSCheck.is_ubuntu_family():
-    mysql_confignames = ["/etc/mysql/my.cnf", "/etc/mysql/mysql.conf.d/mysqld.cnf"]
+  mysql_confignames = ["/etc/mysql/my.cnf", "/etc/mysql/mysql.conf.d/mysqld.cnf"]
 else:
-    mysql_confignames = ["/etc/my.cnf"]
+  mysql_confignames = ["/etc/my.cnf"]
 
 mysql_user = "mysql"
 
 # Hive security
 hive_authorization_enabled = config["configurations"]["hiveserver2-site"][
-    "hive.security.authorization.enabled"
+  "hive.security.authorization.enabled"
 ]
 
 mysql_jdbc_driver_jar = "/usr/share/java/mysql-connector-java.jar"
@@ -593,14 +588,14 @@ hive_site_config["hive.hook.proto.base-directory"] = hive_hook_proto_base_direct
 ########################################################
 core_site_config = dict(config["configurations"]["core-site"])
 if (
-    format("hadoop.proxyuser.{hive_user}.hosts") not in core_site_config
-    and format("hadoop.proxyuser.{hive_user}.groups") not in core_site_config
+  format("hadoop.proxyuser.{hive_user}.hosts") not in core_site_config
+  and format("hadoop.proxyuser.{hive_user}.groups") not in core_site_config
 ):
-    hive_site_config["hive.metastore.event.db.notification.api.auth"] = "false"
-    hive_site_config["hive.server2.enable.doAs"] = "false"
+  hive_site_config["hive.metastore.event.db.notification.api.auth"] = "false"
+  hive_site_config["hive.server2.enable.doAs"] = "false"
 else:
-    hive_site_config["hive.metastore.event.db.notification.api.auth"] = "true"
-    hive_site_config["hive.server2.enable.doAs"] = "true"
+  hive_site_config["hive.metastore.event.db.notification.api.auth"] = "true"
+  hive_site_config["hive.server2.enable.doAs"] = "true"
 
 ########################################################
 ############# AMS related params #####################
@@ -608,90 +603,90 @@ else:
 set_instanceId = "false"
 
 if (
-    "cluster-env" in config["configurations"]
-    and "metrics_collector_external_hosts" in config["configurations"]["cluster-env"]
+  "cluster-env" in config["configurations"]
+  and "metrics_collector_external_hosts" in config["configurations"]["cluster-env"]
 ):
-    ams_collector_hosts = config["configurations"]["cluster-env"][
-        "metrics_collector_external_hosts"
-    ]
-    set_instanceId = "true"
+  ams_collector_hosts = config["configurations"]["cluster-env"][
+    "metrics_collector_external_hosts"
+  ]
+  set_instanceId = "true"
 else:
-    ams_collector_hosts = ",".join(
-        default("/clusterHostInfo/metrics_collector_hosts", [])
-    )
+  ams_collector_hosts = ",".join(
+    default("/clusterHostInfo/metrics_collector_hosts", [])
+  )
 
 has_metric_collector = not len(ams_collector_hosts) == 0
 if has_metric_collector:
-    if (
-        "cluster-env" in config["configurations"]
-        and "metrics_collector_external_port" in config["configurations"]["cluster-env"]
-    ):
-        metric_collector_port = config["configurations"]["cluster-env"][
-            "metrics_collector_external_port"
-        ]
+  if (
+    "cluster-env" in config["configurations"]
+    and "metrics_collector_external_port" in config["configurations"]["cluster-env"]
+  ):
+    metric_collector_port = config["configurations"]["cluster-env"][
+      "metrics_collector_external_port"
+    ]
+  else:
+    metric_collector_web_address = default(
+      "/configurations/ams-site/timeline.metrics.service.webapp.address",
+      "0.0.0.0:6188",
+    )
+    if metric_collector_web_address.find(":") != -1:
+      metric_collector_port = metric_collector_web_address.split(":")[1]
     else:
-        metric_collector_web_address = default(
-            "/configurations/ams-site/timeline.metrics.service.webapp.address",
-            "0.0.0.0:6188",
-        )
-        if metric_collector_web_address.find(":") != -1:
-            metric_collector_port = metric_collector_web_address.split(":")[1]
-        else:
-            metric_collector_port = "6188"
-    if (
-        default(
-            "/configurations/ams-site/timeline.metrics.service.http.policy", "HTTP_ONLY"
-        )
-        == "HTTPS_ONLY"
-    ):
-        metric_collector_protocol = "https"
-    else:
-        metric_collector_protocol = "http"
-    metric_truststore_path = default(
-        "/configurations/ams-ssl-client/ssl.client.truststore.location", ""
+      metric_collector_port = "6188"
+  if (
+    default(
+      "/configurations/ams-site/timeline.metrics.service.http.policy", "HTTP_ONLY"
     )
-    metric_truststore_type = default(
-        "/configurations/ams-ssl-client/ssl.client.truststore.type", ""
-    )
-    metric_truststore_password = default(
-        "/configurations/ams-ssl-client/ssl.client.truststore.password", ""
-    )
+    == "HTTPS_ONLY"
+  ):
+    metric_collector_protocol = "https"
+  else:
+    metric_collector_protocol = "http"
+  metric_truststore_path = default(
+    "/configurations/ams-ssl-client/ssl.client.truststore.location", ""
+  )
+  metric_truststore_type = default(
+    "/configurations/ams-ssl-client/ssl.client.truststore.type", ""
+  )
+  metric_truststore_password = default(
+    "/configurations/ams-ssl-client/ssl.client.truststore.password", ""
+  )
 
 metrics_report_interval = default(
-    "/configurations/ams-site/timeline.metrics.sink.report.interval", 60
+  "/configurations/ams-site/timeline.metrics.sink.report.interval", 60
 )
 metrics_collection_period = default(
-    "/configurations/ams-site/timeline.metrics.sink.collection.period", 10
+  "/configurations/ams-site/timeline.metrics.sink.collection.period", 10
 )
 
 host_in_memory_aggregation = default(
-    "/configurations/ams-site/timeline.metrics.host.inmemory.aggregation", True
+  "/configurations/ams-site/timeline.metrics.host.inmemory.aggregation", True
 )
 host_in_memory_aggregation_port = default(
-    "/configurations/ams-site/timeline.metrics.host.inmemory.aggregation.port", 61888
+  "/configurations/ams-site/timeline.metrics.host.inmemory.aggregation.port", 61888
 )
 is_aggregation_https_enabled = False
 if (
-    default(
-        "/configurations/ams-site/timeline.metrics.host.inmemory.aggregation.http.policy",
-        "HTTP_ONLY",
-    )
-    == "HTTPS_ONLY"
+  default(
+    "/configurations/ams-site/timeline.metrics.host.inmemory.aggregation.http.policy",
+    "HTTP_ONLY",
+  )
+  == "HTTPS_ONLY"
 ):
-    host_in_memory_aggregation_protocol = "https"
-    is_aggregation_https_enabled = True
+  host_in_memory_aggregation_protocol = "https"
+  is_aggregation_https_enabled = True
 else:
-    host_in_memory_aggregation_protocol = "http"
+  host_in_memory_aggregation_protocol = "http"
 ########################################################
 ############# Atlas related params #####################
 ########################################################
 # region Atlas Hooks
 hive_atlas_application_properties = default(
-    "/configurations/hive-atlas-application.properties", {}
+  "/configurations/hive-atlas-application.properties", {}
 )
 enable_atlas_hook = default("/configurations/hive-env/hive.atlas.hook", False)
 atlas_hook_filename = default(
-    "/configurations/atlas-env/metadata_conf_file", "atlas-application.properties"
+  "/configurations/atlas-env/metadata_conf_file", "atlas-application.properties"
 )
 # endregion
 
@@ -704,9 +699,9 @@ hive_apps_whs_dir = hive_metastore_warehouse_dir
 hive_hcatalog_home = "/usr/lib/hive-hcatalog"
 # hadoop parameters for stacks that support rolling_upgrade
 if stack_version_formatted_major and check_stack_feature(
-    StackFeature.ROLLING_UPGRADE, stack_version_formatted_major
+  StackFeature.ROLLING_UPGRADE, stack_version_formatted_major
 ):
-    hive_hcatalog_home = format("{stack_root}/current/hive-webhcat")
+  hive_hcatalog_home = format("{stack_root}/current/hive-webhcat")
 
 hcat_lib = format("{hive_hcatalog_home}/share/hcatalog")
 webhcat_bin_dir = format("{hive_hcatalog_home}/sbin")
@@ -743,18 +738,18 @@ webhcat_hdfs_user_mode = 0o755
 
 # Webhcat log4j properties
 webhcat_log_maxfilesize = default(
-    "/configurations/webhcat-log4j/webhcat_log_maxfilesize", 256
+  "/configurations/webhcat-log4j/webhcat_log_maxfilesize", 256
 )
 webhcat_log_maxbackupindex = default(
-    "/configurations/webhcat-log4j/webhcat_log_maxbackupindex", 20
+  "/configurations/webhcat-log4j/webhcat_log_maxbackupindex", 20
 )
 # webhcat-log4j.properties.template
 if ("webhcat-log4j" in config["configurations"]) and (
-    "content" in config["configurations"]["webhcat-log4j"]
+  "content" in config["configurations"]["webhcat-log4j"]
 ):
-    log4j_webhcat_props = config["configurations"]["webhcat-log4j"]["content"]
+  log4j_webhcat_props = config["configurations"]["webhcat-log4j"]["content"]
 else:
-    log4j_webhcat_props = None
+  log4j_webhcat_props = None
 
 
 # for create_hdfs_directory
@@ -771,19 +766,19 @@ import functools
 # create partial functions with common arguments for every HdfsResource call
 # to create hdfs directory we need to call params.HdfsResource in code
 HdfsResource = functools.partial(
-    HdfsResource,
-    user=hdfs_user,
-    hdfs_resource_ignore_file="/var/lib/ambari-agent/data/.hdfs_resource_ignore",
-    security_enabled=security_enabled,
-    keytab=hdfs_user_keytab,
-    kinit_path_local=kinit_path_local,
-    hadoop_bin_dir=hadoop_bin_dir,
-    hadoop_conf_dir=hadoop_conf_dir,
-    principal_name=hdfs_principal_name,
-    hdfs_site=hdfs_site,
-    default_fs=default_fs,
-    immutable_paths=get_not_managed_resources(),
-    dfs_type=dfs_type,
+  HdfsResource,
+  user=hdfs_user,
+  hdfs_resource_ignore_file="/var/lib/ambari-agent/data/.hdfs_resource_ignore",
+  security_enabled=security_enabled,
+  keytab=hdfs_user_keytab,
+  kinit_path_local=kinit_path_local,
+  hadoop_bin_dir=hadoop_bin_dir,
+  hadoop_conf_dir=hadoop_conf_dir,
+  principal_name=hdfs_principal_name,
+  hdfs_site=hdfs_site,
+  default_fs=default_fs,
+  immutable_paths=get_not_managed_resources(),
+  dfs_type=dfs_type,
 )
 
 has_pig = "pig-env" in config["configurations"]
@@ -791,26 +786,26 @@ has_pig = "pig-env" in config["configurations"]
 
 # llap log4j properties
 hive_llap_log_maxfilesize = default(
-    "/configurations/llap-daemon-log4j/hive_llap_log_maxfilesize", 256
+  "/configurations/llap-daemon-log4j/hive_llap_log_maxfilesize", 256
 )
 hive_llap_log_maxbackupindex = default(
-    "/configurations/llap-daemon-log4j/hive_llap_log_maxbackupindex", 240
+  "/configurations/llap-daemon-log4j/hive_llap_log_maxbackupindex", 240
 )
 
 # hive log4j2 properties
 hive2_log_maxfilesize = default(
-    "/configurations/hive-log4j2/hive2_log_maxfilesize", 256
+  "/configurations/hive-log4j2/hive2_log_maxfilesize", 256
 )
 hive2_log_maxbackupindex = default(
-    "/configurations/hive-log4j2/hive2_log_maxbackupindex", 30
+  "/configurations/hive-log4j2/hive2_log_maxbackupindex", 30
 )
 
 # llap cli log4j2 properties
 llap_cli_log_maxfilesize = default(
-    "/configurations/llap-cli-log4j2/llap_cli_log_maxfilesize", 256
+  "/configurations/llap-cli-log4j2/llap_cli_log_maxfilesize", 256
 )
 llap_cli_log_maxbackupindex = default(
-    "/configurations/llap-cli-log4j2/llap_cli_log_maxbackupindex", 30
+  "/configurations/llap-cli-log4j2/llap_cli_log_maxbackupindex", 30
 )
 
 llap_daemon_log4j = config["configurations"]["llap-daemon-log4j"]["content"]
@@ -820,39 +815,37 @@ hive_exec_log4j2 = config["configurations"]["hive-exec-log4j2"]["content"]
 beeline_log4j2 = config["configurations"]["beeline-log4j2"]["content"]
 
 hive_server2_zookeeper_namespace = config["configurations"]["hive-site"][
-    "hive.server2.zookeeper.namespace"
+  "hive.server2.zookeeper.namespace"
 ]
 hive_zookeeper_quorum = config["configurations"]["hive-site"]["hive.zookeeper.quorum"]
 hive_jdbc_url = format(
-    "jdbc:hive2://{hive_zookeeper_quorum}/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace={hive_server2_zookeeper_namespace}"
+  "jdbc:hive2://{hive_zookeeper_quorum}/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace={hive_server2_zookeeper_namespace}"
 )
 
 
 if security_enabled:
-    hive_principal = hive_server_principal.replace("_HOST", hostname.lower())
-    hive_keytab = config["configurations"]["hive-site"][
-        "hive.server2.authentication.kerberos.keytab"
-    ]
+  hive_principal = hive_server_principal.replace("_HOST", hostname.lower())
+  hive_keytab = config["configurations"]["hive-site"][
+    "hive.server2.authentication.kerberos.keytab"
+  ]
 
-    yarn_principal_name = config["configurations"]["yarn-site"][
-        "yarn.timeline-service.principal"
-    ]
-    yarn_principal_name = yarn_principal_name.replace("_HOST", hostname.lower())
-    yarn_keytab = config["configurations"]["yarn-site"]["yarn.timeline-service.keytab"]
-    yarn_kinit_cmd = format(
-        "{kinit_path_local} -kt {yarn_keytab} {yarn_principal_name};"
-    )
+  yarn_principal_name = config["configurations"]["yarn-site"][
+    "yarn.timeline-service.principal"
+  ]
+  yarn_principal_name = yarn_principal_name.replace("_HOST", hostname.lower())
+  yarn_keytab = config["configurations"]["yarn-site"]["yarn.timeline-service.keytab"]
+  yarn_kinit_cmd = format("{kinit_path_local} -kt {yarn_keytab} {yarn_principal_name};")
 
 hive_cluster_token_zkstore = default(
-    "/configurations/hive-site/hive.cluster.delegation.token.store.zookeeper.znode",
-    None,
+  "/configurations/hive-site/hive.cluster.delegation.token.store.zookeeper.znode",
+  None,
 )
 jaas_file = os.path.join(hive_conf_dir, "zkmigrator_jaas.conf")
 hive_zk_namespace = default("/configurations/hive-site/hive.zookeeper.namespace", None)
 
 zk_principal_name = default(
-    "/configurations/zookeeper-env/zookeeper_principal_name",
-    "zookeeper/_HOST@EXAMPLE.COM",
+  "/configurations/zookeeper-env/zookeeper_principal_name",
+  "zookeeper/_HOST@EXAMPLE.COM",
 )
 zk_principal_user = zk_principal_name.split("/")[0]
 
@@ -864,207 +857,203 @@ has_ranger_admin = not len(ranger_admin_hosts) == 0
 
 # ranger hive plugin enabled property
 enable_ranger_hive = (
-    config["configurations"]["hive-env"]["hive_security_authorization"].lower()
-    == "ranger"
+  config["configurations"]["hive-env"]["hive_security_authorization"].lower()
+  == "ranger"
 )
 doAs = config["configurations"]["hive-site"]["hive.server2.enable.doAs"]
 
 # ranger support xml_configuration flag, instead of depending on ranger xml_configurations_supported/ranger-env, using stack feature
 xml_configurations_supported = check_stack_feature(
-    StackFeature.RANGER_XML_CONFIGURATION, version_for_stack_feature_checks
+  StackFeature.RANGER_XML_CONFIGURATION, version_for_stack_feature_checks
 )
 
 ranger_plugin_home = format("{hive_home}/../ranger-{service_name}-plugin")
 # get ranger hive properties if enable_ranger_hive is True
 if enable_ranger_hive:
-    # get ranger policy url
-    policymgr_mgr_url = config["configurations"]["admin-properties"][
-        "policymgr_external_url"
+  # get ranger policy url
+  policymgr_mgr_url = config["configurations"]["admin-properties"][
+    "policymgr_external_url"
+  ]
+  if xml_configurations_supported:
+    policymgr_mgr_url = config["configurations"]["ranger-hive-security"][
+      "ranger.plugin.hive.policy.rest.url"
     ]
-    if xml_configurations_supported:
-        policymgr_mgr_url = config["configurations"]["ranger-hive-security"][
-            "ranger.plugin.hive.policy.rest.url"
-        ]
 
-    if not is_empty(policymgr_mgr_url) and policymgr_mgr_url.endswith("/"):
-        policymgr_mgr_url = policymgr_mgr_url.rstrip("/")
+  if not is_empty(policymgr_mgr_url) and policymgr_mgr_url.endswith("/"):
+    policymgr_mgr_url = policymgr_mgr_url.rstrip("/")
 
-    # ranger audit db user
-    xa_audit_db_user = default(
-        "/configurations/admin-properties/audit_db_user", "rangerlogger"
+  # ranger audit db user
+  xa_audit_db_user = default(
+    "/configurations/admin-properties/audit_db_user", "rangerlogger"
+  )
+
+  # ranger hive service name
+  repo_name = str(config["clusterName"]) + "_hive"
+  repo_name_value = config["configurations"]["ranger-hive-security"][
+    "ranger.plugin.hive.service.name"
+  ]
+  if not is_empty(repo_name_value) and repo_name_value != "{{repo_name}}":
+    repo_name = repo_name_value
+
+  jdbc_driver_class_name = config["configurations"]["ranger-hive-plugin-properties"][
+    "jdbc.driverClassName"
+  ]
+  common_name_for_certificate = config["configurations"][
+    "ranger-hive-plugin-properties"
+  ]["common.name.for.certificate"]
+  repo_config_username = config["configurations"]["ranger-hive-plugin-properties"][
+    "REPOSITORY_CONFIG_USERNAME"
+  ]
+
+  # ranger-env config
+  ranger_env = config["configurations"]["ranger-env"]
+
+  # create ranger-env config having external ranger credential properties
+  if not has_ranger_admin and enable_ranger_hive:
+    external_admin_username = default(
+      "/configurations/ranger-hive-plugin-properties/external_admin_username",
+      "admin",
     )
-
-    # ranger hive service name
-    repo_name = str(config["clusterName"]) + "_hive"
-    repo_name_value = config["configurations"]["ranger-hive-security"][
-        "ranger.plugin.hive.service.name"
-    ]
-    if not is_empty(repo_name_value) and repo_name_value != "{{repo_name}}":
-        repo_name = repo_name_value
-
-    jdbc_driver_class_name = config["configurations"]["ranger-hive-plugin-properties"][
-        "jdbc.driverClassName"
-    ]
-    common_name_for_certificate = config["configurations"][
-        "ranger-hive-plugin-properties"
-    ]["common.name.for.certificate"]
-    repo_config_username = config["configurations"]["ranger-hive-plugin-properties"][
-        "REPOSITORY_CONFIG_USERNAME"
-    ]
-
-    # ranger-env config
-    ranger_env = config["configurations"]["ranger-env"]
-
-    # create ranger-env config having external ranger credential properties
-    if not has_ranger_admin and enable_ranger_hive:
-        external_admin_username = default(
-            "/configurations/ranger-hive-plugin-properties/external_admin_username",
-            "admin",
-        )
-        external_admin_password = default(
-            "/configurations/ranger-hive-plugin-properties/external_admin_password",
-            "admin",
-        )
-        external_ranger_admin_username = default(
-            "/configurations/ranger-hive-plugin-properties/external_ranger_admin_username",
-            "amb_ranger_admin",
-        )
-        external_ranger_admin_password = default(
-            "/configurations/ranger-hive-plugin-properties/external_ranger_admin_password",
-            "amb_ranger_admin",
-        )
-        ranger_env = {}
-        ranger_env["admin_username"] = external_admin_username
-        ranger_env["admin_password"] = external_admin_password
-        ranger_env["ranger_admin_username"] = external_ranger_admin_username
-        ranger_env["ranger_admin_password"] = external_ranger_admin_password
-
-    ranger_plugin_properties = config["configurations"]["ranger-hive-plugin-properties"]
-    policy_user = config["configurations"]["ranger-hive-plugin-properties"][
-        "policy_user"
-    ]
-    repo_config_password = config["configurations"]["ranger-hive-plugin-properties"][
-        "REPOSITORY_CONFIG_PASSWORD"
-    ]
-
-    ranger_downloaded_custom_connector = None
-    ranger_previous_jdbc_jar_name = None
-    ranger_driver_curl_source = None
-    ranger_driver_curl_target = None
-    ranger_previous_jdbc_jar = None
-
-    if has_ranger_admin and stack_supports_ranger_audit_db:
-        # to get db connector related properties
-        xa_audit_db_flavor = config["configurations"]["admin-properties"]["DB_FLAVOR"]
-        (
-            ranger_jdbc_jar_name,
-            ranger_previous_jdbc_jar_name,
-            audit_jdbc_url,
-            jdbc_driver,
-        ) = get_audit_configs(config)
-
-        ranger_downloaded_custom_connector = format("{tmp_dir}/{ranger_jdbc_jar_name}")
-        ranger_driver_curl_source = format("{jdk_location}/{ranger_jdbc_jar_name}")
-        ranger_driver_curl_target = format("{hive_lib_dir}/{ranger_jdbc_jar_name}")
-        ranger_previous_jdbc_jar = format(
-            "{hive_lib_dir}/{ranger_previous_jdbc_jar_name}"
-        )
-        sql_connector_jar = ""
-
-    ranger_hive_url = (
-        format("{hive_url}/default;principal={hive_principal}")
-        if security_enabled
-        else hive_url
+    external_admin_password = default(
+      "/configurations/ranger-hive-plugin-properties/external_admin_password",
+      "admin",
     )
-    if stack_supports_ranger_hive_jdbc_url_change:
-        # ranger_hive_url = hive_jdbc_url if len(hive_server_hosts) > 0 else hsi_jdbc_url
-        ranger_hive_url = hive_jdbc_url
-
-    hive_ranger_plugin_config = {
-        "username": repo_config_username,
-        "password": repo_config_password,
-        "jdbc.driverClassName": jdbc_driver_class_name,
-        "jdbc.url": ranger_hive_url,
-        "commonNameForCertificate": common_name_for_certificate,
-    }
-
-    if security_enabled:
-        hive_ranger_plugin_config["policy.download.auth.users"] = hive_user
-        hive_ranger_plugin_config["tag.download.auth.users"] = hive_user
-        hive_ranger_plugin_config["policy.grantrevoke.auth.users"] = hive_user
-
-    custom_ranger_service_config = generate_ranger_service_config(
-        ranger_plugin_properties
+    external_ranger_admin_username = default(
+      "/configurations/ranger-hive-plugin-properties/external_ranger_admin_username",
+      "amb_ranger_admin",
     )
-    if len(custom_ranger_service_config) > 0:
-        hive_ranger_plugin_config.update(custom_ranger_service_config)
+    external_ranger_admin_password = default(
+      "/configurations/ranger-hive-plugin-properties/external_ranger_admin_password",
+      "amb_ranger_admin",
+    )
+    ranger_env = {}
+    ranger_env["admin_username"] = external_admin_username
+    ranger_env["admin_password"] = external_admin_password
+    ranger_env["ranger_admin_username"] = external_ranger_admin_username
+    ranger_env["ranger_admin_password"] = external_ranger_admin_password
 
-    hive_ranger_plugin_repo = {
-        "isEnabled": "true",
-        "configs": hive_ranger_plugin_config,
-        "description": "hive repo",
-        "name": repo_name,
-        "type": "hive",
-    }
+  ranger_plugin_properties = config["configurations"]["ranger-hive-plugin-properties"]
+  policy_user = config["configurations"]["ranger-hive-plugin-properties"]["policy_user"]
+  repo_config_password = config["configurations"]["ranger-hive-plugin-properties"][
+    "REPOSITORY_CONFIG_PASSWORD"
+  ]
 
-    xa_audit_db_password = ""
-    if (
-        not is_empty(config["configurations"]["admin-properties"]["audit_db_password"])
-        and stack_supports_ranger_audit_db
-        and has_ranger_admin
-    ):
-        xa_audit_db_password = config["configurations"]["admin-properties"][
-            "audit_db_password"
-        ]
+  ranger_downloaded_custom_connector = None
+  ranger_previous_jdbc_jar_name = None
+  ranger_driver_curl_source = None
+  ranger_driver_curl_target = None
+  ranger_previous_jdbc_jar = None
 
+  if has_ranger_admin and stack_supports_ranger_audit_db:
+    # to get db connector related properties
+    xa_audit_db_flavor = config["configurations"]["admin-properties"]["DB_FLAVOR"]
+    (
+      ranger_jdbc_jar_name,
+      ranger_previous_jdbc_jar_name,
+      audit_jdbc_url,
+      jdbc_driver,
+    ) = get_audit_configs(config)
+
+    ranger_downloaded_custom_connector = format("{tmp_dir}/{ranger_jdbc_jar_name}")
+    ranger_driver_curl_source = format("{jdk_location}/{ranger_jdbc_jar_name}")
+    ranger_driver_curl_target = format("{hive_lib_dir}/{ranger_jdbc_jar_name}")
+    ranger_previous_jdbc_jar = format("{hive_lib_dir}/{ranger_previous_jdbc_jar_name}")
+    sql_connector_jar = ""
+
+  ranger_hive_url = (
+    format("{hive_url}/default;principal={hive_principal}")
+    if security_enabled
+    else hive_url
+  )
+  if stack_supports_ranger_hive_jdbc_url_change:
+    # ranger_hive_url = hive_jdbc_url if len(hive_server_hosts) > 0 else hsi_jdbc_url
+    ranger_hive_url = hive_jdbc_url
+
+  hive_ranger_plugin_config = {
+    "username": repo_config_username,
+    "password": repo_config_password,
+    "jdbc.driverClassName": jdbc_driver_class_name,
+    "jdbc.url": ranger_hive_url,
+    "commonNameForCertificate": common_name_for_certificate,
+  }
+
+  if security_enabled:
+    hive_ranger_plugin_config["policy.download.auth.users"] = hive_user
+    hive_ranger_plugin_config["tag.download.auth.users"] = hive_user
+    hive_ranger_plugin_config["policy.grantrevoke.auth.users"] = hive_user
+
+  custom_ranger_service_config = generate_ranger_service_config(
+    ranger_plugin_properties
+  )
+  if len(custom_ranger_service_config) > 0:
+    hive_ranger_plugin_config.update(custom_ranger_service_config)
+
+  hive_ranger_plugin_repo = {
+    "isEnabled": "true",
+    "configs": hive_ranger_plugin_config,
+    "description": "hive repo",
+    "name": repo_name,
+    "type": "hive",
+  }
+
+  xa_audit_db_password = ""
+  if (
+    not is_empty(config["configurations"]["admin-properties"]["audit_db_password"])
+    and stack_supports_ranger_audit_db
+    and has_ranger_admin
+  ):
+    xa_audit_db_password = config["configurations"]["admin-properties"][
+      "audit_db_password"
+    ]
+
+  xa_audit_db_is_enabled = False
+  if xml_configurations_supported and stack_supports_ranger_audit_db:
+    xa_audit_db_is_enabled = config["configurations"]["ranger-hive-audit"][
+      "xasecure.audit.destination.db"
+    ]
+
+  xa_audit_hdfs_is_enabled = (
+    config["configurations"]["ranger-hive-audit"]["xasecure.audit.destination.hdfs"]
+    if xml_configurations_supported
+    else False
+  )
+  ssl_keystore_password = (
+    config["configurations"]["ranger-hive-policymgr-ssl"][
+      "xasecure.policymgr.clientssl.keystore.password"
+    ]
+    if xml_configurations_supported
+    else None
+  )
+  ssl_truststore_password = (
+    config["configurations"]["ranger-hive-policymgr-ssl"][
+      "xasecure.policymgr.clientssl.truststore.password"
+    ]
+    if xml_configurations_supported
+    else None
+  )
+  credential_file = format("/etc/ranger/{repo_name}/cred.jceks")
+
+  # for SQLA explicitly disable audit to DB for Ranger
+  if (
+    has_ranger_admin
+    and stack_supports_ranger_audit_db
+    and xa_audit_db_flavor.lower() == "sqla"
+  ):
     xa_audit_db_is_enabled = False
-    if xml_configurations_supported and stack_supports_ranger_audit_db:
-        xa_audit_db_is_enabled = config["configurations"]["ranger-hive-audit"][
-            "xasecure.audit.destination.db"
-        ]
-
-    xa_audit_hdfs_is_enabled = (
-        config["configurations"]["ranger-hive-audit"]["xasecure.audit.destination.hdfs"]
-        if xml_configurations_supported
-        else False
-    )
-    ssl_keystore_password = (
-        config["configurations"]["ranger-hive-policymgr-ssl"][
-            "xasecure.policymgr.clientssl.keystore.password"
-        ]
-        if xml_configurations_supported
-        else None
-    )
-    ssl_truststore_password = (
-        config["configurations"]["ranger-hive-policymgr-ssl"][
-            "xasecure.policymgr.clientssl.truststore.password"
-        ]
-        if xml_configurations_supported
-        else None
-    )
-    credential_file = format("/etc/ranger/{repo_name}/cred.jceks")
-
-    # for SQLA explicitly disable audit to DB for Ranger
-    if (
-        has_ranger_admin
-        and stack_supports_ranger_audit_db
-        and xa_audit_db_flavor.lower() == "sqla"
-    ):
-        xa_audit_db_is_enabled = False
 
 # ranger hive plugin section end
 
 # below property is used for cluster deployed in cloud env to create ranger hive service in ranger admin
 # need to add it as custom property
 ranger_hive_metastore_lookup = default(
-    "/configurations/ranger-hive-plugin-properties/ranger.service.config.param.enable.hive.metastore.lookup",
-    False,
+  "/configurations/ranger-hive-plugin-properties/ranger.service.config.param.enable.hive.metastore.lookup",
+  False,
 )
 
 if security_enabled:
-    hive_metastore_principal_with_host = hive_metastore_principal.replace(
-        "_HOST", hostname.lower()
-    )
+  hive_metastore_principal_with_host = hive_metastore_principal.replace(
+    "_HOST", hostname.lower()
+  )
 
 # replication directories
 hive_repl_cmrootdir = default("/configurations/hive-site/hive.repl.cmrootdir", None)
@@ -1074,42 +1063,42 @@ hive_repl_rootdir = default("/configurations/hive-site/hive.repl.rootdir", None)
 zk_quorum = ""
 zookeeper_port = default("/configurations/zoo.cfg/clientPort", None)
 if "zookeeper_server_hosts" in config["clusterHostInfo"]:
-    for host in config["clusterHostInfo"]["zookeeper_server_hosts"]:
-        if zk_quorum:
-            zk_quorum += ","
-        zk_quorum += host + ":" + str(zookeeper_port)
+  for host in config["clusterHostInfo"]["zookeeper_server_hosts"]:
+    if zk_quorum:
+      zk_quorum += ","
+    zk_quorum += host + ":" + str(zookeeper_port)
 
 
 # For druid metadata password
 druid_metadata_password = ""
 if (
-    "druid-common" in config["configurations"]
-    and "druid.metadata.storage.connector.password"
-    in config["configurations"]["druid-common"]
+  "druid-common" in config["configurations"]
+  and "druid.metadata.storage.connector.password"
+  in config["configurations"]["druid-common"]
 ):
-    druid_metadata_password = config["configurations"]["druid-common"][
-        "druid.metadata.storage.connector.password"
-    ]
+  druid_metadata_password = config["configurations"]["druid-common"][
+    "druid.metadata.storage.connector.password"
+  ]
 
 # For druid storage directory, hive will write segments here
 druid_storage_dir = ""
 if (
-    "druid-common" in config["configurations"]
-    and "druid.storage.storageDirectory" in config["configurations"]["druid-common"]
+  "druid-common" in config["configurations"]
+  and "druid.storage.storageDirectory" in config["configurations"]["druid-common"]
 ):
-    druid_storage_dir = config["configurations"]["druid-common"][
-        "druid.storage.storageDirectory"
-    ]
+  druid_storage_dir = config["configurations"]["druid-common"][
+    "druid.storage.storageDirectory"
+  ]
 
 # beeline-site config
 
 beeline_jdbc_url_default = default(
-    "/configurations/hive-env/beeline_jdbc_url_default", "container"
+  "/configurations/hive-env/beeline_jdbc_url_default", "container"
 )
 
 beeline_site_config = {
-    "beeline.hs2.jdbc.url.container": hive_jdbc_url,
-    "beeline.hs2.jdbc.url.default": beeline_jdbc_url_default,
+  "beeline.hs2.jdbc.url.container": hive_jdbc_url,
+  "beeline.hs2.jdbc.url.default": beeline_jdbc_url_default,
 }
 
 # if has_hive_interactive:

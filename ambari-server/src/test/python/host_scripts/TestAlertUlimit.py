@@ -23,35 +23,35 @@ from unittest import TestCase
 
 
 class TestAlertUlimit(TestCase):
-    @patch("resource.getrlimit")
-    def test_ulimits(self, ulimit_mock):
-        # OK
-        ulimit_mock.return_value = 1024, 1024
-        res = alert_ulimit.execute()
-        self.assertEqual(res, ("OK", ["Ulimit for open files (-n) is 1024"]))
+  @patch("resource.getrlimit")
+  def test_ulimits(self, ulimit_mock):
+    # OK
+    ulimit_mock.return_value = 1024, 1024
+    res = alert_ulimit.execute()
+    self.assertEqual(res, ("OK", ["Ulimit for open files (-n) is 1024"]))
 
-        # WARNING
-        ulimit_mock.return_value = 200000, 200000
-        res = alert_ulimit.execute()
-        self.assertEqual(
-            res,
-            (
-                "WARNING",
-                [
-                    "Ulimit for open files (-n) is 200000 which is higher or equal than warning value of 200000"
-                ],
-            ),
-        )
+    # WARNING
+    ulimit_mock.return_value = 200000, 200000
+    res = alert_ulimit.execute()
+    self.assertEqual(
+      res,
+      (
+        "WARNING",
+        [
+          "Ulimit for open files (-n) is 200000 which is higher or equal than warning value of 200000"
+        ],
+      ),
+    )
 
-        # OK
-        ulimit_mock.return_value = 1000000, 1000000
-        res = alert_ulimit.execute()
-        self.assertEqual(
-            res,
-            (
-                "CRITICAL",
-                [
-                    "Ulimit for open files (-n) is 1000000 which is higher or equal than critical value of 800000"
-                ],
-            ),
-        )
+    # OK
+    ulimit_mock.return_value = 1000000, 1000000
+    res = alert_ulimit.execute()
+    self.assertEqual(
+      res,
+      (
+        "CRITICAL",
+        [
+          "Ulimit for open files (-n) is 1000000 which is higher or equal than critical value of 800000"
+        ],
+      ),
+    )

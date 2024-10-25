@@ -31,11 +31,11 @@ config = Script.get_config()
 config_dir = None
 stack_root = None
 try:
-    # not used zookeeper_home_dir = os.environ["ZOOKEEPER_HOME"]
-    config_dir = os.environ["ZOOKEEPER_CONF_DIR"]
-    stack_root = os.environ["HADOOP_NODE_INSTALL_ROOT"]
+  # not used zookeeper_home_dir = os.environ["ZOOKEEPER_HOME"]
+  config_dir = os.environ["ZOOKEEPER_CONF_DIR"]
+  stack_root = os.environ["HADOOP_NODE_INSTALL_ROOT"]
 except:
-    pass
+  pass
 
 hadoop_user = config["configurations"]["cluster-env"]["hadoop.user.name"]
 zk_user = hadoop_user
@@ -48,11 +48,11 @@ syncLimit = config["configurations"]["zoo.cfg"]["syncLimit"]
 clientPort = config["configurations"]["zoo.cfg"]["clientPort"]
 
 if "zoo.cfg" in config["configurations"]:
-    zoo_cfg_properties_map = config["configurations"]["zoo.cfg"].copy()
-    # Fix the data dir - ZK won't start unless the backslashes are doubled
-    zoo_cfg_properties_map["dataDir"] = zk_data_dir
+  zoo_cfg_properties_map = config["configurations"]["zoo.cfg"].copy()
+  # Fix the data dir - ZK won't start unless the backslashes are doubled
+  zoo_cfg_properties_map["dataDir"] = zk_data_dir
 else:
-    zoo_cfg_properties_map = {}
+  zoo_cfg_properties_map = {}
 zoo_cfg_properties_map_length = len(zoo_cfg_properties_map)
 
 zookeeper_hosts = config["clusterHostInfo"]["zookeeper_server_hosts"]
@@ -60,7 +60,7 @@ zookeeper_hosts.sort()
 hostname = config["agentLevelParams"]["hostname"]
 
 _authentication = config["configurations"]["core-site"][
-    "hadoop.security.authentication"
+  "hadoop.security.authentication"
 ]
 security_enabled = not is_empty(_authentication) and _authentication == "kerberos"
 user_group = None
@@ -68,8 +68,8 @@ zookeeper_win_service_name = status_params.zookeeper_win_service_name
 
 # log4j.properties
 if ("zookeeper-log4j" in config["configurations"]) and (
-    "content" in config["configurations"]["zookeeper-log4j"]
+  "content" in config["configurations"]["zookeeper-log4j"]
 ):
-    log4j_props = config["configurations"]["zookeeper-log4j"]["content"]
+  log4j_props = config["configurations"]["zookeeper-log4j"]["content"]
 else:
-    log4j_props = None
+  log4j_props = None

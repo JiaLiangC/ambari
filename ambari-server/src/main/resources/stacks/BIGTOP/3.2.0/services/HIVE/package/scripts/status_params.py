@@ -34,15 +34,15 @@ from resource_management.libraries.script.script import Script
 # a map of the Ambari role to the component name
 # for use with <stack-root>/current/<component>
 SERVER_ROLE_DIRECTORY_MAP = {
-    "HIVE_METASTORE": "hive-metastore",
-    "HIVE_SERVER": "hive-server2",
-    "HIVE_CLIENT": "hive-client",
+  "HIVE_METASTORE": "hive-metastore",
+  "HIVE_SERVER": "hive-server2",
+  "HIVE_CLIENT": "hive-client",
 }
 
 # Either HIVE_METASTORE, HIVE_SERVER, HIVE_CLIENT
 role = default("/role", None)
 component_directory = Script.get_component_from_role(
-    SERVER_ROLE_DIRECTORY_MAP, "HIVE_CLIENT"
+  SERVER_ROLE_DIRECTORY_MAP, "HIVE_CLIENT"
 )
 
 config = Script.get_config()
@@ -65,7 +65,7 @@ POSSIBLE_DAEMON_NAMES = ["mysql", "mysqld", "mariadb"]
 hostname = config["agentLevelParams"]["hostname"]
 security_enabled = config["configurations"]["cluster-env"]["security_enabled"]
 kinit_path_local = get_kinit_path(
-    default("/configurations/kerberos-env/executable_search_paths", None)
+  default("/configurations/kerberos-env/executable_search_paths", None)
 )
 tmp_dir = Script.get_tmp_dir()
 hdfs_user = config["configurations"]["hadoop-env"]["hdfs_user"]

@@ -23,11 +23,9 @@ from resource_management.libraries.functions.get_path_from_url import get_path_f
 
 
 class TestGetPathFromUlr(TestCase):
-    def test_get_path_from_url(self):
-        self.assertEqual(
-            get_path_from_url("http://test.host:8888/test/path"), "test/path"
-        )
-        self.assertEqual(get_path_from_url("http://test.host/test/path"), "test/path")
-        self.assertEqual(get_path_from_url("test.host:8888/test/path"), "test/path")
-        self.assertEqual(get_path_from_url("test.host/test/path"), "test/path")
-        self.assertEqual(get_path_from_url("/test/path"), "test/path")
+  def test_get_path_from_url(self):
+    self.assertEqual(get_path_from_url("http://test.host:8888/test/path"), "test/path")
+    self.assertEqual(get_path_from_url("http://test.host/test/path"), "test/path")
+    self.assertEqual(get_path_from_url("test.host:8888/test/path"), "test/path")
+    self.assertEqual(get_path_from_url("test.host/test/path"), "test/path")
+    self.assertEqual(get_path_from_url("/test/path"), "test/path")

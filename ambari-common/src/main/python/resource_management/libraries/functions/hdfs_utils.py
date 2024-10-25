@@ -28,9 +28,9 @@ Check both dfs.http.policy and deprecated dfs.https.enable
 
 
 def is_https_enabled_in_hdfs(dfs_http_policy, dfs_https_enable):
-    https_enabled = False
-    if not is_empty(dfs_http_policy):
-        https_enabled = dfs_http_policy.lower() == "https_only"
-    elif not is_empty(dfs_https_enable):
-        https_enabled = dfs_https_enable
-    return https_enabled
+  https_enabled = False
+  if not is_empty(dfs_http_policy):
+    https_enabled = dfs_http_policy.lower() == "https_only"
+  elif not is_empty(dfs_https_enable):
+    https_enabled = dfs_https_enable
+  return https_enabled

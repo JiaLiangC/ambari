@@ -25,97 +25,89 @@ from mock.mock import patch
 from only_for_platform import get_platform, not_for_platform, PLATFORM_WINDOWS
 
 if get_platform() != PLATFORM_WINDOWS:
-    from validate_configs import ValidateConfigs
+  from validate_configs import ValidateConfigs
 
 
 @not_for_platform(PLATFORM_WINDOWS)
 class TestValidateConfigs(TestCase):
-    @patch("os.geteuid")
-    def test_check_users(self, geteuid_mock):
-        # if excecuting not by root
-        geteuid_mock.return_value = 1
+  @patch("os.geteuid")
+  def test_check_users(self, geteuid_mock):
+    # if excecuting not by root
+    geteuid_mock.return_value = 1
 
-        vc = ValidateConfigs()
-        params = {
-            "component_configurations/NAMENODE/hadoop-env/hdfs_user": "root",
-            "component_configurations/NAMENODE/hadoop-env/user_group": "root",
-        }
-        self.assertEqual(vc.check_users(params), True)
-        params = {
-            "component_configurations/NAMENODE/hadoop-env/hdfs_user": "root",
-            "component_configurations/NAMENODE/hadoop-env/user_group": "wrong_group",
-        }
-        self.assertEqual(vc.check_users(params), False)
-        params = {
-            "component_configurations/NAMENODE/hadoop-env/hdfs_user": "wrong_user",
-            "component_configurations/NAMENODE/hadoop-env/user_group": "root",
-        }
-        self.assertEqual(vc.check_users(params), False)
-        params = {
-            "component_configurations/NAMENODE/hadoop-env/hdfs_user": "wrong_user",
-            "component_configurations/NAMENODE/hadoop-env/user_group": "wrong_group",
-        }
-        self.assertEqual(vc.check_users(params), False)
+    vc = ValidateConfigs()
+    params = {
+      "component_configurations/NAMENODE/hadoop-env/hdfs_user": "root",
+      "component_configurations/NAMENODE/hadoop-env/user_group": "root",
+    }
+    self.assertEqual(vc.check_users(params), True)
+    params = {
+      "component_configurations/NAMENODE/hadoop-env/hdfs_user": "root",
+      "component_configurations/NAMENODE/hadoop-env/user_group": "wrong_group",
+    }
+    self.assertEqual(vc.check_users(params), False)
+    params = {
+      "component_configurations/NAMENODE/hadoop-env/hdfs_user": "wrong_user",
+      "component_configurations/NAMENODE/hadoop-env/user_group": "root",
+    }
+    self.assertEqual(vc.check_users(params), False)
+    params = {
+      "component_configurations/NAMENODE/hadoop-env/hdfs_user": "wrong_user",
+      "component_configurations/NAMENODE/hadoop-env/user_group": "wrong_group",
+    }
+    self.assertEqual(vc.check_users(params), False)
 
-    def test_check_user_in_group(self):
-        vc = ValidateConfigs()
+  def test_check_user_in_group(self):
+    vc = ValidateConfigs()
 
-        self.assertTrue(vc.check_user_in_group("root", "root"))
-        self.assertFalse(vc.check_user_in_group("root", "wrong_group"))
-        self.assertFalse(vc.check_user_in_group("wrong_user", "root"))
-        self.assertFalse(vc.check_user_in_group("wrong_user", "wrong_group"))
+    self.assertTrue(vc.check_user_in_group("root", "root"))
+    self.assertFalse(vc.check_user_in_group("root", "wrong_group"))
+    self.assertFalse(vc.check_user_in_group("wrong_user", "root"))
+    self.assertFalse(vc.check_user_in_group("wrong_user", "wrong_group"))
 
-    def test_check_directories(self):
-        temp_dir = tempfile.mkdtemp()
-        vc = ValidateConfigs()
+  def test_check_directories(self):
+    temp_dir = tempfile.mkdtemp()
+    vc = ValidateConfigs()
 
-        params = {
-            "component_configurations/NAMENODE/hadoop-env/hdfs_log_dir_prefix": "/"
-        }
+    params = {"component_configurations/NAMENODE/hadoop-env/hdfs_log_dir_prefix": "/"}
 
-        self.assertFalse(vc.check_directories(params))
+    self.assertFalse(vc.check_directories(params))
 
-        params = {
-            "component_configurations/NAMENODE/hadoop-env/hdfs_log_dir_prefix": temp_dir
-        }
+    params = {
+      "component_configurations/NAMENODE/hadoop-env/hdfs_log_dir_prefix": temp_dir
+    }
 
-        self.assertTrue(vc.check_directories(params))
+    self.assertTrue(vc.check_directories(params))
 
-        params = {
-            "component_configurations/NAMENODE/hadoop-env/hdfs_log_dir_prefix": temp_dir
-            + "/some_new_dir"
-        }
+    params = {
+      "component_configurations/NAMENODE/hadoop-env/hdfs_log_dir_prefix": temp_dir
+      + "/some_new_dir"
+    }
 
-        self.assertTrue(vc.check_directories(params))
+    self.assertTrue(vc.check_directories(params))
 
-    def test_flatten_dict(self):
-        init_dict = {"a": "a", "b": {"b": "b"}, "c": {"c": {"c": "c"}}}
+  def test_flatten_dict(self):
+    init_dict = {"a": "a", "b": {"b": "b"}, "c": {"c": {"c": "c"}}}
 
-        result_list = ["prefix/a/a", "prefix/c/c/c/c", "prefix/b/b/b"]
+    result_list = ["prefix/a/a", "prefix/c/c/c/c", "prefix/b/b/b"]
 
-        vc = ValidateConfigs()
+    vc = ValidateConfigs()
 
-        self.assertEqual(
-            vc.flatten_dict(init_dict, prefix="prefix"), sorted(result_list)
-        )
+    self.assertEqual(vc.flatten_dict(init_dict, prefix="prefix"), sorted(result_list))
 
-    def test_get_value(self):
-        params = {
-            "component_configurations/NAMENODE/hadoop-env/hdfs_user": "root",
-            "component_configurations/NAMENODE/hadoop-env/user_group": "${hdfs_user}",
-        }
+  def test_get_value(self):
+    params = {
+      "component_configurations/NAMENODE/hadoop-env/hdfs_user": "root",
+      "component_configurations/NAMENODE/hadoop-env/user_group": "${hdfs_user}",
+    }
 
-        vc = ValidateConfigs()
+    vc = ValidateConfigs()
 
-        self.assertEqual(
-            vc.get_value(
-                "component_configurations/NAMENODE/hadoop-env/hdfs_user", params
-            ),
-            "root",
-        )
-        self.assertEqual(
-            vc.get_value(
-                "component_configurations/NAMENODE/hadoop-env/user_group", params
-            ),
-            "root",
-        )
+    self.assertEqual(
+      vc.get_value("component_configurations/NAMENODE/hadoop-env/hdfs_user", params),
+      "root",
+    )
+    self.assertEqual(
+      vc.get_value("component_configurations/NAMENODE/hadoop-env/user_group", params),
+      "root",
+    )

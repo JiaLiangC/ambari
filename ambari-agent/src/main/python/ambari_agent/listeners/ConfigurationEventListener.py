@@ -27,54 +27,50 @@ logger = logging.getLogger(__name__)
 
 
 class ConfigurationEventListener(EventListener):
+  """
+  Listener of Constants.CONFIGURATIONS_TOPIC events from server.
+  """
+
+  def __init__(self, initializer_module):
+    super(ConfigurationEventListener, self).__init__(initializer_module)
+    self.configurations_cache = initializer_module.configurations_cache
+    self.recovery_manager = initializer_module.recovery_manager
+
+  def on_event(self, headers, message):
     """
-    Listener of Constants.CONFIGURATIONS_TOPIC events from server.
+    Is triggered when an event to Constants.CONFIGURATIONS_TOPIC topic is received from server.
+
+    @param headers: headers dictionary
+    @param message: message payload dictionary
     """
+    self.configurations_cache.timestamp = message.pop("timestamp")
 
-    def __init__(self, initializer_module):
-        super(ConfigurationEventListener, self).__init__(initializer_module)
-        self.configurations_cache = initializer_module.configurations_cache
-        self.recovery_manager = initializer_module.recovery_manager
+    # this kind of response is received if hash was identical. And server does not need to change anything
+    if message == {}:
+      return
 
-    def on_event(self, headers, message):
-        """
-        Is triggered when an event to Constants.CONFIGURATIONS_TOPIC topic is received from server.
+    self.configurations_cache.rewrite_cache(message["clusters"], message["hash"])
 
-        @param headers: headers dictionary
-        @param message: message payload dictionary
-        """
-        self.configurations_cache.timestamp = message.pop("timestamp")
+    if message["clusters"]:
+      # FIXME: Recovery manager does not support multiple cluster as of now.
+      self.recovery_manager.cluster_id = list(message["clusters"].keys())[0]
+      self.recovery_manager.on_config_update()
 
-        # this kind of response is received if hash was identical. And server does not need to change anything
-        if message == {}:
-            return
+  def get_handled_path(self):
+    return Constants.CONFIGURATIONS_TOPIC
 
-        self.configurations_cache.rewrite_cache(message["clusters"], message["hash"])
+  def get_log_message(self, headers, message_json):
+    """
+    This string will be used to log received messsage of this type.
+    Usually should be used if full dict is too big for logs and should shortened shortened or made more readable
+    """
+    try:
+      for cluster_id in message_json["clusters"]:
+        for config_type in message_json["clusters"][cluster_id]["configurations"]:
+          message_json["clusters"][cluster_id]["configurations"][config_type] = "..."
+    except KeyError:
+      pass
 
-        if message["clusters"]:
-            # FIXME: Recovery manager does not support multiple cluster as of now.
-            self.recovery_manager.cluster_id = list(message["clusters"].keys())[0]
-            self.recovery_manager.on_config_update()
-
-    def get_handled_path(self):
-        return Constants.CONFIGURATIONS_TOPIC
-
-    def get_log_message(self, headers, message_json):
-        """
-        This string will be used to log received messsage of this type.
-        Usually should be used if full dict is too big for logs and should shortened shortened or made more readable
-        """
-        try:
-            for cluster_id in message_json["clusters"]:
-                for config_type in message_json["clusters"][cluster_id][
-                    "configurations"
-                ]:
-                    message_json["clusters"][cluster_id]["configurations"][
-                        config_type
-                    ] = "..."
-        except KeyError:
-            pass
-
-        return super(ConfigurationEventListener, self).get_log_message(
-            headers, message_json
-        )
+    return super(ConfigurationEventListener, self).get_log_message(
+      headers, message_json
+    )

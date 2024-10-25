@@ -36,23 +36,21 @@ from resource_management.libraries.script import Script
 
 
 class HivePostUpgrade(Script):
-    def move_tables(self, env):
-        import params
+  def move_tables(self, env):
+    import params
 
-        env.set_params(params)
+    env.set_params(params)
 
-        create_hive_hdfs_dirs()
+    create_hive_hdfs_dirs()
 
-        target_version = upgrade_summary.get_target_version(service_name="HIVE")
+    target_version = upgrade_summary.get_target_version(service_name="HIVE")
 
-        hive_script = format("/usr/bigtop/{target_version}/usr/lib/hive/bin/hive")
-        cmd = format(
-            "{hive_script} --config /etc/hive/conf --service  strictmanagedmigration --hiveconf hive.strict.managed.tables=true  -m automatic  --modifyManagedTables --oldWarehouseRoot /apps/hive/warehouse"
-        )
-        Execute(
-            cmd, environment={"JAVA_HOME": params.java64_home}, user=params.hdfs_user
-        )
+    hive_script = format("/usr/bigtop/{target_version}/usr/lib/hive/bin/hive")
+    cmd = format(
+      "{hive_script} --config /etc/hive/conf --service  strictmanagedmigration --hiveconf hive.strict.managed.tables=true  -m automatic  --modifyManagedTables --oldWarehouseRoot /apps/hive/warehouse"
+    )
+    Execute(cmd, environment={"JAVA_HOME": params.java64_home}, user=params.hdfs_user)
 
 
 if __name__ == "__main__":
-    HivePostUpgrade().execute()
+  HivePostUpgrade().execute()

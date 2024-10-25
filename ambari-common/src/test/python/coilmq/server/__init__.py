@@ -23,23 +23,23 @@ limitations under the License."""
 
 
 class StompConnection(object, metaclass=abc.ABCMeta):
+  """
+  An "interface" for server implementation classes to "implement".
+
+  This class serves primarily as a means to document the API that CoilMQ will expect
+  the connection object to implement.
+
+  @ivar reliable_subscriber: Whether this client will ACK all messages.
+  @type reliable_subscriber: C{bool}
+  """
+
+  reliable_subscriber = False
+
+  @abc.abstractmethod
+  def send_frame(self, frame):
     """
-    An "interface" for server implementation classes to "implement".
+    Uses this connection implementation to send the specified frame to a connected client.
 
-    This class serves primarily as a means to document the API that CoilMQ will expect
-    the connection object to implement.
-
-    @ivar reliable_subscriber: Whether this client will ACK all messages.
-    @type reliable_subscriber: C{bool}
+    @param frame: The STOMP frame to send.
+    @type frame: C{stompclient.frame.Frame}
     """
-
-    reliable_subscriber = False
-
-    @abc.abstractmethod
-    def send_frame(self, frame):
-        """
-        Uses this connection implementation to send the specified frame to a connected client.
-
-        @param frame: The STOMP frame to send.
-        @type frame: C{stompclient.frame.Frame}
-        """

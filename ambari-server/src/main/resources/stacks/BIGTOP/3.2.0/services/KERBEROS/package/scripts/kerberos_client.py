@@ -22,85 +22,83 @@ from resource_management.core.exceptions import ClientComponentHasNoStatus
 from resource_management.libraries.script.script import Script
 from resource_management.libraries.functions import default
 from ambari_commons.kerberos.kerberos_common import (
-    write_krb5_conf,
-    clear_tmp_cache,
-    write_keytab_file,
-    delete_keytab_file,
-    find_missing_keytabs,
+  write_krb5_conf,
+  clear_tmp_cache,
+  write_keytab_file,
+  delete_keytab_file,
+  find_missing_keytabs,
 )
 
 
 class KerberosClient(Script):
-    def install(self, env):
-        install_packages = default(
-            "/configurations/kerberos-env/install_packages", "true"
+  def install(self, env):
+    install_packages = default("/configurations/kerberos-env/install_packages", "true")
+    if install_packages:
+      self.install_packages(env)
+    else:
+      print(
+        "Kerberos client packages are not being installed, manual installation is required."
+      )
+
+    self.configure(env)
+
+  def configure(self, env, upgrade_type=None, config_dir=None):
+    import params
+
+    env.set_params(params)
+    if params.manage_krb5_conf:
+      write_krb5_conf(params)
+    # delete krb cache to prevent using old krb tickets on fresh kerberos setup
+    clear_tmp_cache()
+
+  def status(self, env):
+    raise ClientComponentHasNoStatus()
+
+  def set_keytab(self, env):
+    import params
+
+    def output_hook(principal, keytab_file_path):
+      if principal is not None:
+        curr_content = Script.structuredOut
+
+        if "keytabs" not in curr_content:
+          curr_content["keytabs"] = {}
+
+        curr_content["keytabs"][principal.replace("_HOST", params.hostname)] = (
+          keytab_file_path
         )
-        if install_packages:
-            self.install_packages(env)
-        else:
-            print(
-                "Kerberos client packages are not being installed, manual installation is required."
-            )
 
-        self.configure(env)
+        self.put_structured_out(curr_content)
 
-    def configure(self, env, upgrade_type=None, config_dir=None):
-        import params
+    write_keytab_file(params, output_hook)
 
-        env.set_params(params)
-        if params.manage_krb5_conf:
-            write_krb5_conf(params)
-        # delete krb cache to prevent using old krb tickets on fresh kerberos setup
-        clear_tmp_cache()
+  def remove_keytab(self, env):
+    import params
 
-    def status(self, env):
-        raise ClientComponentHasNoStatus()
+    def output_hook(principal, keytab_file_path):
+      if principal is not None:
+        curr_content = Script.structuredOut
 
-    def set_keytab(self, env):
-        import params
+        if "removedKeytabs" not in curr_content:
+          curr_content["removedKeytabs"] = {}
+        curr_content["removedKeytabs"][principal.replace("_HOST", params.hostname)] = (
+          keytab_file_path
+        )
 
-        def output_hook(principal, keytab_file_path):
-            if principal is not None:
-                curr_content = Script.structuredOut
+        self.put_structured_out(curr_content)
 
-                if "keytabs" not in curr_content:
-                    curr_content["keytabs"] = {}
+    delete_keytab_file(params, output_hook)
 
-                curr_content["keytabs"][principal.replace("_HOST", params.hostname)] = (
-                    keytab_file_path
-                )
+  def check_keytabs(self, env):
+    import params
 
-                self.put_structured_out(curr_content)
+    def output_hook(missing_keytabs):
+      curr_content = Script.structuredOut
+      curr_content["missing_keytabs"] = missing_keytabs
+      self.put_structured_out(curr_content)
 
-        write_keytab_file(params, output_hook)
-
-    def remove_keytab(self, env):
-        import params
-
-        def output_hook(principal, keytab_file_path):
-            if principal is not None:
-                curr_content = Script.structuredOut
-
-                if "removedKeytabs" not in curr_content:
-                    curr_content["removedKeytabs"] = {}
-                curr_content["removedKeytabs"][
-                    principal.replace("_HOST", params.hostname)
-                ] = keytab_file_path
-
-                self.put_structured_out(curr_content)
-
-        delete_keytab_file(params, output_hook)
-
-    def check_keytabs(self, env):
-        import params
-
-        def output_hook(missing_keytabs):
-            curr_content = Script.structuredOut
-            curr_content["missing_keytabs"] = missing_keytabs
-            self.put_structured_out(curr_content)
-
-        find_missing_keytabs(params, output_hook)
+    find_missing_keytabs(params, output_hook)
 
 
 if __name__ == "__main__":
-    KerberosClient().execute()
+  KerberosClient().execute()

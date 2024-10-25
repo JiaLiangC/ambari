@@ -27,59 +27,59 @@ logger = logging.getLogger(__name__)
 
 
 class CommandsEventListener(EventListener):
+  """
+  Listener of Constants.CONFIGURATIONS_TOPIC events from server.
+  """
+
+  def __init__(self, initializer_module):
+    super(CommandsEventListener, self).__init__(initializer_module)
+    self.action_queue = initializer_module.action_queue
+
+  def on_event(self, headers, message):
     """
-    Listener of Constants.CONFIGURATIONS_TOPIC events from server.
+    Is triggered when an event to Constants.COMMANDS_TOPIC topic is received from server.
+
+    @param headers: headers dictionary
+    @param message: message payload dictionary
     """
+    ""
+    commands = []
+    cancel_commands = []
+    for cluster_id in message["clusters"].keys():
+      cluster_dict = message["clusters"][cluster_id]
 
-    def __init__(self, initializer_module):
-        super(CommandsEventListener, self).__init__(initializer_module)
-        self.action_queue = initializer_module.action_queue
+      if "commands" in cluster_dict:
+        commands += cluster_dict["commands"]
+      if "cancelCommands" in cluster_dict:
+        cancel_commands += cluster_dict["cancelCommands"]
 
-    def on_event(self, headers, message):
-        """
-        Is triggered when an event to Constants.COMMANDS_TOPIC topic is received from server.
+    for command in commands:
+      command["requiredConfigTimestamp"] = message["requiredConfigTimestamp"]
 
-        @param headers: headers dictionary
-        @param message: message payload dictionary
-        """
-        ""
-        commands = []
-        cancel_commands = []
-        for cluster_id in message["clusters"].keys():
-            cluster_dict = message["clusters"][cluster_id]
+    with self.action_queue.lock:
+      self.action_queue.cancel(cancel_commands)
+      self.action_queue.put(commands)
 
-            if "commands" in cluster_dict:
-                commands += cluster_dict["commands"]
-            if "cancelCommands" in cluster_dict:
-                cancel_commands += cluster_dict["cancelCommands"]
+  def get_handled_path(self):
+    return Constants.COMMANDS_TOPIC
 
-        for command in commands:
-            command["requiredConfigTimestamp"] = message["requiredConfigTimestamp"]
+  def get_log_message(self, headers, message_json):
+    """
+    This string will be used to log received messsage of this type.
+    Usually should be used if full dict is too big for logs and should shortened or made more readable
+    """
+    try:
+      for cluster_id in message_json["clusters"]:
+        for command in message_json["clusters"][cluster_id]["commands"]:
+          if "repositoryFile" in command:
+            command["repositoryFile"] = "..."
+          if "commandParams" in command:
+            command["commandParams"] = "..."
+          if "clusterHostInfo" in command:
+            command["clusterHostInfo"] = "..."
+          if "componentVersionMap" in command:
+            command["componentVersionMap"] = "..."
+    except KeyError:
+      pass
 
-        with self.action_queue.lock:
-            self.action_queue.cancel(cancel_commands)
-            self.action_queue.put(commands)
-
-    def get_handled_path(self):
-        return Constants.COMMANDS_TOPIC
-
-    def get_log_message(self, headers, message_json):
-        """
-        This string will be used to log received messsage of this type.
-        Usually should be used if full dict is too big for logs and should shortened or made more readable
-        """
-        try:
-            for cluster_id in message_json["clusters"]:
-                for command in message_json["clusters"][cluster_id]["commands"]:
-                    if "repositoryFile" in command:
-                        command["repositoryFile"] = "..."
-                    if "commandParams" in command:
-                        command["commandParams"] = "..."
-                    if "clusterHostInfo" in command:
-                        command["clusterHostInfo"] = "..."
-                    if "componentVersionMap" in command:
-                        command["componentVersionMap"] = "..."
-        except KeyError:
-            pass
-
-        return super(CommandsEventListener, self).get_log_message(headers, message_json)
+    return super(CommandsEventListener, self).get_log_message(headers, message_json)

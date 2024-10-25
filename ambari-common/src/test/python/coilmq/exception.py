@@ -22,24 +22,24 @@ limitations under the License."""
 
 
 class ProtocolError(RuntimeError):
-    """
-    Represents an error at the STOMP protocol layer.
-    """
+  """
+  Represents an error at the STOMP protocol layer.
+  """
 
 
 class ConfigError(RuntimeError):
-    """
-    Represents an error in the configuration of the application.
-    """
+  """
+  Represents an error in the configuration of the application.
+  """
 
 
 class AuthError(RuntimeError):
-    """
-    Represents an authentication or authorization error.
-    """
+  """
+  Represents an authentication or authorization error.
+  """
 
 
 class ClientDisconnected(Exception):
-    """
-    A signal that client has disconnected (so we shouldn't try to keep reading from the client).
-    """
+  """
+  A signal that client has disconnected (so we shouldn't try to keep reading from the client).
+  """

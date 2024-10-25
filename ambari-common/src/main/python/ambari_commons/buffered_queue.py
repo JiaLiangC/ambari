@@ -22,79 +22,79 @@ from threading import Event
 
 
 class BufferedQueue(object):
+  """
+  Thread safe buffered queue
+  """
+
+  def __init__(self):
+    self.__queue = deque()
+    self.__data_ready_event = Event()
+
+    self.__queue_end = False  # sign that buffer is empty
+    self.__queue_feeder_end = False  # EOF sign
+
+  def __notify_ready(self):
     """
-    Thread safe buffered queue
+    Notify reader that data is ready to be consumed
     """
+    self.__queue_end = False
+    self.__data_ready_event.set()
 
-    def __init__(self):
-        self.__queue = deque()
-        self.__data_ready_event = Event()
+  def notify_end(self):
+    """
+    Notify queue about end of producer stream, allow consumer to read buffer to the end
+    """
+    self.__queue_feeder_end = True
+    self.__notify_ready()
 
-        self.__queue_end = False  # sign that buffer is empty
-        self.__queue_feeder_end = False  # EOF sign
+  def put(self, item):
+    """
+    Add object to the buffer
+    """
+    if self.__queue_feeder_end:
+      raise IndexError("'notify_end' was called, queue is locked for writing")
 
-    def __notify_ready(self):
-        """
-        Notify reader that data is ready to be consumed
-        """
-        self.__queue_end = False
-        self.__data_ready_event.set()
+    self.__queue.append(item)
+    self.__notify_ready()
 
-    def notify_end(self):
-        """
-        Notify queue about end of producer stream, allow consumer to read buffer to the end
-        """
-        self.__queue_feeder_end = True
-        self.__notify_ready()
+  def get(self, timeout=None):
+    """
+    Read data from buffer at least in `timeout` seconds. If no data ready in `timeout`, would be returned None.
 
-    def put(self, item):
-        """
-        Add object to the buffer
-        """
-        if self.__queue_feeder_end:
-            raise IndexError("'notify_end' was called, queue is locked for writing")
+    :param timeout: amount of time to wait for data availability
+    :return: data or None if no data were read in `timeout` or no more data available (buffer is empty)
+    """
+    try:
+      if not self.__queue_feeder_end:
+        self.__data_ready_event.wait(timeout)
+      return self.__queue.popleft()
+    except IndexError:
+      if timeout:
+        return None
 
-        self.__queue.append(item)
-        self.__notify_ready()
-
-    def get(self, timeout=None):
-        """
-        Read data from buffer at least in `timeout` seconds. If no data ready in `timeout`, would be returned None.
-
-        :param timeout: amount of time to wait for data availability
-        :return: data or None if no data were read in `timeout` or no more data available (buffer is empty)
-        """
-        try:
-            if not self.__queue_feeder_end:
-                self.__data_ready_event.wait(timeout)
-            return self.__queue.popleft()
-        except IndexError:
-            if timeout:
-                return None
-
-            self.__queue_end = True
-        finally:
-            if self.count == 0:
-                self.__data_ready_event.clear()
-                if self.__queue_feeder_end:
-                    self.__queue_end = True
-
-    def reset(self):
-        """
-        Clear instance state and data
-        """
+      self.__queue_end = True
+    finally:
+      if self.count == 0:
         self.__data_ready_event.clear()
-        self.__queue.clear()
-        self.__queue_feeder_end = False
-        self.__queue_end = False
+        if self.__queue_feeder_end:
+          self.__queue_end = True
 
-    @property
-    def empty(self):
-        if self.__queue_feeder_end and self.count == 0:
-            return True
+  def reset(self):
+    """
+    Clear instance state and data
+    """
+    self.__data_ready_event.clear()
+    self.__queue.clear()
+    self.__queue_feeder_end = False
+    self.__queue_end = False
 
-        return self.__queue_end
+  @property
+  def empty(self):
+    if self.__queue_feeder_end and self.count == 0:
+      return True
 
-    @property
-    def count(self):
-        return len(self.__queue)
+    return self.__queue_end
+
+  @property
+  def count(self):
+    return len(self.__queue)

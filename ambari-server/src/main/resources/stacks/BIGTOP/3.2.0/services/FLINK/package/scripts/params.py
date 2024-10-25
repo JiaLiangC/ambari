@@ -31,18 +31,18 @@ from resource_management.libraries.functions.version import format_stack_version
 from resource_management.libraries.functions.default import default
 from resource_management.libraries.functions import get_kinit_path
 from resource_management.libraries.functions.get_not_managed_resources import (
-    get_not_managed_resources,
+  get_not_managed_resources,
 )
 from resource_management.libraries.script.script import Script
 
 # a map of the Ambari role to the component name
 # for use with <stack-root>/current/<component>
 SERVER_ROLE_DIRECTORY_MAP = {
-    "FLINK_HISTORYSERVER": "flink-historyserver",
-    "FLINK_CLIENT": "flink-client",
+  "FLINK_HISTORYSERVER": "flink-historyserver",
+  "FLINK_CLIENT": "flink-client",
 }
 component_directory = Script.get_component_from_role(
-    SERVER_ROLE_DIRECTORY_MAP, "FLINK_CLIENT"
+  SERVER_ROLE_DIRECTORY_MAP, "FLINK_CLIENT"
 )
 
 # server configurations
@@ -79,12 +79,12 @@ flink_log_dir = config["configurations"]["flink-env"]["flink_log_dir"]
 flink_pid_dir = config["configurations"]["flink-env"]["flink_pid_dir"]
 
 kinit_path_local = get_kinit_path(
-    default("/configurations/kerberos-env/executable_search_paths", None)
+  default("/configurations/kerberos-env/executable_search_paths", None)
 )
 security_enabled = config["configurations"]["cluster-env"]["security_enabled"]
 smokeuser = config["configurations"]["cluster-env"]["smokeuser"]
 smokeuser_principal = config["configurations"]["cluster-env"][
-    "smokeuser_principal_name"
+  "smokeuser_principal_name"
 ]
 smoke_user_keytab = config["configurations"]["cluster-env"]["smokeuser_keytab"]
 
@@ -95,40 +95,40 @@ flink_group = config["configurations"]["flink-env"]["flink_group"]
 flink_hdfs_user_dir = format("/user/{flink_user}")
 
 flink_log4j_cli_properties = config["configurations"]["flink-log4j-cli-properties"][
-    "content"
+  "content"
 ]
 flink_log4j_console_properties = config["configurations"][
-    "flink-log4j-console-properties"
+  "flink-log4j-console-properties"
 ]["content"]
 flink_log4j_properties = config["configurations"]["flink-log4j-properties"]["content"]
 flink_log4j_session_properties = config["configurations"][
-    "flink-log4j-session-properties"
+  "flink-log4j-session-properties"
 ]["content"]
 
 jobmanager_archive_fs_dir = config["configurations"]["flink-conf"][
-    "jobmanager.archive.fs.dir"
+  "jobmanager.archive.fs.dir"
 ]
 historyserver_archive_fs_dir = config["configurations"]["flink-conf"][
-    "historyserver.archive.fs.dir"
+  "historyserver.archive.fs.dir"
 ]
 historyserver_web_port = config["configurations"]["flink-conf"][
-    "historyserver.web.port"
+  "historyserver.web.port"
 ]
 historyserver_archive_fs_refresh_interval = config["configurations"]["flink-conf"][
-    "historyserver.archive.fs.refresh-interval"
+  "historyserver.archive.fs.refresh-interval"
 ]
 
 flink_history_server_start = format(
-    "export HADOOP_CLASSPATH=`hadoop classpath`;{flink_dir}/bin/historyserver.sh start"
+  "export HADOOP_CLASSPATH=`hadoop classpath`;{flink_dir}/bin/historyserver.sh start"
 )
 flink_history_server_stop = format("{flink_dir}/bin/historyserver.sh stop")
 flink_history_server_pid_file = status_params.flink_history_server_pid_file
 
 security_kerberos_login_principal = config["configurations"]["flink-conf"][
-    "security.kerberos.login.principal"
+  "security.kerberos.login.principal"
 ]
 security_kerberos_login_keytab = config["configurations"]["flink-conf"][
-    "security.kerberos.login.keytab"
+  "security.kerberos.login.keytab"
 ]
 
 import functools
@@ -136,17 +136,17 @@ import functools
 # create partial functions with common arguments for every HdfsResource call
 # to create/delete hdfs directory/file/copyfromlocal we need to call params.HdfsResource in code
 HdfsResource = functools.partial(
-    HdfsResource,
-    user=hdfs_user,
-    hdfs_resource_ignore_file=hdfs_resource_ignore_file,
-    security_enabled=security_enabled,
-    keytab=hdfs_user_keytab,
-    kinit_path_local=kinit_path_local,
-    hadoop_bin_dir=hadoop_bin_dir,
-    hadoop_conf_dir=hadoop_conf_dir,
-    principal_name=hdfs_principal_name,
-    hdfs_site=hdfs_site,
-    default_fs=default_fs,
-    immutable_paths=get_not_managed_resources(),
-    dfs_type=dfs_type,
+  HdfsResource,
+  user=hdfs_user,
+  hdfs_resource_ignore_file=hdfs_resource_ignore_file,
+  security_enabled=security_enabled,
+  keytab=hdfs_user_keytab,
+  kinit_path_local=kinit_path_local,
+  hadoop_bin_dir=hadoop_bin_dir,
+  hadoop_conf_dir=hadoop_conf_dir,
+  principal_name=hdfs_principal_name,
+  hdfs_site=hdfs_site,
+  default_fs=default_fs,
+  immutable_paths=get_not_managed_resources(),
+  dfs_type=dfs_type,
 )

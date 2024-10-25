@@ -35,74 +35,72 @@ ULIMIT_CMD = "ulimit -n"
 
 
 def os_run_os_command(cmd, env=None, shell=False, cwd=None):
-    print_info_msg("about to run command: " + str(cmd))
-    if type(cmd) == str:
-        cmd = shlex.split(cmd)
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stdin=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-        cwd=cwd,
-        shell=shell,
-        universal_newlines=True,
-    )
-    print_info_msg("\nprocess_pid=" + str(process.pid))
-    (stdoutdata, stderrdata) = process.communicate()
-    return process.returncode, stdoutdata, stderrdata
+  print_info_msg("about to run command: " + str(cmd))
+  if type(cmd) == str:
+    cmd = shlex.split(cmd)
+  process = subprocess.Popen(
+    cmd,
+    stdout=subprocess.PIPE,
+    stdin=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    env=env,
+    cwd=cwd,
+    shell=shell,
+    universal_newlines=True,
+  )
+  print_info_msg("\nprocess_pid=" + str(process.pid))
+  (stdoutdata, stderrdata) = process.communicate()
+  return process.returncode, stdoutdata, stderrdata
 
 
 def os_change_owner(filePath, user, recursive):
-    if recursive:
-        params = " -R -L"
-    else:
-        params = ""
-    command = NR_CHOWN_CMD.format(params, user, filePath)
-    retcode, out, err = os_run_os_command(command)
-    if retcode != 0:
-        print_warning_msg(WARN_MSG.format(command, filePath, err))
+  if recursive:
+    params = " -R -L"
+  else:
+    params = ""
+  command = NR_CHOWN_CMD.format(params, user, filePath)
+  retcode, out, err = os_run_os_command(command)
+  if retcode != 0:
+    print_warning_msg(WARN_MSG.format(command, filePath, err))
 
 
 def os_is_root():
-    """
-    Checks effective UUID
-    Returns True if a program is running under root-level privileges.
-    """
-    return os.geteuid() == 0
+  """
+  Checks effective UUID
+  Returns True if a program is running under root-level privileges.
+  """
+  return os.geteuid() == 0
 
 
 def os_set_file_permissions(file, mod, recursive, user):
-    if recursive:
-        params = " -R "
-    else:
-        params = ""
-    command = NR_CHMOD_CMD.format(params, mod, file)
-    retcode, out, err = os_run_os_command(command)
-    if retcode != 0:
-        print_warning_msg(WARN_MSG.format(command, file, err))
-    os_change_owner(file, user, recursive)
+  if recursive:
+    params = " -R "
+  else:
+    params = ""
+  command = NR_CHMOD_CMD.format(params, mod, file)
+  retcode, out, err = os_run_os_command(command)
+  if retcode != 0:
+    print_warning_msg(WARN_MSG.format(command, file, err))
+  os_change_owner(file, user, recursive)
 
 
 def os_set_open_files_limit(maxOpenFiles):
-    command = "%s %s" % (ULIMIT_CMD, str(maxOpenFiles))
-    os_run_os_command(command)
+  command = "%s %s" % (ULIMIT_CMD, str(maxOpenFiles))
+  os_run_os_command(command)
 
 
 def os_getpass(prompt):
-    return getpass.unix_getpass(prompt)
+  return getpass.unix_getpass(prompt)
 
 
 def os_is_service_exist(serviceName):
-    if os.path.exists("/run/systemd/system/"):
-        return (
-            os.popen(
-                'systemctl list-units --full -all | grep "%s.service"' % serviceName
-            )
-            .read()
-            .strip()
-            != ""
-        )
+  if os.path.exists("/run/systemd/system/"):
+    return (
+      os.popen('systemctl list-units --full -all | grep "%s.service"' % serviceName)
+      .read()
+      .strip()
+      != ""
+    )
 
-    status = os.system("service %s status >/dev/null 2>&1" % serviceName)
-    return status != 256
+  status = os.system("service %s status >/dev/null 2>&1" % serviceName)
+  return status != 256

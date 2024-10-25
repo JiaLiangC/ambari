@@ -24,7 +24,7 @@ from resource_management.libraries.functions.format import format
 
 
 def prestart(env):
-    from scripts import params
+  from scripts import params
 
-    if params.version and params.stack_supports_rolling_upgrade:
-        stack_select.select_packages(params.version)
+  if params.version and params.stack_supports_rolling_upgrade:
+    stack_select.select_packages(params.version)

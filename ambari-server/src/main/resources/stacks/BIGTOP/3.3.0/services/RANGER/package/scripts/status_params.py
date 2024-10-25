@@ -38,5 +38,5 @@ stack_version_formatted_major = format_stack_version(stack_version_unformatted)
 ranger_admin_pid_file = format("{ranger_pid_dir}/rangeradmin.pid")
 ranger_usersync_pid_file = format("{ranger_pid_dir}/usersync.pid")
 stack_supports_pid = stack_version_formatted and check_stack_feature(
-    StackFeature.RANGER_PID_SUPPORT, stack_version_formatted
+  StackFeature.RANGER_PID_SUPPORT, stack_version_formatted
 )

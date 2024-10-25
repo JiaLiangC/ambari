@@ -26,33 +26,33 @@ from ambari_agent.Utils import Utils
 
 
 class Register:
-    """Registering with the server. Get the hardware profile and
-    declare success for now"""
+  """Registering with the server. Get the hardware profile and
+  declare success for now"""
 
-    def __init__(self, config):
-        self.config = config
-        self.hardware = Hardware(self.config)
-        self.init_time_ms = int(1000 * time.time())
+  def __init__(self, config):
+    self.config = config
+    self.hardware = Hardware(self.config)
+    self.init_time_ms = int(1000 * time.time())
 
-    def build(self, response_id="-1"):
-        timestamp = int(time.time() * 1000)
+  def build(self, response_id="-1"):
+    timestamp = int(time.time() * 1000)
 
-        hostInfo = HostInfo(self.config)
-        agentEnv = {}
-        hostInfo.register(agentEnv, runExpensiveChecks=True)
+    hostInfo = HostInfo(self.config)
+    agentEnv = {}
+    hostInfo.register(agentEnv, runExpensiveChecks=True)
 
-        current_ping_port = self.config.get("agent", "ping_port")
+    current_ping_port = self.config.get("agent", "ping_port")
 
-        register = {
-            "id": int(response_id),
-            "timestamp": timestamp,
-            "hostname": hostname.hostname(self.config),
-            "currentPingPort": int(current_ping_port),
-            "publicHostname": hostname.public_hostname(self.config),
-            "hardwareProfile": self.hardware.get(),
-            "agentEnv": agentEnv,
-            "agentVersion": Utils.read_agent_version(self.config),
-            "prefix": self.config.get("agent", "prefix"),
-            "agentStartTime": self.init_time_ms,
-        }
-        return register
+    register = {
+      "id": int(response_id),
+      "timestamp": timestamp,
+      "hostname": hostname.hostname(self.config),
+      "currentPingPort": int(current_ping_port),
+      "publicHostname": hostname.public_hostname(self.config),
+      "hardwareProfile": self.hardware.get(),
+      "agentEnv": agentEnv,
+      "agentVersion": Utils.read_agent_version(self.config),
+      "prefix": self.config.get("agent", "prefix"),
+      "agentStartTime": self.init_time_ms,
+    }
+    return register

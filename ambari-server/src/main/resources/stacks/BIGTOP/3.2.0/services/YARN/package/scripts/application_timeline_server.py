@@ -26,11 +26,11 @@ from resource_management.libraries.functions.constants import StackFeature
 from resource_management.libraries.functions.stack_features import check_stack_feature
 from resource_management.libraries.functions import check_process_status
 from resource_management.libraries.functions.security_commons import (
-    build_expectations,
-    cached_kinit_executor,
-    get_params_from_filesystem,
-    validate_security_config_properties,
-    FILE_TYPE_XML,
+  build_expectations,
+  cached_kinit_executor,
+  get_params_from_filesystem,
+  validate_security_config_properties,
+  FILE_TYPE_XML,
 )
 from resource_management.libraries.functions.format import format
 from resource_management.core.logger import Logger
@@ -43,78 +43,78 @@ from ambari_commons.os_family_impl import OsFamilyImpl
 
 
 class ApplicationTimelineServer(Script):
-    def install(self, env):
-        self.install_packages(env)
+  def install(self, env):
+    self.install_packages(env)
 
-    def start(self, env, upgrade_type=None):
-        import params
+  def start(self, env, upgrade_type=None):
+    import params
 
-        env.set_params(params)
-        self.configure(env)  # FOR SECURITY
-        service("timelineserver", action="start")
+    env.set_params(params)
+    self.configure(env)  # FOR SECURITY
+    service("timelineserver", action="start")
 
-    def stop(self, env, upgrade_type=None):
-        import params
+  def stop(self, env, upgrade_type=None):
+    import params
 
-        env.set_params(params)
-        service("timelineserver", action="stop")
+    env.set_params(params)
+    service("timelineserver", action="stop")
 
-    def configure(self, env):
-        import params
+  def configure(self, env):
+    import params
 
-        env.set_params(params)
-        yarn(name="apptimelineserver")
+    env.set_params(params)
+    yarn(name="apptimelineserver")
 
 
 @OsFamilyImpl(os_family=OSConst.WINSRV_FAMILY)
 class ApplicationTimelineServerWindows(ApplicationTimelineServer):
-    def status(self, env):
-        service("timelineserver", action="status")
+  def status(self, env):
+    service("timelineserver", action="status")
 
 
 @OsFamilyImpl(os_family=OsFamilyImpl.DEFAULT)
 class ApplicationTimelineServerDefault(ApplicationTimelineServer):
-    def pre_upgrade_restart(self, env, upgrade_type=None):
-        Logger.info("Executing Stack Upgrade pre-restart")
-        import params
+  def pre_upgrade_restart(self, env, upgrade_type=None):
+    Logger.info("Executing Stack Upgrade pre-restart")
+    import params
 
-        env.set_params(params)
+    env.set_params(params)
 
-        if params.version and check_stack_feature(
-            StackFeature.ROLLING_UPGRADE, params.version
-        ):
-            stack_select.select_packages(params.version)
+    if params.version and check_stack_feature(
+      StackFeature.ROLLING_UPGRADE, params.version
+    ):
+      stack_select.select_packages(params.version)
 
-    def status(self, env):
-        import status_params
+  def status(self, env):
+    import status_params
 
-        env.set_params(status_params)
-        check_process_status(status_params.yarn_historyserver_pid_file)
+    env.set_params(status_params)
+    check_process_status(status_params.yarn_historyserver_pid_file)
 
-    def get_log_folder(self):
-        import params
+  def get_log_folder(self):
+    import params
 
-        return params.yarn_log_dir
+    return params.yarn_log_dir
 
-    def get_user(self):
-        import params
+  def get_user(self):
+    import params
 
-        return params.yarn_user
+    return params.yarn_user
 
-    def get_pid_files(self):
-        import status_params
+  def get_pid_files(self):
+    import status_params
 
-        Execute(
-            format(
-                "mv {status_params.yarn_historyserver_pid_file_old} {status_params.yarn_historyserver_pid_file}"
-            ),
-            only_if=format(
-                "test -e {status_params.yarn_historyserver_pid_file_old}",
-                user=status_params.yarn_user,
-            ),
-        )
-        return [status_params.yarn_historyserver_pid_file]
+    Execute(
+      format(
+        "mv {status_params.yarn_historyserver_pid_file_old} {status_params.yarn_historyserver_pid_file}"
+      ),
+      only_if=format(
+        "test -e {status_params.yarn_historyserver_pid_file_old}",
+        user=status_params.yarn_user,
+      ),
+    )
+    return [status_params.yarn_historyserver_pid_file]
 
 
 if __name__ == "__main__":
-    ApplicationTimelineServer().execute()
+  ApplicationTimelineServer().execute()

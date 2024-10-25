@@ -27,12 +27,12 @@ from resource_management.libraries.functions.decorator import retry
 from resource_management.libraries.functions.default import default
 from resource_management.libraries.functions.format import format
 from resource_management.libraries.functions.check_process_status import (
-    check_process_status,
+  check_process_status,
 )
 from resource_management.libraries.resources.execute_hadoop import ExecuteHadoop
 from resource_management.libraries.functions import Direction, upgrade_summary
 from resource_management.libraries.functions.namenode_ha_utils import (
-    get_name_service_by_hostname,
+  get_name_service_by_hostname,
 )
 from ambari_commons import OSCheck, OSConst
 from ambari_commons.os_family_impl import OsFamilyImpl, OsFamilyFuncImpl
@@ -40,9 +40,9 @@ from utils import get_dfsrouteradmin_base_command
 from utils import set_up_zkfc_security
 
 if OSCheck.is_windows_family():
-    from resource_management.libraries.functions.windows_service_utils import (
-        check_windows_service_status,
-    )
+  from resource_management.libraries.functions.windows_service_utils import (
+    check_windows_service_status,
+  )
 
 from resource_management.core.exceptions import Fail
 from resource_management.core.logger import Logger
@@ -53,43 +53,41 @@ from setup_ranger_hdfs import setup_ranger_hdfs, create_ranger_audit_hdfs_direct
 
 @OsFamilyFuncImpl(os_family=OsFamilyImpl.DEFAULT)
 def router(action=None, hdfs_binary=None, env=None):
-    if action is None:
-        raise Fail('"action" parameter is required for function router().')
+  if action is None:
+    raise Fail('"action" parameter is required for function router().')
 
-    if action in ["start", "stop"] and hdfs_binary is None:
-        raise Fail('"hdfs_binary" parameter is required for function router().')
+  if action in ["start", "stop"] and hdfs_binary is None:
+    raise Fail('"hdfs_binary" parameter is required for function router().')
 
-    if action == "configure":
-        import params
+  if action == "configure":
+    import params
 
-        set_up_zkfc_security(params)
-    elif action == "start":
-        import params
+    set_up_zkfc_security(params)
+  elif action == "start":
+    import params
 
-        service(
-            action="start",
-            name="dfsrouter",
-            user=params.hdfs_user,
-            create_pid_dir=True,
-            create_log_dir=True,
-        )
+    service(
+      action="start",
+      name="dfsrouter",
+      user=params.hdfs_user,
+      create_pid_dir=True,
+      create_log_dir=True,
+    )
 
-        if params.security_enabled:
-            Execute(
-                format(
-                    "{kinit_path_local} -kt {hdfs_user_keytab} {hdfs_principal_name}"
-                ),
-                user=params.hdfs_user,
-            )
+    if params.security_enabled:
+      Execute(
+        format("{kinit_path_local} -kt {hdfs_user_keytab} {hdfs_principal_name}"),
+        user=params.hdfs_user,
+      )
 
-        name_service = get_name_service_by_hostname(params.hdfs_site, params.hostname)
-        ensure_safemode_off = True
+    name_service = get_name_service_by_hostname(params.hdfs_site, params.hostname)
+    ensure_safemode_off = True
 
-    elif action == "stop":
-        import params
+  elif action == "stop":
+    import params
 
-        service(action="stop", name="dfsrouter", user=params.hdfs_user)
-    elif action == "status":
-        import status_params
+    service(action="stop", name="dfsrouter", user=params.hdfs_user)
+  elif action == "status":
+    import status_params
 
-        check_process_status(status_params.router_pid_file)
+    check_process_status(status_params.router_pid_file)

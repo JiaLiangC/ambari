@@ -34,25 +34,23 @@ from only_for_platform import os_distro_value
 
 
 class TestCertGeneration(TestCase):
-    @patch.object(
-        OSCheck, "os_distribution", new=MagicMock(return_value=os_distro_value)
-    )
-    def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        config = AmbariConfig.AmbariConfig()
-        config.set("server", "hostname", "example.com")
-        config.set("server", "url_port", "777")
-        config.set("security", "keysdir", self.tmpdir)
-        config.set("security", "server_crt", "ca.crt")
-        server_hostname = config.get("server", "hostname")
-        self.certMan = CertificateManager(config, server_hostname)
+  @patch.object(OSCheck, "os_distribution", new=MagicMock(return_value=os_distro_value))
+  def setUp(self):
+    self.tmpdir = tempfile.mkdtemp()
+    config = AmbariConfig.AmbariConfig()
+    config.set("server", "hostname", "example.com")
+    config.set("server", "url_port", "777")
+    config.set("security", "keysdir", self.tmpdir)
+    config.set("security", "server_crt", "ca.crt")
+    server_hostname = config.get("server", "hostname")
+    self.certMan = CertificateManager(config, server_hostname)
 
-    @patch.object(os, "chmod")
-    def test_generation(self, chmod_mock):
-        self.certMan.genAgentCrtReq("/dummy_dir/hostname.key")
-        self.assertTrue(chmod_mock.called)
-        self.assertTrue(os.path.exists(self.certMan.getAgentKeyName()))
-        self.assertTrue(os.path.exists(self.certMan.getAgentCrtReqName()))
+  @patch.object(os, "chmod")
+  def test_generation(self, chmod_mock):
+    self.certMan.genAgentCrtReq("/dummy_dir/hostname.key")
+    self.assertTrue(chmod_mock.called)
+    self.assertTrue(os.path.exists(self.certMan.getAgentKeyName()))
+    self.assertTrue(os.path.exists(self.certMan.getAgentCrtReqName()))
 
-    def tearDown(self):
-        shutil.rmtree(self.tmpdir)
+  def tearDown(self):
+    shutil.rmtree(self.tmpdir)

@@ -29,46 +29,46 @@ from ambari_server import BackupRestore
 
 
 class TestBKRestore(unittest.TestCase):
-    @patch("os.walk")
-    @patch("zipfile.ZipFile")
-    @patch.object(BackupRestore, "zipdir")
-    def test_perform_backup(self, zipdir_mock, zipfile_mock, oswalk_mock):
-        # set up the mocks
-        files_mock = MagicMock()
-        files_mock.__iter__.return_value = ["file1", "file2"]
-        path_mock = MagicMock()
-        zipname_mock = MagicMock()
+  @patch("os.walk")
+  @patch("zipfile.ZipFile")
+  @patch.object(BackupRestore, "zipdir")
+  def test_perform_backup(self, zipdir_mock, zipfile_mock, oswalk_mock):
+    # set up the mocks
+    files_mock = MagicMock()
+    files_mock.__iter__.return_value = ["file1", "file2"]
+    path_mock = MagicMock()
+    zipname_mock = MagicMock()
 
-        bkRestore = BackupRestore.BackupRestore(files_mock, zipname_mock, path_mock)
-        bkRestore.perform_backup()
+    bkRestore = BackupRestore.BackupRestore(files_mock, zipname_mock, path_mock)
+    bkRestore.perform_backup()
 
-        self.assertEqual(zipfile_mock.call_count, 1)
-        self.assertEqual(zipdir_mock.call_count, 1)
+    self.assertEqual(zipfile_mock.call_count, 1)
+    self.assertEqual(zipdir_mock.call_count, 1)
 
-        zipfile_mock.side_effect = Exception("Invalid path!")
-        try:
-            bkRestore.perform_backup()
-            self.fail("should throw exception")
-        except:
-            self.assertTrue(True)
+    zipfile_mock.side_effect = Exception("Invalid path!")
+    try:
+      bkRestore.perform_backup()
+      self.fail("should throw exception")
+    except:
+      self.assertTrue(True)
 
-    @patch("zipfile.ZipFile")
-    @patch.object(BackupRestore, "unzip")
-    def test_perform_restore(self, unzip_mock, zipfile_mock):
-        # set up the mocks
-        path_mock = MagicMock()
-        zipname_mock = MagicMock()
-        files_mock = MagicMock()
-        files_mock.__iter__.return_value = ["file1", "file2"]
+  @patch("zipfile.ZipFile")
+  @patch.object(BackupRestore, "unzip")
+  def test_perform_restore(self, unzip_mock, zipfile_mock):
+    # set up the mocks
+    path_mock = MagicMock()
+    zipname_mock = MagicMock()
+    files_mock = MagicMock()
+    files_mock.__iter__.return_value = ["file1", "file2"]
 
-        bkRestore = BackupRestore.BackupRestore(files_mock, zipname_mock, path_mock)
-        bkRestore.perform_restore()
+    bkRestore = BackupRestore.BackupRestore(files_mock, zipname_mock, path_mock)
+    bkRestore.perform_restore()
 
-        self.assertEqual(unzip_mock.call_count, 1)
+    self.assertEqual(unzip_mock.call_count, 1)
 
-        unzip_mock.side_effect = Exception("Invalid path!")
-        try:
-            bkRestore.perform_restore()
-            self.fail("should throw exception")
-        except:
-            self.assertTrue(True)
+    unzip_mock.side_effect = Exception("Invalid path!")
+    try:
+      bkRestore.perform_restore()
+      self.fail("should throw exception")
+    except:
+      self.assertTrue(True)

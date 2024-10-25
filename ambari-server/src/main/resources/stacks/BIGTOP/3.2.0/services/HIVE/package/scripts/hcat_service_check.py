@@ -29,70 +29,68 @@ from ambari_commons import OSConst
 
 
 def hcat_service_check():
-    import params
+  import params
 
-    unique = get_unique_id_and_date()
-    output_file = format("{hive_apps_whs_dir}/hcatsmoke{unique}")
-    test_cmd = format("fs -test -e {output_file}")
+  unique = get_unique_id_and_date()
+  output_file = format("{hive_apps_whs_dir}/hcatsmoke{unique}")
+  test_cmd = format("fs -test -e {output_file}")
 
-    if params.security_enabled:
-        kinit_cmd = format(
-            "{kinit_path_local} -kt {smoke_user_keytab} {smokeuser_principal}; "
-        )
-    else:
-        kinit_cmd = ""
+  if params.security_enabled:
+    kinit_cmd = format(
+      "{kinit_path_local} -kt {smoke_user_keytab} {smokeuser_principal}; "
+    )
+  else:
+    kinit_cmd = ""
 
-    File(
-        format("{tmp_dir}/hcatSmoke.sh"), content=StaticFile("hcatSmoke.sh"), mode=0o755
+  File(format("{tmp_dir}/hcatSmoke.sh"), content=StaticFile("hcatSmoke.sh"), mode=0o755)
+
+  prepare_cmd = format(
+    "{kinit_cmd}env JAVA_HOME={java64_home} {tmp_dir}/hcatSmoke.sh hcatsmoke{unique} prepare {purge_tables}"
+  )
+
+  exec_path = params.execute_path
+  if params.version and params.stack_root:
+    upgrade_hive_bin = format("{hive_home}/bin")
+    exec_path = (
+      os.environ["PATH"]
+      + os.pathsep
+      + params.hadoop_bin_dir
+      + os.pathsep
+      + upgrade_hive_bin
     )
 
-    prepare_cmd = format(
-        "{kinit_cmd}env JAVA_HOME={java64_home} {tmp_dir}/hcatSmoke.sh hcatsmoke{unique} prepare {purge_tables}"
-    )
+  Execute(
+    prepare_cmd,
+    tries=3,
+    user=params.smokeuser,
+    try_sleep=5,
+    path=["/usr/sbin", "/usr/local/bin", "/bin", "/usr/bin", exec_path],
+    logoutput=True,
+  )
 
-    exec_path = params.execute_path
-    if params.version and params.stack_root:
-        upgrade_hive_bin = format("{hive_home}/bin")
-        exec_path = (
-            os.environ["PATH"]
-            + os.pathsep
-            + params.hadoop_bin_dir
-            + os.pathsep
-            + upgrade_hive_bin
-        )
-
+  if params.security_enabled:
     Execute(
-        prepare_cmd,
-        tries=3,
-        user=params.smokeuser,
-        try_sleep=5,
-        path=["/usr/sbin", "/usr/local/bin", "/bin", "/usr/bin", exec_path],
-        logoutput=True,
+      format("{kinit_path_local} -kt {hdfs_user_keytab} {hdfs_principal_name}"),
+      user=params.hdfs_user,
     )
 
-    if params.security_enabled:
-        Execute(
-            format("{kinit_path_local} -kt {hdfs_user_keytab} {hdfs_principal_name}"),
-            user=params.hdfs_user,
-        )
+  ExecuteHadoop(
+    test_cmd,
+    user=params.hdfs_user,
+    logoutput=True,
+    conf_dir=params.hadoop_conf_dir,
+    bin_dir=params.execute_path,
+  )
 
-    ExecuteHadoop(
-        test_cmd,
-        user=params.hdfs_user,
-        logoutput=True,
-        conf_dir=params.hadoop_conf_dir,
-        bin_dir=params.execute_path,
-    )
+  cleanup_cmd = format(
+    "{kinit_cmd} {tmp_dir}/hcatSmoke.sh hcatsmoke{unique} cleanup {purge_tables}"
+  )
 
-    cleanup_cmd = format(
-        "{kinit_cmd} {tmp_dir}/hcatSmoke.sh hcatsmoke{unique} cleanup {purge_tables}"
-    )
-
-    Execute(
-        cleanup_cmd,
-        tries=3,
-        user=params.smokeuser,
-        try_sleep=5,
-        path=["/usr/sbin", "/usr/local/bin", "/bin", "/usr/bin", exec_path],
-        logoutput=True,
-    )
+  Execute(
+    cleanup_cmd,
+    tries=3,
+    user=params.smokeuser,
+    try_sleep=5,
+    path=["/usr/sbin", "/usr/local/bin", "/bin", "/usr/bin", exec_path],
+    logoutput=True,
+  )

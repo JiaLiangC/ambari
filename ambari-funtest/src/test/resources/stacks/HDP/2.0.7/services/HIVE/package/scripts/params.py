@@ -25,15 +25,15 @@ import status_params
 config = Script.get_config()
 
 hive_metastore_user_name = config["configurations"]["hive-site"][
-    "javax.jdo.option.ConnectionUserName"
+  "javax.jdo.option.ConnectionUserName"
 ]
 hive_server_conf_dir = "/etc/hive/conf.server"
 hive_jdbc_connection_url = config["configurations"]["hive-site"][
-    "javax.jdo.option.ConnectionURL"
+  "javax.jdo.option.ConnectionURL"
 ]
 
 hive_metastore_user_passwd = config["configurations"]["hive-site"][
-    "javax.jdo.option.ConnectionPassword"
+  "javax.jdo.option.ConnectionPassword"
 ]
 
 # users
@@ -41,12 +41,12 @@ hive_user = config["configurations"]["global"]["hive_user"]
 hive_lib = "/usr/lib/hive/lib/"
 # JDBC driver jar name
 hive_jdbc_driver = config["configurations"]["hive-site"][
-    "javax.jdo.option.ConnectionDriverName"
+  "javax.jdo.option.ConnectionDriverName"
 ]
 if hive_jdbc_driver == "com.mysql.jdbc.Driver":
-    jdbc_jar_name = "mysql-connector-java.jar"
+  jdbc_jar_name = "mysql-connector-java.jar"
 elif hive_jdbc_driver == "oracle.jdbc.driver.OracleDriver":
-    jdbc_jar_name = "ojdbc6.jar"
+  jdbc_jar_name = "ojdbc6.jar"
 
 check_db_connection_jar_name = "DBConnectionVerification.jar"
 check_db_connection_jar = format("/usr/lib/ambari-agent/{check_db_connection_jar_name}")
@@ -63,15 +63,15 @@ smoke_test_path = "/tmp/hiveserver2Smoke.sh"
 smoke_user_keytab = config["configurations"]["global"]["smokeuser_keytab"]
 
 _authentication = config["configurations"]["core-site"][
-    "hadoop.security.authentication"
+  "hadoop.security.authentication"
 ]
 security_enabled = not is_empty(_authentication) and _authentication == "kerberos"
 
 kinit_path_local = functions.get_kinit_path(
-    default("/configurations/kerberos-env/executable_search_paths", None)
+  default("/configurations/kerberos-env/executable_search_paths", None)
 )
 hive_metastore_keytab_path = config["configurations"]["hive-site"][
-    "hive.metastore.kerberos.keytab.file"
+  "hive.metastore.kerberos.keytab.file"
 ]
 
 # hive_env

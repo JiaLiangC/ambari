@@ -32,37 +32,37 @@ from ambari_commons.os_family_impl import OsFamilyImpl
 
 
 class YarnClient(Script):
-    def install(self, env):
-        self.install_packages(env)
-        self.configure(env)
+  def install(self, env):
+    self.install_packages(env)
+    self.configure(env)
 
-    def configure(self, env):
-        import params
+  def configure(self, env):
+    import params
 
-        env.set_params(params)
-        yarn()
+    env.set_params(params)
+    yarn()
 
-    def status(self, env):
-        raise ClientComponentHasNoStatus()
+  def status(self, env):
+    raise ClientComponentHasNoStatus()
 
 
 @OsFamilyImpl(os_family=OSConst.WINSRV_FAMILY)
 class YarnClientWindows(YarnClient):
-    pass
+  pass
 
 
 @OsFamilyImpl(os_family=OsFamilyImpl.DEFAULT)
 class YarnClientDefault(YarnClient):
-    def pre_upgrade_restart(self, env, upgrade_type=None):
-        import params
+  def pre_upgrade_restart(self, env, upgrade_type=None):
+    import params
 
-        env.set_params(params)
+    env.set_params(params)
 
-        if params.version and check_stack_feature(
-            StackFeature.ROLLING_UPGRADE, params.version
-        ):
-            stack_select.select_packages(params.version)
+    if params.version and check_stack_feature(
+      StackFeature.ROLLING_UPGRADE, params.version
+    ):
+      stack_select.select_packages(params.version)
 
 
 if __name__ == "__main__":
-    YarnClient().execute()
+  YarnClient().execute()

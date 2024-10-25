@@ -23,18 +23,18 @@ from threading import Thread
 
 
 def write_function(path, handle, interval):
-    with open(path) as f:
-        for line in f:
-            handle.write(line)
-            handle.flush()
-            time.sleep(interval)
+  with open(path) as f:
+    for line in f:
+      handle.write(line)
+      handle.flush()
+      time.sleep(interval)
 
 
 thread = Thread(target=write_function, args=("balancer.out", sys.stdout, 1.5))
 thread.start()
 
 threaderr = Thread(
-    target=write_function, args=("balancer.err", sys.stderr, 1.5 * 0.023)
+  target=write_function, args=("balancer.err", sys.stderr, 1.5 * 0.023)
 )
 threaderr.start()
 
@@ -42,8 +42,8 @@ thread.join()
 
 
 def rebalancer_out():
-    write_function("balancer.out", sys.stdout)
+  write_function("balancer.out", sys.stdout)
 
 
 def rebalancer_err():
-    write_function("balancer.err", sys.stdout)
+  write_function("balancer.err", sys.stdout)

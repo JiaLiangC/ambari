@@ -27,17 +27,17 @@ __all__ = ["generate_logfeeder_input_config"]
 
 
 def generate_logfeeder_input_config(type, content):
-    """
-    :param type: type of the logfeeder input config (most likely a service name: hdfs),
-    it will be generated as input.config-<type>.json in logfeeder config folder
-    :param content: generated template for the input config json file (you can use Template or InlineTemplate)
-    """
-    import params
+  """
+  :param type: type of the logfeeder input config (most likely a service name: hdfs),
+  it will be generated as input.config-<type>.json in logfeeder config folder
+  :param content: generated template for the input config json file (you can use Template or InlineTemplate)
+  """
+  import params
 
-    Directory(LOGFEEDER_CONF_DIR, mode=0o755, cd_access="a", create_parents=True)
-    input_file_name = "input.config-" + type + ".json"
-    Logger.info(
-        "Generate Log Feeder config file: "
-        + os.path.join(LOGFEEDER_CONF_DIR, input_file_name)
-    )
-    File(os.path.join(LOGFEEDER_CONF_DIR, input_file_name), content=content, mode=0o644)
+  Directory(LOGFEEDER_CONF_DIR, mode=0o755, cd_access="a", create_parents=True)
+  input_file_name = "input.config-" + type + ".json"
+  Logger.info(
+    "Generate Log Feeder config file: "
+    + os.path.join(LOGFEEDER_CONF_DIR, input_file_name)
+  )
+  File(os.path.join(LOGFEEDER_CONF_DIR, input_file_name), content=content, mode=0o644)

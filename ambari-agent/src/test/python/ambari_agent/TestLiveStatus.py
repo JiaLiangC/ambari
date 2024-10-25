@@ -30,37 +30,35 @@ from only_for_platform import os_distro_value
 
 
 class TestLiveStatus(TestCase):
-    def setUp(self):
-        # disable stdout
-        out = io.StringIO()
-        sys.stdout = out
+  def setUp(self):
+    # disable stdout
+    out = io.StringIO()
+    sys.stdout = out
 
-    def tearDown(self):
-        # enable stdout
-        sys.stdout = sys.__stdout__
+  def tearDown(self):
+    # enable stdout
+    sys.stdout = sys.__stdout__
 
-    @patch.object(
-        OSCheck, "os_distribution", new=MagicMock(return_value=os_distro_value)
-    )
-    @patch.object(ActualConfigHandler.ActualConfigHandler, "read_actual_component")
-    def test_build_predefined(self, read_actual_component_mock):
-        read_actual_component_mock.return_value = "actual_component"
-        """
+  @patch.object(OSCheck, "os_distribution", new=MagicMock(return_value=os_distro_value))
+  @patch.object(ActualConfigHandler.ActualConfigHandler, "read_actual_component")
+  def test_build_predefined(self, read_actual_component_mock):
+    read_actual_component_mock.return_value = "actual_component"
+    """
     Tests that if live status us defined (using default parameter),
     then no StatusCheck is executed
     """
-        config = AmbariConfig().getConfig()
-        config.set("agent", "prefix", "ambari_agent" + os.sep + "dummy_files")
-        livestatus = LiveStatus(
-            "", "SOME_UNKNOWN_SERVICE", "SOME_UNKNOWN_COMPONENT", {}, config, {}
-        )
-        result = livestatus.build(component_status="STARTED")
-        result_str = pprint.pformat(result)
-        self.assertEqual(
-            result_str,
-            "{'clusterName': '',\n "
-            "'componentName': 'SOME_UNKNOWN_COMPONENT',\n "
-            "'configurationTags': 'actual_component',\n "
-            "'msg': '',\n 'serviceName': 'SOME_UNKNOWN_SERVICE',\n "
-            "'stackVersion': '',\n 'status': 'STARTED'}",
-        )
+    config = AmbariConfig().getConfig()
+    config.set("agent", "prefix", "ambari_agent" + os.sep + "dummy_files")
+    livestatus = LiveStatus(
+      "", "SOME_UNKNOWN_SERVICE", "SOME_UNKNOWN_COMPONENT", {}, config, {}
+    )
+    result = livestatus.build(component_status="STARTED")
+    result_str = pprint.pformat(result)
+    self.assertEqual(
+      result_str,
+      "{'clusterName': '',\n "
+      "'componentName': 'SOME_UNKNOWN_COMPONENT',\n "
+      "'configurationTags': 'actual_component',\n "
+      "'msg': '',\n 'serviceName': 'SOME_UNKNOWN_SERVICE',\n "
+      "'stackVersion': '',\n 'status': 'STARTED'}",
+    )

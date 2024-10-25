@@ -30,47 +30,47 @@ from resource_management.libraries.script.script import Script
 
 
 class HCatClient(Script):
-    def install(self, env):
-        import params
+  def install(self, env):
+    import params
 
-        self.install_packages(env)
-        self.configure(env)
+    self.install_packages(env)
+    self.configure(env)
 
-    def configure(self, env):
-        import params
+  def configure(self, env):
+    import params
 
-        env.set_params(params)
-        hcat()
+    env.set_params(params)
+    hcat()
 
-    def status(self, env):
-        raise ClientComponentHasNoStatus()
+  def status(self, env):
+    raise ClientComponentHasNoStatus()
 
-    def pre_upgrade_restart(self, env, upgrade_type=None):
-        """
-        Execute <stack-selector-tool> before reconfiguring this client to the new stack version.
+  def pre_upgrade_restart(self, env, upgrade_type=None):
+    """
+    Execute <stack-selector-tool> before reconfiguring this client to the new stack version.
 
-        :param env:
-        :param upgrade_type:
-        :return:
-        """
-        Logger.info("Executing Hive HCat Client Stack Upgrade pre-restart")
+    :param env:
+    :param upgrade_type:
+    :return:
+    """
+    Logger.info("Executing Hive HCat Client Stack Upgrade pre-restart")
 
-        import params
+    import params
 
-        env.set_params(params)
+    env.set_params(params)
 
-        # this function should not execute if the stack version does not support rolling upgrade
-        if not (
-            params.version
-            and check_stack_feature(StackFeature.ROLLING_UPGRADE, params.version)
-        ):
-            return
+    # this function should not execute if the stack version does not support rolling upgrade
+    if not (
+      params.version
+      and check_stack_feature(StackFeature.ROLLING_UPGRADE, params.version)
+    ):
+      return
 
-        # HCat client doesn't have a first-class entry in <stack-selector-tool>. Since clients always
-        # update after daemons, this ensures that the hcat directories are correct on hosts
-        # which do not include the WebHCat daemon
-        stack_select.select_packages(params.version)
+    # HCat client doesn't have a first-class entry in <stack-selector-tool>. Since clients always
+    # update after daemons, this ensures that the hcat directories are correct on hosts
+    # which do not include the WebHCat daemon
+    stack_select.select_packages(params.version)
 
 
 if __name__ == "__main__":
-    HCatClient().execute()
+  HCatClient().execute()

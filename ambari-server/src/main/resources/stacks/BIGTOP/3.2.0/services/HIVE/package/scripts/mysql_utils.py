@@ -28,21 +28,21 @@ from resource_management.core.resources.system import Execute
 
 
 def mysql_configure():
-    import params
+  import params
 
-    # required for running hive
-    for mysql_configname in params.mysql_confignames:
-        if os.path.isfile(mysql_configname):
-            replace_bind_address = (
-                "sed",
-                "-i",
-                "s|^bind-address[ \t]*=.*|bind-address = 0.0.0.0|",
-                mysql_configname,
-            )
-            Execute(
-                replace_bind_address,
-                sudo=True,
-            )
+  # required for running hive
+  for mysql_configname in params.mysql_confignames:
+    if os.path.isfile(mysql_configname):
+      replace_bind_address = (
+        "sed",
+        "-i",
+        "s|^bind-address[ \t]*=.*|bind-address = 0.0.0.0|",
+        mysql_configname,
+      )
+      Execute(
+        replace_bind_address,
+        sudo=True,
+      )
 
-    # this also will start mysql-server
-    mysql_users.mysql_adduser()
+  # this also will start mysql-server
+  mysql_users.mysql_adduser()

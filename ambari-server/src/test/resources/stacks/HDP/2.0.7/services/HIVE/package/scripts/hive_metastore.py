@@ -26,39 +26,39 @@ from hive_service import hive_service
 
 
 class HiveMetastore(Script):
-    def install(self, env):
-        self.install_packages(env)
-        self.configure(env)
+  def install(self, env):
+    self.install_packages(env)
+    self.configure(env)
 
-    def configure(self, env):
-        import params
+  def configure(self, env):
+    import params
 
-        env.set_params(params)
+    env.set_params(params)
 
-        hive(name="metastore")
+    hive(name="metastore")
 
-    def start(self, env):
-        import params
+  def start(self, env):
+    import params
 
-        env.set_params(params)
-        self.configure(env)  # FOR SECURITY
-        hive_service("metastore", action="start")
+    env.set_params(params)
+    self.configure(env)  # FOR SECURITY
+    hive_service("metastore", action="start")
 
-    def stop(self, env):
-        import params
+  def stop(self, env):
+    import params
 
-        env.set_params(params)
+    env.set_params(params)
 
-        hive_service("metastore", action="stop")
+    hive_service("metastore", action="stop")
 
-    def status(self, env):
-        import status_params
+  def status(self, env):
+    import status_params
 
-        env.set_params(status_params)
-        pid_file = format("{hive_pid_dir}/{hive_metastore_pid}")
-        # Recursively check all existing gmetad pid files
-        check_process_status(pid_file)
+    env.set_params(status_params)
+    pid_file = format("{hive_pid_dir}/{hive_metastore_pid}")
+    # Recursively check all existing gmetad pid files
+    check_process_status(pid_file)
 
 
 if __name__ == "__main__":
-    HiveMetastore().execute()
+  HiveMetastore().execute()

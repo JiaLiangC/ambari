@@ -31,30 +31,30 @@ from setup_flink import *
 
 
 class FlinkClient(Script):
-    def configure(self, env, config_dir=None, upgrade_type=None):
-        import params
+  def configure(self, env, config_dir=None, upgrade_type=None):
+    import params
 
-        env.set_params(params)
-        setup_flink(env, "client", upgrade_type=upgrade_type, action="config")
+    env.set_params(params)
+    setup_flink(env, "client", upgrade_type=upgrade_type, action="config")
 
-    def install(self, env):
-        import params
+  def install(self, env):
+    import params
 
-        self.install_packages(env)
-        self.configure(env, config_dir=params.flink_config_dir)
+    self.install_packages(env)
+    self.configure(env, config_dir=params.flink_config_dir)
 
-    def status(self, env):
-        raise ClientComponentHasNoStatus()
+  def status(self, env):
+    raise ClientComponentHasNoStatus()
 
-    def pre_upgrade_restart(self, env, upgrade_type=None):
-        import params
+  def pre_upgrade_restart(self, env, upgrade_type=None):
+    import params
 
-        env.set_params(params)
-        if params.version and check_stack_feature(
-            StackFeature.ROLLING_UPGRADE, params.version
-        ):
-            stack_select.select_packages(params.version)
+    env.set_params(params)
+    if params.version and check_stack_feature(
+      StackFeature.ROLLING_UPGRADE, params.version
+    ):
+      stack_select.select_packages(params.version)
 
 
 if __name__ == "__main__":
-    FlinkClient().execute()
+  FlinkClient().execute()

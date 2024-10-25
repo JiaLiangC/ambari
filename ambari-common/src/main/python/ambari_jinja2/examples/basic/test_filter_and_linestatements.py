@@ -3,7 +3,7 @@ from ambari_jinja2 import Environment
 
 
 env = Environment(
-    line_statement_prefix="%", variable_start_string="${", variable_end_string="}"
+  line_statement_prefix="%", variable_start_string="${", variable_end_string="}"
 )
 tmpl = env.from_string("""\
 % macro foo()

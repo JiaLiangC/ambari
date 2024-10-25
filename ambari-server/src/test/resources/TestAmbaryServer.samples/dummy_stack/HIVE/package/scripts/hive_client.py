@@ -25,20 +25,20 @@ from scripts.hive import hive
 
 
 class HiveClient(Script):
-    def install(self, env):
-        self.install_packages(env)
-        self.configure(env)
+  def install(self, env):
+    self.install_packages(env)
+    self.configure(env)
 
-    def configure(self, env):
-        from scripts import params
+  def configure(self, env):
+    from scripts import params
 
-        env.set_params(params)
+    env.set_params(params)
 
-        hive(name="client")
+    hive(name="client")
 
-    def status(self, env):
-        raise ClientComponentHasNoStatus()
+  def status(self, env):
+    raise ClientComponentHasNoStatus()
 
 
 if __name__ == "__main__":
-    HiveClient().execute()
+  HiveClient().execute()

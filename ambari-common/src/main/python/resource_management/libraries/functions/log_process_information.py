@@ -26,26 +26,26 @@ __all__ = ["log_process_information"]
 
 
 def log_process_information(logger):
-    """
-    Check if certain configuration sent from the server has been received.
-    """
+  """
+  Check if certain configuration sent from the server has been received.
+  """
 
-    from ambari_commons.shell import shellRunner
+  from ambari_commons.shell import shellRunner
 
-    if OSCheck.is_windows_family():
-        cmd_list = [
-            "WMIC path win32_process get Caption,Processid,Commandline",
-            "netstat -an",
-        ]
-    else:
-        cmd_list = ["export COLUMNS=9999 ; ps faux", "netstat -tulpn"]
+  if OSCheck.is_windows_family():
+    cmd_list = [
+      "WMIC path win32_process get Caption,Processid,Commandline",
+      "netstat -an",
+    ]
+  else:
+    cmd_list = ["export COLUMNS=9999 ; ps faux", "netstat -tulpn"]
 
-    shell_runner = shellRunner()
+  shell_runner = shellRunner()
 
-    for cmd in cmd_list:
-        ret = shell_runner.run(cmd)
-        logger.info(
-            "Command '{0}' returned {1}. {2}{3}".format(
-                cmd, ret["exitCode"], ret["error"], ret["output"]
-            )
-        )
+  for cmd in cmd_list:
+    ret = shell_runner.run(cmd)
+    logger.info(
+      "Command '{0}' returned {1}. {2}{3}".format(
+        cmd, ret["exitCode"], ret["error"], ret["output"]
+      )
+    )

@@ -27,18 +27,18 @@ LAST_LINES_DEFAULT_OUTPUT_COUNT = 40
 
 
 def show_logs(log_dir, user, lines_count=LAST_LINES_DEFAULT_OUTPUT_COUNT, mask="*"):
-    """
-    This should be used in 'except' block of start or stop Execute of services or of command which checks if start was fine.
-    It allows to give additional debugging information without need to have access to log files.
+  """
+  This should be used in 'except' block of start or stop Execute of services or of command which checks if start was fine.
+  It allows to give additional debugging information without need to have access to log files.
 
-    Don't forget to call "raise" after using the function or else the original exception will be masked.
-    """
+  Don't forget to call "raise" after using the function or else the original exception will be masked.
+  """
 
-    Execute(
-        format(
-            "find {log_dir} -maxdepth 1 -type f -name '{mask}' -exec echo '==> {{}} <==' \; -exec tail -n {lines_count} {{}} \;"
-        ),
-        logoutput=True,
-        ignore_failures=True,  # if this fails should not overwrite the actual exception
-        user=user,  # need to have permissions to read log files
-    )
+  Execute(
+    format(
+      "find {log_dir} -maxdepth 1 -type f -name '{mask}' -exec echo '==> {{}} <==' \; -exec tail -n {lines_count} {{}} \;"
+    ),
+    logoutput=True,
+    ignore_failures=True,  # if this fails should not overwrite the actual exception
+    user=user,  # need to have permissions to read log files
+  )
