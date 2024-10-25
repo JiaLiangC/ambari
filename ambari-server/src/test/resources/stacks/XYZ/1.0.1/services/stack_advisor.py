@@ -25,6 +25,6 @@ from stack_advisor import StackAdvisor
 
 
 class XYZ101StackAdvisor(XYZ100StackAdvisor):
-    def recommendYARNConfigurations(self, configurations):
-        putYarnProperty = self.putProperty(configurations, "yarn-site")
-        putYarnProperty("yarn.nodemanager.resource.memory-mb", "-Xmx101m")
+  def recommendYARNConfigurations(self, configurations):
+    putYarnProperty = self.putProperty(configurations, "yarn-site")
+    putYarnProperty("yarn.nodemanager.resource.memory-mb", "-Xmx101m")

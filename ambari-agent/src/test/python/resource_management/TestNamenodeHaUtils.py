@@ -23,45 +23,45 @@ from resource_management.libraries.functions.namenode_ha_utils import get_namese
 
 
 class TestNamenodeHaUtils(TestCase):
-    def test_get_nameservice(self):
-        # our cluster is HAA
+  def test_get_nameservice(self):
+    # our cluster is HAA
 
-        # dfs.internal.nameservices in hdfs-site
-        hdfs_site = {
-            "dfs.internal.nameservices": "HAA",
-            "dfs.nameservices": "HAA,HAB",
-            "dfs.ha.namenodes.HAA": "nn1,nn2",
-            "dfs.ha.namenodes.HAB": "nn1,nn2",
-            "dfs.namenode.rpc-address.HAA.nn1": "hosta1:8020",
-            "dfs.namenode.rpc-address.HAA.nn2": "hosta2:8020",
-            "dfs.namenode.rpc-address.HAB.nn1": "hostb1:8020",
-            "dfs.namenode.rpc-address.HAB.nn2": "hostb2:8020",
-        }
+    # dfs.internal.nameservices in hdfs-site
+    hdfs_site = {
+      "dfs.internal.nameservices": "HAA",
+      "dfs.nameservices": "HAA,HAB",
+      "dfs.ha.namenodes.HAA": "nn1,nn2",
+      "dfs.ha.namenodes.HAB": "nn1,nn2",
+      "dfs.namenode.rpc-address.HAA.nn1": "hosta1:8020",
+      "dfs.namenode.rpc-address.HAA.nn2": "hosta2:8020",
+      "dfs.namenode.rpc-address.HAB.nn1": "hostb1:8020",
+      "dfs.namenode.rpc-address.HAB.nn2": "hostb2:8020",
+    }
 
-        self.assertEqual(["HAA"], get_nameservices(hdfs_site))
+    self.assertEqual(["HAA"], get_nameservices(hdfs_site))
 
-        # dfs.internal.nameservices not in hdfs-site
-        hdfs_site = {
-            "dfs.nameservices": "HAA,HAB",
-            "dfs.ha.namenodes.HAA": "nn1,nn2",
-            "dfs.ha.namenodes.HAB": "nn1,nn2",
-            "dfs.namenode.rpc-address.HAA.nn1": "hosta1:8020",
-            "dfs.namenode.rpc-address.HAA.nn2": "hosta2:8020",
-            "dfs.namenode.rpc-address.HAB.nn1": "hostb1:8020",
-            "dfs.namenode.rpc-address.HAB.nn2": "hostb2:8020",
-        }
+    # dfs.internal.nameservices not in hdfs-site
+    hdfs_site = {
+      "dfs.nameservices": "HAA,HAB",
+      "dfs.ha.namenodes.HAA": "nn1,nn2",
+      "dfs.ha.namenodes.HAB": "nn1,nn2",
+      "dfs.namenode.rpc-address.HAA.nn1": "hosta1:8020",
+      "dfs.namenode.rpc-address.HAA.nn2": "hosta2:8020",
+      "dfs.namenode.rpc-address.HAB.nn1": "hostb1:8020",
+      "dfs.namenode.rpc-address.HAB.nn2": "hostb2:8020",
+    }
 
-        self.assertEqual(["HAA"], get_nameservices(hdfs_site))
+    self.assertEqual(["HAA"], get_nameservices(hdfs_site))
 
-        # Non HA
-        hdfs_site = {}
+    # Non HA
+    hdfs_site = {}
 
-        self.assertEqual([], get_nameservices(hdfs_site))
+    self.assertEqual([], get_nameservices(hdfs_site))
 
-        # federated config dfs.internal.nameservices in hdfs-site
-        hdfs_site = {
-            "dfs.internal.nameservices": "ns1,ns2",
-            "dfs.nameservices": "ns1,ns2,exns1,exns2",
-        }
+    # federated config dfs.internal.nameservices in hdfs-site
+    hdfs_site = {
+      "dfs.internal.nameservices": "ns1,ns2",
+      "dfs.nameservices": "ns1,ns2,exns1,exns2",
+    }
 
-        self.assertEqual(["ns1", "ns2"], get_nameservices(hdfs_site))
+    self.assertEqual(["ns1", "ns2"], get_nameservices(hdfs_site))

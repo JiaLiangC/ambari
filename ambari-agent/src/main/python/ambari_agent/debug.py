@@ -28,25 +28,25 @@ from ambari_agent.RemoteDebugUtils import pipename
 
 
 def debug_process(pid):
-    """Interrupt a running process and debug it."""
-    os.kill(pid, signal.SIGUSR2)  # Signal process.
-    pipe = NamedPipe(pipename(pid), 1)
-    try:
-        while pipe.is_open():
-            txt = input(pipe.get()) + "\n"
-            pipe.put(txt)
-    except EOFError:
-        pass  # Exit.
-    pipe.close()
+  """Interrupt a running process and debug it."""
+  os.kill(pid, signal.SIGUSR2)  # Signal process.
+  pipe = NamedPipe(pipename(pid), 1)
+  try:
+    while pipe.is_open():
+      txt = input(pipe.get()) + "\n"
+      pipe.put(txt)
+  except EOFError:
+    pass  # Exit.
+  pipe.close()
 
 
 def main():
-    with open("/var/run/ambari-agent/ambari-agent.pid") as f:
-        pid_str = f.read().strip()
-        pid = int(pid_str)
+  with open("/var/run/ambari-agent/ambari-agent.pid") as f:
+    pid_str = f.read().strip()
+    pid = int(pid_str)
 
-    debug_process(pid)
+  debug_process(pid)
 
 
 if __name__ == "__main__":
-    main()
+  main()

@@ -30,185 +30,183 @@ import re
 
 
 class MpackVersion(object):
-    __mpack_version_pattern = "(?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<maint>[0-9]+)(-h(?P<hotfix>[0-9]+))*-b(?P<build>[0-9]+)"
-    __mpack_legacy_stack_version_pattern = "(?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<maint>[0-9]+).(?P<hotfix>[0-9]+)(-(?P<build>[0-9]+))"
-    __mpack_version_regex = re.compile(__mpack_version_pattern)
-    __mpack_legacy_stack_version_regex = re.compile(
-        __mpack_legacy_stack_version_pattern
+  __mpack_version_pattern = "(?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<maint>[0-9]+)(-h(?P<hotfix>[0-9]+))*-b(?P<build>[0-9]+)"
+  __mpack_legacy_stack_version_pattern = "(?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<maint>[0-9]+).(?P<hotfix>[0-9]+)(-(?P<build>[0-9]+))"
+  __mpack_version_regex = re.compile(__mpack_version_pattern)
+  __mpack_legacy_stack_version_regex = re.compile(__mpack_legacy_stack_version_pattern)
+
+  def __init__(self, major, minor, maint, hotfix, build):
+    """
+    :type major int
+    :type minor int
+    :type maint int
+    :type hotfix int
+    :type build int
+    """
+    self.__major = int(major)
+    self.__minor = int(minor)
+    self.__maint = int(maint)
+    self.__hotfix = int(hotfix) if hotfix else 0  # hotfix is optional group
+    self.__build = int(build)
+
+  def __repr__(self):
+    return "{0}.{1}.{2}-h{3}-b{4}".format(*self.to_list())
+
+  def to_list(self):
+    """
+    Return version elements as list
+
+    :rtype list
+    """
+    return [self.__major, self.__minor, self.__maint, self.__hotfix, self.__build]
+
+  def cmp_version(self, other):
+    """
+    :type other MpackVersion
+
+    :raise TypeError
+    """
+    if other and not isinstance(other, self.__class__):
+      raise TypeError(
+        "Operand type is different from {0}".format(self.__class__.__name__)
+      )
+
+    r = 0
+    x = self.to_list()
+    y = other.to_list()
+
+    for i in range(0, len(x)):
+      r = x[i] - y[i]
+      if r != 0:
+        break
+
+    return r
+
+  def __lt__(self, other):
+    r = self.cmp_version(other)
+    return r < 0
+
+  def __gt__(self, other):
+    r = self.cmp_version(other)
+    return r > 0
+
+  def __eq__(self, other):
+    r = self.cmp_version(other)
+    return r == 0
+
+  @classmethod
+  def parse(cls, mpack_version):
+    """
+    Parse string to mpack version
+
+    :type mpack_version str
+    :rtype MpackVersion
+    """
+    matcher = cls.validate(mpack_version)
+    return MpackVersion(
+      matcher.group("major"),
+      matcher.group("minor"),
+      matcher.group("maint"),
+      matcher.group("hotfix"),
+      matcher.group("build"),
     )
 
-    def __init__(self, major, minor, maint, hotfix, build):
-        """
-        :type major int
-        :type minor int
-        :type maint int
-        :type hotfix int
-        :type build int
-        """
-        self.__major = int(major)
-        self.__minor = int(minor)
-        self.__maint = int(maint)
-        self.__hotfix = int(hotfix) if hotfix else 0  # hotfix is optional group
-        self.__build = int(build)
+  @classmethod
+  def parse_stack_version(cls, stack_version):
+    """
+    Parse string to mpack version
 
-    def __repr__(self):
-        return "{0}.{1}.{2}-h{3}-b{4}".format(*self.to_list())
+    :type stack_version str
+    :rtype MpackVersion
+    """
+    matcher = cls.validate_stack_version(stack_version)
+    return MpackVersion(
+      matcher.group("major"),
+      matcher.group("minor"),
+      matcher.group("maint"),
+      matcher.group("hotfix"),
+      matcher.group("build"),
+    )
 
-    def to_list(self):
-        """
-        Return version elements as list
+  @classmethod
+  def validate_stack_version(cls, stack_version):
+    """
+    Check if provided version is valid. If version is valid will return match object
+    or will raise exception.
 
-        :rtype list
-        """
-        return [self.__major, self.__minor, self.__maint, self.__hotfix, self.__build]
+    :param stack_version version to check
+    :type stack_version str
 
-    def cmp_version(self, other):
-        """
-        :type other MpackVersion
+    :rtype __Match[T] | None
 
-        :raise TypeError
-        """
-        if other and not isinstance(other, self.__class__):
-            raise TypeError(
-                "Operand type is different from {0}".format(self.__class__.__name__)
-            )
+    :raise ValueError
+    """
 
-        r = 0
-        x = self.to_list()
-        y = other.to_list()
+    if not stack_version:
+      raise ValueError("Module version can't be empty or null")
 
-        for i in range(0, len(x)):
-            r = x[i] - y[i]
-            if r != 0:
-                break
+    version = stack_version.strip()
 
-        return r
+    if not version:
+      raise ValueError("Module version can't be empty or null")
 
-    def __lt__(self, other):
-        r = self.cmp_version(other)
-        return r < 0
+    matcher = cls.__mpack_version_regex.match(version)
 
-    def __gt__(self, other):
-        r = self.cmp_version(other)
-        return r > 0
+    if not matcher:
+      matcher = cls.__mpack_legacy_stack_version_regex.match(version)
+      if not matcher:
+        raise ValueError("{0} is not a valid {1}".format(version, cls.__name__))
+    else:
+      if not matcher.group("hotfix"):
+        raise ValueError("{0} is not a valid {1}".format(version, cls.__name__))
 
-    def __eq__(self, other):
-        r = self.cmp_version(other)
-        return r == 0
+    return matcher
 
-    @classmethod
-    def parse(cls, mpack_version):
-        """
-        Parse string to mpack version
+  @classmethod
+  def validate(cls, mpack_version):
+    """
+    Check if provided version is valid. If version is valid will return match object
+    or will raise exception.
 
-        :type mpack_version str
-        :rtype MpackVersion
-        """
-        matcher = cls.validate(mpack_version)
-        return MpackVersion(
-            matcher.group("major"),
-            matcher.group("minor"),
-            matcher.group("maint"),
-            matcher.group("hotfix"),
-            matcher.group("build"),
-        )
+    :param module_version version to check
+    :type module_version str
 
-    @classmethod
-    def parse_stack_version(cls, stack_version):
-        """
-        Parse string to mpack version
+    :rtype __Match[T] | None
 
-        :type stack_version str
-        :rtype MpackVersion
-        """
-        matcher = cls.validate_stack_version(stack_version)
-        return MpackVersion(
-            matcher.group("major"),
-            matcher.group("minor"),
-            matcher.group("maint"),
-            matcher.group("hotfix"),
-            matcher.group("build"),
-        )
+    :raise ValueError
+    """
 
-    @classmethod
-    def validate_stack_version(cls, stack_version):
-        """
-        Check if provided version is valid. If version is valid will return match object
-        or will raise exception.
+    if not mpack_version:
+      raise ValueError("Module version can't be empty or null")
 
-        :param stack_version version to check
-        :type stack_version str
+    version = mpack_version.strip()
 
-        :rtype __Match[T] | None
+    if not version:
+      raise ValueError("Module version can't be empty or null")
 
-        :raise ValueError
-        """
+    matcher = cls.__mpack_version_regex.match(version)
 
-        if not stack_version:
-            raise ValueError("Module version can't be empty or null")
+    if not matcher:
+      raise ValueError("{0} is not a valid {1}".format(version, cls.__name__))
 
-        version = stack_version.strip()
+    return matcher
 
-        if not version:
-            raise ValueError("Module version can't be empty or null")
+  @property
+  def major(self):
+    return self.__major
 
-        matcher = cls.__mpack_version_regex.match(version)
+  @property
+  def minor(self):
+    return self.__minor
 
-        if not matcher:
-            matcher = cls.__mpack_legacy_stack_version_regex.match(version)
-            if not matcher:
-                raise ValueError("{0} is not a valid {1}".format(version, cls.__name__))
-        else:
-            if not matcher.group("hotfix"):
-                raise ValueError("{0} is not a valid {1}".format(version, cls.__name__))
+  @property
+  def maint(self):
+    return self.__maint
 
-        return matcher
+  @property
+  def hotfix(self):
+    return self.__hotfix
 
-    @classmethod
-    def validate(cls, mpack_version):
-        """
-        Check if provided version is valid. If version is valid will return match object
-        or will raise exception.
-
-        :param module_version version to check
-        :type module_version str
-
-        :rtype __Match[T] | None
-
-        :raise ValueError
-        """
-
-        if not mpack_version:
-            raise ValueError("Module version can't be empty or null")
-
-        version = mpack_version.strip()
-
-        if not version:
-            raise ValueError("Module version can't be empty or null")
-
-        matcher = cls.__mpack_version_regex.match(version)
-
-        if not matcher:
-            raise ValueError("{0} is not a valid {1}".format(version, cls.__name__))
-
-        return matcher
-
-    @property
-    def major(self):
-        return self.__major
-
-    @property
-    def minor(self):
-        return self.__minor
-
-    @property
-    def maint(self):
-        return self.__maint
-
-    @property
-    def hotfix(self):
-        return self.__hotfix
-
-    @property
-    def build(self):
-        return self.__build
+  @property
+  def build(self):
+    return self.__build

@@ -22,7 +22,7 @@ from resource_management.core.encryption import ensure_decrypted
 
 
 class TestUtils(TestCase):
-    def test_attr_to_bitmask(self):
-        encypted_value = "${enc=aes256_hex, value=616639333036363938646230613262383a3a32313537386561376136326362656436656135626165313664613265316336663a3a6361633666333432653532393863313364393064626133653562353663663235}"
-        encyption_key = "i%r041K%1VC!C5 K=("
-        self.assertEqual(b"mysecret", ensure_decrypted(encypted_value, encyption_key))
+  def test_attr_to_bitmask(self):
+    encypted_value = "${enc=aes256_hex, value=616639333036363938646230613262383a3a32313537386561376136326362656436656135626165313664613265316336663a3a6361633666333432653532393863313364393064626133653562353663663235}"
+    encyption_key = "i%r041K%1VC!C5 K=("
+    self.assertEqual(b"mysecret", ensure_decrypted(encypted_value, encyption_key))

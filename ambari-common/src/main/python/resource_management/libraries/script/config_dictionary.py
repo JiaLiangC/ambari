@@ -29,60 +29,60 @@ Lookup xml files for {{ for examples.
 
 
 class ConfigDictionary(dict):
+  """
+  Immutable config dictionary
+  """
+
+  def __init__(self, dictionary):
     """
-    Immutable config dictionary
+    Recursively turn dict to ConfigDictionary
     """
+    for k, v in dictionary.items():
+      if isinstance(v, dict):
+        dictionary[k] = ConfigDictionary(v)
 
-    def __init__(self, dictionary):
-        """
-        Recursively turn dict to ConfigDictionary
-        """
-        for k, v in dictionary.items():
-            if isinstance(v, dict):
-                dictionary[k] = ConfigDictionary(v)
+    super(ConfigDictionary, self).__init__(dictionary)
 
-        super(ConfigDictionary, self).__init__(dictionary)
+  def __setitem__(self, name, value):
+    raise Fail(IMMUTABLE_MESSAGE)
 
-    def __setitem__(self, name, value):
-        raise Fail(IMMUTABLE_MESSAGE)
+  def __getitem__(self, name):
+    """
+    - use Python types
+    - enable lazy failure for unknown configs.
+    """
+    try:
+      value = super(ConfigDictionary, self).__getitem__(name)
+    except KeyError:
+      return UnknownConfiguration(name)
 
-    def __getitem__(self, name):
-        """
-        - use Python types
-        - enable lazy failure for unknown configs.
-        """
-        try:
-            value = super(ConfigDictionary, self).__getitem__(name)
-        except KeyError:
-            return UnknownConfiguration(name)
+    value = ensure_decrypted(value)
 
-        value = ensure_decrypted(value)
+    if value == "true":
+      value = True
+    elif value == "false":
+      value = False
 
-        if value == "true":
-            value = True
-        elif value == "false":
-            value = False
-
-        return value
+    return value
 
 
 class UnknownConfiguration:
+  """
+  Lazy failing for unknown configs.
+  """
+
+  def __init__(self, name):
+    self.name = name
+
+  def __getattr__(self, name):
+    raise Fail(
+      "Configuration parameter '"
+      + self.name
+      + "' was not found in configurations dictionary!"
+    )
+
+  def __getitem__(self, name):
     """
-    Lazy failing for unknown configs.
+    Allow []
     """
-
-    def __init__(self, name):
-        self.name = name
-
-    def __getattr__(self, name):
-        raise Fail(
-            "Configuration parameter '"
-            + self.name
-            + "' was not found in configurations dictionary!"
-        )
-
-    def __getitem__(self, name):
-        """
-        Allow []
-        """
-        return self
+    return self

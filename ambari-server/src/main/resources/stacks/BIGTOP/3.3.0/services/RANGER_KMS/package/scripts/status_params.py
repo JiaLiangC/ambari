@@ -32,9 +32,9 @@ stack_name = default("/clusterLevelParams/stack_name", None)
 stack_version_unformatted = config["clusterLevelParams"]["stack_version"]
 stack_version_formatted = format_stack_version(stack_version_unformatted)
 stack_supports_pid = stack_version_formatted and check_stack_feature(
-    StackFeature.RANGER_KMS_PID_SUPPORT, stack_version_formatted
+  StackFeature.RANGER_KMS_PID_SUPPORT, stack_version_formatted
 )
 ranger_kms_pid_dir = default(
-    "/configurations/kms-env/ranger_kms_pid_dir", "/var/run/ranger_kms"
+  "/configurations/kms-env/ranger_kms_pid_dir", "/var/run/ranger_kms"
 )
 ranger_kms_pid_file = format("{ranger_kms_pid_dir}/rangerkms.pid")

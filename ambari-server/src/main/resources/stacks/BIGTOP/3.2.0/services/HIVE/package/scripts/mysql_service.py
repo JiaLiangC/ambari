@@ -27,43 +27,43 @@ from resource_management.libraries.functions.format import format
 
 
 def get_daemon_name():
-    import status_params
+  import status_params
 
-    for service_file_template in status_params.SERVICE_FILE_TEMPLATES:
-        for possible_daemon_name in status_params.POSSIBLE_DAEMON_NAMES:
-            daemon_path = service_file_template.format(possible_daemon_name)
-            if os.path.exists(daemon_path):
-                return possible_daemon_name
+  for service_file_template in status_params.SERVICE_FILE_TEMPLATES:
+    for possible_daemon_name in status_params.POSSIBLE_DAEMON_NAMES:
+      daemon_path = service_file_template.format(possible_daemon_name)
+      if os.path.exists(daemon_path):
+        return possible_daemon_name
 
-    raise Fail("Could not find service daemon for mysql")
+  raise Fail("Could not find service daemon for mysql")
 
 
 def mysql_service(action="start"):
-    daemon_name = get_daemon_name()
+  daemon_name = get_daemon_name()
 
-    status_cmd = format("pgrep -l '^{process_name}$'")
-    cmd = ("service", daemon_name, action)
+  status_cmd = format("pgrep -l '^{process_name}$'")
+  cmd = ("service", daemon_name, action)
 
-    if action == "status":
-        try:
-            Execute(status_cmd)
-        except Fail:
-            raise ComponentIsNotRunning()
-    elif action == "stop":
-        import params
+  if action == "status":
+    try:
+      Execute(status_cmd)
+    except Fail:
+      raise ComponentIsNotRunning()
+  elif action == "stop":
+    import params
 
-        Execute(
-            cmd,
-            logoutput=True,
-            only_if=status_cmd,
-            sudo=True,
-        )
-    elif action == "start":
-        import params
+    Execute(
+      cmd,
+      logoutput=True,
+      only_if=status_cmd,
+      sudo=True,
+    )
+  elif action == "start":
+    import params
 
-        Execute(
-            cmd,
-            logoutput=True,
-            not_if=status_cmd,
-            sudo=True,
-        )
+    Execute(
+      cmd,
+      logoutput=True,
+      not_if=status_cmd,
+      sudo=True,
+    )

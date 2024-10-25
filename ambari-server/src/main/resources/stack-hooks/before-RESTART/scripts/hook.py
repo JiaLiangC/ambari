@@ -22,9 +22,9 @@ from resource_management import Hook
 
 
 class BeforeRestartHook(Hook):
-    def hook(self, env):
-        self.run_custom_hook("before-START")
+  def hook(self, env):
+    self.run_custom_hook("before-START")
 
 
 if __name__ == "__main__":
-    BeforeRestartHook().execute()
+  BeforeRestartHook().execute()

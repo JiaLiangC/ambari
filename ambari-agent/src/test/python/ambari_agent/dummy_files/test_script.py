@@ -20,36 +20,34 @@ limitations under the License.
 
 
 def get_tokens():
-    """
-    return a tuple of tokens in the format {{site/property}} that will be used
-    to build the dictionary passed into execute
-    """
-    return ("{{foo-site/bar}}", "{{foo-site/baz}}")
+  """
+  return a tuple of tokens in the format {{site/property}} that will be used
+  to build the dictionary passed into execute
+  """
+  return ("{{foo-site/bar}}", "{{foo-site/baz}}")
 
 
 def execute(configurations={}, parameters={}, host_name=None):
-    """
-    returns a tuple containing the result code and a pre-formatted result label
-    """
+  """
+  returns a tuple containing the result code and a pre-formatted result label
+  """
 
-    # short circuit the script when a parameter is present
-    if "script.parameter.foo" in parameters:
-        return "OK", [
-            "Script parameter detected: " + parameters["script.parameter.foo"]
-        ]
+  # short circuit the script when a parameter is present
+  if "script.parameter.foo" in parameters:
+    return "OK", ["Script parameter detected: " + parameters["script.parameter.foo"]]
 
-    if configurations is not None:
-        if "{{foo-site/bar}}" in configurations:
-            bar = configurations["{{foo-site/bar}}"]
+  if configurations is not None:
+    if "{{foo-site/bar}}" in configurations:
+      bar = configurations["{{foo-site/bar}}"]
 
-        if "{{foo-site/baz}}" in configurations:
-            baz = configurations["{{foo-site/baz}}"]
+    if "{{foo-site/baz}}" in configurations:
+      baz = configurations["{{foo-site/baz}}"]
 
-        if "{{foo-site/skip}}" in configurations:
-            return (
-                "SKIPPED",
-                ["This alert is skipped and will not be in the collector"],
-            )
+    if "{{foo-site/skip}}" in configurations:
+      return (
+        "SKIPPED",
+        ["This alert is skipped and will not be in the collector"],
+      )
 
-    label = "bar is {0}, baz is {1}".format(bar, baz)
-    return ("WARNING", [label])
+  label = "bar is {0}, baz is {1}".format(bar, baz)
+  return ("WARNING", [label])

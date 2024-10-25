@@ -33,167 +33,163 @@ logger = logging.getLogger(__name__)
 
 
 class HostCheckReportFileHandler:
-    HOST_CHECK_FILE = "hostcheck.result"
-    HOST_CHECK_CUSTOM_ACTIONS_FILE = "hostcheck_custom_actions.result"
+  HOST_CHECK_FILE = "hostcheck.result"
+  HOST_CHECK_CUSTOM_ACTIONS_FILE = "hostcheck_custom_actions.result"
 
-    def __init__(self, config=None):
-        self.hostCheckFilePath = None
+  def __init__(self, config=None):
+    self.hostCheckFilePath = None
 
-        if config is None:
-            config = self.resolve_ambari_config()
+    if config is None:
+      config = self.resolve_ambari_config()
 
-        hostCheckFileDir = config.get("agent", "prefix")
-        self.hostCheckFilePath = os.path.join(
-            str(hostCheckFileDir), self.HOST_CHECK_FILE
+    hostCheckFileDir = config.get("agent", "prefix")
+    self.hostCheckFilePath = os.path.join(str(hostCheckFileDir), self.HOST_CHECK_FILE)
+    self.hostCheckCustomActionsFilePath = os.path.join(
+      str(hostCheckFileDir), self.HOST_CHECK_CUSTOM_ACTIONS_FILE
+    )
+
+  def resolve_ambari_config(self):
+    try:
+      config = AmbariConfig()
+      if os.path.exists(AmbariConfig.getConfigFile()):
+        config.read(AmbariConfig.getConfigFile())
+      else:
+        raise Exception("No config found, use default")
+
+    except Exception as err:
+      logger.warn(err)
+    return config
+
+  def writeHostChecksCustomActionsFile(self, structuredOutput):
+    if self.hostCheckCustomActionsFilePath is None:
+      return
+
+    try:
+      logger.info(
+        "Host check custom action report at " + self.hostCheckCustomActionsFilePath
+      )
+      config = configparser.RawConfigParser()
+      config.add_section("metadata")
+      config.set("metadata", "created", str(datetime.datetime.now()))
+
+      if "installed_packages" in structuredOutput.keys():
+        items = []
+        for itemDetail in structuredOutput["installed_packages"]:
+          items.append(itemDetail["name"])
+        config.add_section("packages")
+        config.set("packages", "pkg_list", ",".join(map(str, items)))
+
+      if "existing_repos" in structuredOutput.keys():
+        config.add_section("repositories")
+        config.set(
+          "repositories",
+          "repo_list",
+          ",".join(structuredOutput["existing_repos"]),
         )
-        self.hostCheckCustomActionsFilePath = os.path.join(
-            str(hostCheckFileDir), self.HOST_CHECK_CUSTOM_ACTIONS_FILE
-        )
 
-    def resolve_ambari_config(self):
-        try:
-            config = AmbariConfig()
-            if os.path.exists(AmbariConfig.getConfigFile()):
-                config.read(AmbariConfig.getConfigFile())
-            else:
-                raise Exception("No config found, use default")
+      self.removeFile(self.hostCheckCustomActionsFilePath)
+      self.touchFile(self.hostCheckCustomActionsFilePath)
+      with open(self.hostCheckCustomActionsFilePath, "wt") as configfile:
+        config.write(configfile)
+    except Exception as err:
+      logger.error(
+        "Can't write host check file at %s :%s "
+        % (self.hostCheckCustomActionsFilePath, err.message)
+      )
+      traceback.print_exc()
 
-        except Exception as err:
-            logger.warn(err)
-        return config
+  def _stack_list_directory(self):
+    """
+    Return filtered list of <stack-root> directory allowed to be removed
+    :rtype list
+    """
 
-    def writeHostChecksCustomActionsFile(self, structuredOutput):
-        if self.hostCheckCustomActionsFilePath is None:
-            return
+    if not os.path.exists(HADOOP_ROOT_DIR):
+      return []
 
-        try:
-            logger.info(
-                "Host check custom action report at "
-                + self.hostCheckCustomActionsFilePath
-            )
-            config = configparser.RawConfigParser()
-            config.add_section("metadata")
-            config.set("metadata", "created", str(datetime.datetime.now()))
+    folder_content = os.listdir(HADOOP_ROOT_DIR)
+    remove_list = []
 
-            if "installed_packages" in structuredOutput.keys():
-                items = []
-                for itemDetail in structuredOutput["installed_packages"]:
-                    items.append(itemDetail["name"])
-                config.add_section("packages")
-                config.set("packages", "pkg_list", ",".join(map(str, items)))
+    remlist_items_count = 0
 
-            if "existing_repos" in structuredOutput.keys():
-                config.add_section("repositories")
-                config.set(
-                    "repositories",
-                    "repo_list",
-                    ",".join(structuredOutput["existing_repos"]),
-                )
+    for item in folder_content:
+      full_path = "%s%s%s" % (HADOOP_ROOT_DIR, os.path.sep, item)
+      if item in HADOOP_PERM_REMOVE_LIST:
+        remove_list.append(full_path)
+        remlist_items_count += 1
 
-            self.removeFile(self.hostCheckCustomActionsFilePath)
-            self.touchFile(self.hostCheckCustomActionsFilePath)
-            with open(self.hostCheckCustomActionsFilePath, "wt") as configfile:
-                config.write(configfile)
-        except Exception as err:
-            logger.error(
-                "Can't write host check file at %s :%s "
-                % (self.hostCheckCustomActionsFilePath, err.message)
-            )
-            traceback.print_exc()
+      if HADOOP_ITEMDIR_REGEXP.match(item) is not None:
+        remove_list.append(full_path)
+        remlist_items_count += 1
 
-    def _stack_list_directory(self):
-        """
-        Return filtered list of <stack-root> directory allowed to be removed
-        :rtype list
-        """
+    # if remove list have same length as target folder, assume that they are identical
+    if remlist_items_count == len(folder_content):
+      remove_list.append(HADOOP_ROOT_DIR)
 
-        if not os.path.exists(HADOOP_ROOT_DIR):
-            return []
+    return remove_list
 
-        folder_content = os.listdir(HADOOP_ROOT_DIR)
-        remove_list = []
+  def writeHostCheckFile(self, hostInfo):
+    if self.hostCheckFilePath is None:
+      return
 
-        remlist_items_count = 0
+    try:
+      logger.debug("Host check report at " + self.hostCheckFilePath)
+      config = configparser.RawConfigParser()
+      config.add_section("metadata")
+      config.set("metadata", "created", str(datetime.datetime.now()))
 
-        for item in folder_content:
-            full_path = "%s%s%s" % (HADOOP_ROOT_DIR, os.path.sep, item)
-            if item in HADOOP_PERM_REMOVE_LIST:
-                remove_list.append(full_path)
-                remlist_items_count += 1
+      if "existingUsers" in hostInfo.keys():
+        items = []
+        items2 = []
+        for itemDetail in hostInfo["existingUsers"]:
+          items.append(itemDetail["name"])
+          items2.append(itemDetail["homeDir"])
+        config.add_section("users")
+        config.set("users", "usr_list", ",".join(items))
+        config.set("users", "usr_homedir_list", ",".join(items2))
 
-            if HADOOP_ITEMDIR_REGEXP.match(item) is not None:
-                remove_list.append(full_path)
-                remlist_items_count += 1
+      if "alternatives" in hostInfo.keys():
+        items = []
+        items2 = []
+        for itemDetail in hostInfo["alternatives"]:
+          items.append(itemDetail["name"])
+          items2.append(itemDetail["target"])
+        config.add_section("alternatives")
+        config.set("alternatives", "symlink_list", ",".join(items))
+        config.set("alternatives", "target_list", ",".join(items2))
 
-        # if remove list have same length as target folder, assume that they are identical
-        if remlist_items_count == len(folder_content):
-            remove_list.append(HADOOP_ROOT_DIR)
+      if "stackFoldersAndFiles" in hostInfo.keys():
+        items = []
+        for itemDetail in hostInfo["stackFoldersAndFiles"]:
+          items.append(itemDetail["name"])
+        items += self._stack_list_directory()
+        config.add_section("directories")
+        config.set("directories", "dir_list", ",".join(items))
 
-        return remove_list
+      if "hostHealth" in hostInfo.keys():
+        if "activeJavaProcs" in hostInfo["hostHealth"].keys():
+          items = []
+          for itemDetail in hostInfo["hostHealth"]["activeJavaProcs"]:
+            items.append(itemDetail["pid"])
+          config.add_section("processes")
+          config.set("processes", "proc_list", ",".join(map(str, items)))
 
-    def writeHostCheckFile(self, hostInfo):
-        if self.hostCheckFilePath is None:
-            return
+      self.removeFile(self.hostCheckFilePath)
+      self.touchFile(self.hostCheckFilePath)
+      with open(self.hostCheckFilePath, "wt") as configfile:
+        config.write(configfile)
+    except Exception as err:
+      logger.error(
+        "Can't write host check file at %s :%s " % (self.hostCheckFilePath, err.message)
+      )
+      traceback.print_exc()
 
-        try:
-            logger.debug("Host check report at " + self.hostCheckFilePath)
-            config = configparser.RawConfigParser()
-            config.add_section("metadata")
-            config.set("metadata", "created", str(datetime.datetime.now()))
+  def removeFile(self, path):
+    if os.path.isfile(path):
+      logger.debug("Removing old host check file at %s" % path)
+      os.remove(path)
 
-            if "existingUsers" in hostInfo.keys():
-                items = []
-                items2 = []
-                for itemDetail in hostInfo["existingUsers"]:
-                    items.append(itemDetail["name"])
-                    items2.append(itemDetail["homeDir"])
-                config.add_section("users")
-                config.set("users", "usr_list", ",".join(items))
-                config.set("users", "usr_homedir_list", ",".join(items2))
-
-            if "alternatives" in hostInfo.keys():
-                items = []
-                items2 = []
-                for itemDetail in hostInfo["alternatives"]:
-                    items.append(itemDetail["name"])
-                    items2.append(itemDetail["target"])
-                config.add_section("alternatives")
-                config.set("alternatives", "symlink_list", ",".join(items))
-                config.set("alternatives", "target_list", ",".join(items2))
-
-            if "stackFoldersAndFiles" in hostInfo.keys():
-                items = []
-                for itemDetail in hostInfo["stackFoldersAndFiles"]:
-                    items.append(itemDetail["name"])
-                items += self._stack_list_directory()
-                config.add_section("directories")
-                config.set("directories", "dir_list", ",".join(items))
-
-            if "hostHealth" in hostInfo.keys():
-                if "activeJavaProcs" in hostInfo["hostHealth"].keys():
-                    items = []
-                    for itemDetail in hostInfo["hostHealth"]["activeJavaProcs"]:
-                        items.append(itemDetail["pid"])
-                    config.add_section("processes")
-                    config.set("processes", "proc_list", ",".join(map(str, items)))
-
-            self.removeFile(self.hostCheckFilePath)
-            self.touchFile(self.hostCheckFilePath)
-            with open(self.hostCheckFilePath, "wt") as configfile:
-                config.write(configfile)
-        except Exception as err:
-            logger.error(
-                "Can't write host check file at %s :%s "
-                % (self.hostCheckFilePath, err.message)
-            )
-            traceback.print_exc()
-
-    def removeFile(self, path):
-        if os.path.isfile(path):
-            logger.debug("Removing old host check file at %s" % path)
-            os.remove(path)
-
-    def touchFile(self, path):
-        if not os.path.isfile(path):
-            logger.debug("Creating host check file at %s" % path)
-            open(path, "w").close()
+  def touchFile(self, path):
+    if not os.path.isfile(path):
+      logger.debug("Creating host check file at %s" % path)
+      open(path, "w").close()

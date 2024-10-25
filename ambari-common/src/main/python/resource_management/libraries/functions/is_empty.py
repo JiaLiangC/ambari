@@ -24,7 +24,7 @@ from resource_management.libraries.script.config_dictionary import UnknownConfig
 
 
 def is_empty(var):
-    """
-    Check if certain configuration sent from the server has been received.
-    """
-    return isinstance(var, UnknownConfiguration)
+  """
+  Check if certain configuration sent from the server has been received.
+  """
+  return isinstance(var, UnknownConfiguration)

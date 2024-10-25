@@ -24,13 +24,13 @@ limitations under the License."""
 
 
 class Authenticator(object, metaclass=abc.ABCMeta):
-    """Abstract base class for authenticators."""
+  """Abstract base class for authenticators."""
 
-    @abc.abstractmethod
-    def authenticate(self, login, passcode):
-        """
-        Authenticate the login and passcode.
+  @abc.abstractmethod
+  def authenticate(self, login, passcode):
+    """
+    Authenticate the login and passcode.
 
-        @return: Whether user is authenticated.
-        @rtype: C{bool}
-        """
+    @return: Whether user is authenticated.
+    @rtype: C{bool}
+    """

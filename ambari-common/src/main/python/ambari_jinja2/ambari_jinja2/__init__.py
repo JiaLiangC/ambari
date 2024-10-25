@@ -30,30 +30,30 @@ Here a small example of a Jinja2 template::
 
 __docformat__ = "restructuredtext en"
 try:
-    __version__ = __import__("pkg_resources").get_distribution("Jinja2").version
+  __version__ = __import__("pkg_resources").get_distribution("Jinja2").version
 except:
-    __version__ = "unknown"
+  __version__ = "unknown"
 
 # high level interface
 from ambari_jinja2.environment import Environment, Template
 
 # loaders
 from ambari_jinja2.loaders import (
-    BaseLoader,
-    FileSystemLoader,
-    PackageLoader,
-    DictLoader,
-    FunctionLoader,
-    PrefixLoader,
-    ChoiceLoader,
-    ModuleLoader,
+  BaseLoader,
+  FileSystemLoader,
+  PackageLoader,
+  DictLoader,
+  FunctionLoader,
+  PrefixLoader,
+  ChoiceLoader,
+  ModuleLoader,
 )
 
 # bytecode caches
 from ambari_jinja2.bccache import (
-    BytecodeCache,
-    FileSystemBytecodeCache,
-    MemcachedBytecodeCache,
+  BytecodeCache,
+  FileSystemBytecodeCache,
+  MemcachedBytecodeCache,
 )
 
 # undefined types
@@ -61,57 +61,57 @@ from ambari_jinja2.runtime import Undefined, DebugUndefined, StrictUndefined
 
 # exceptions
 from ambari_jinja2.exceptions import (
-    TemplateError,
-    UndefinedError,
-    TemplateNotFound,
-    TemplatesNotFound,
-    TemplateSyntaxError,
-    TemplateAssertionError,
+  TemplateError,
+  UndefinedError,
+  TemplateNotFound,
+  TemplatesNotFound,
+  TemplateSyntaxError,
+  TemplateAssertionError,
 )
 
 # decorators and public utilities
 from ambari_jinja2.filters import environmentfilter, contextfilter, evalcontextfilter
 from ambari_jinja2.utils import (
-    Markup,
-    escape,
-    clear_caches,
-    environmentfunction,
-    evalcontextfunction,
-    contextfunction,
-    is_undefined,
+  Markup,
+  escape,
+  clear_caches,
+  environmentfunction,
+  evalcontextfunction,
+  contextfunction,
+  is_undefined,
 )
 
 __all__ = [
-    "Environment",
-    "Template",
-    "BaseLoader",
-    "FileSystemLoader",
-    "PackageLoader",
-    "DictLoader",
-    "FunctionLoader",
-    "PrefixLoader",
-    "ChoiceLoader",
-    "BytecodeCache",
-    "FileSystemBytecodeCache",
-    "MemcachedBytecodeCache",
-    "Undefined",
-    "DebugUndefined",
-    "StrictUndefined",
-    "TemplateError",
-    "UndefinedError",
-    "TemplateNotFound",
-    "TemplatesNotFound",
-    "TemplateSyntaxError",
-    "TemplateAssertionError",
-    "ModuleLoader",
-    "environmentfilter",
-    "contextfilter",
-    "Markup",
-    "escape",
-    "environmentfunction",
-    "contextfunction",
-    "clear_caches",
-    "is_undefined",
-    "evalcontextfilter",
-    "evalcontextfunction",
+  "Environment",
+  "Template",
+  "BaseLoader",
+  "FileSystemLoader",
+  "PackageLoader",
+  "DictLoader",
+  "FunctionLoader",
+  "PrefixLoader",
+  "ChoiceLoader",
+  "BytecodeCache",
+  "FileSystemBytecodeCache",
+  "MemcachedBytecodeCache",
+  "Undefined",
+  "DebugUndefined",
+  "StrictUndefined",
+  "TemplateError",
+  "UndefinedError",
+  "TemplateNotFound",
+  "TemplatesNotFound",
+  "TemplateSyntaxError",
+  "TemplateAssertionError",
+  "ModuleLoader",
+  "environmentfilter",
+  "contextfilter",
+  "Markup",
+  "escape",
+  "environmentfunction",
+  "contextfunction",
+  "clear_caches",
+  "is_undefined",
+  "evalcontextfilter",
+  "evalcontextfunction",
 ]

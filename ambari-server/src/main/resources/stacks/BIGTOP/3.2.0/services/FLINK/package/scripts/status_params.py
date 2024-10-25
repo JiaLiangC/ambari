@@ -30,6 +30,6 @@ user_group = config["configurations"]["cluster-env"]["user_group"]
 
 flink_pid_dir = config["configurations"]["flink-env"]["flink_pid_dir"]
 flink_history_server_pid_file = format(
-    "{flink_pid_dir}/flink-{flink_user}-historyserver.pid"
+  "{flink_pid_dir}/flink-{flink_user}-historyserver.pid"
 )
 stack_name = default("/clusterLevelParams/stack_name", None)

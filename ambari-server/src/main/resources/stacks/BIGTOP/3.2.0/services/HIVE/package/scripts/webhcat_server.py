@@ -24,15 +24,15 @@ from resource_management.libraries.script.script import Script
 from resource_management.libraries.functions import stack_select
 from resource_management.libraries.functions.constants import StackFeature
 from resource_management.libraries.functions.check_process_status import (
-    check_process_status,
+  check_process_status,
 )
 from resource_management.libraries.functions.stack_features import check_stack_feature
 from resource_management.libraries.functions.security_commons import (
-    build_expectations,
-    cached_kinit_executor,
-    get_params_from_filesystem,
-    validate_security_config_properties,
-    FILE_TYPE_XML,
+  build_expectations,
+  cached_kinit_executor,
+  get_params_from_filesystem,
+  validate_security_config_properties,
+  FILE_TYPE_XML,
 )
 from resource_management.core.logger import Logger
 from webhcat import webhcat
@@ -42,62 +42,62 @@ from ambari_commons.os_family_impl import OsFamilyImpl
 
 
 class WebHCatServer(Script):
-    def install(self, env):
-        import params
+  def install(self, env):
+    import params
 
-        self.install_packages(env)
+    self.install_packages(env)
 
-    def start(self, env, upgrade_type=None):
-        import params
+  def start(self, env, upgrade_type=None):
+    import params
 
-        env.set_params(params)
-        self.configure(env)  # FOR SECURITY
-        webhcat_service(action="start", upgrade_type=upgrade_type)
+    env.set_params(params)
+    self.configure(env)  # FOR SECURITY
+    webhcat_service(action="start", upgrade_type=upgrade_type)
 
-    def stop(self, env, upgrade_type=None):
-        import params
+  def stop(self, env, upgrade_type=None):
+    import params
 
-        env.set_params(params)
-        webhcat_service(action="stop")
+    env.set_params(params)
+    webhcat_service(action="stop")
 
-    def configure(self, env):
-        import params
+  def configure(self, env):
+    import params
 
-        env.set_params(params)
-        webhcat()
+    env.set_params(params)
+    webhcat()
 
-    def status(self, env):
-        import status_params
+  def status(self, env):
+    import status_params
 
-        env.set_params(status_params)
-        check_process_status(status_params.webhcat_pid_file)
+    env.set_params(status_params)
+    check_process_status(status_params.webhcat_pid_file)
 
-    def pre_upgrade_restart(self, env, upgrade_type=None):
-        Logger.info("Executing WebHCat Stack Upgrade pre-restart")
-        import params
+  def pre_upgrade_restart(self, env, upgrade_type=None):
+    Logger.info("Executing WebHCat Stack Upgrade pre-restart")
+    import params
 
-        env.set_params(params)
+    env.set_params(params)
 
-        if params.version and check_stack_feature(
-            StackFeature.ROLLING_UPGRADE, params.version
-        ):
-            stack_select.select_packages(params.version)
+    if params.version and check_stack_feature(
+      StackFeature.ROLLING_UPGRADE, params.version
+    ):
+      stack_select.select_packages(params.version)
 
-    def get_log_folder(self):
-        import params
+  def get_log_folder(self):
+    import params
 
-        return params.hcat_log_dir
+    return params.hcat_log_dir
 
-    def get_user(self):
-        import params
+  def get_user(self):
+    import params
 
-        return params.webhcat_user
+    return params.webhcat_user
 
-    def get_pid_files(self):
-        import status_params
+  def get_pid_files(self):
+    import status_params
 
-        return [status_params.webhcat_pid_file]
+    return [status_params.webhcat_pid_file]
 
 
 if __name__ == "__main__":
-    WebHCatServer().execute()
+  WebHCatServer().execute()

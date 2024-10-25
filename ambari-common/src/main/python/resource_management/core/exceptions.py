@@ -24,67 +24,67 @@ import sys
 import traceback
 
 __all__ = [
-    "Fail",
-    "ExecutionFailed",
-    "ExecuteTimeoutException",
-    "InvalidArgument",
-    "ClientComponentHasNoStatus",
-    "ComponentIsNotRunning",
+  "Fail",
+  "ExecutionFailed",
+  "ExecuteTimeoutException",
+  "InvalidArgument",
+  "ClientComponentHasNoStatus",
+  "ComponentIsNotRunning",
 ]
 
 
 class Fail(Exception):
-    def __init__(self, message="", print_cause=True):
-        self.print_cause = print_cause
-        self.cause_traceback = traceback.format_exc()
+  def __init__(self, message="", print_cause=True):
+    self.print_cause = print_cause
+    self.cause_traceback = traceback.format_exc()
 
-        super(Fail, self).__init__(message)
+    super(Fail, self).__init__(message)
 
-    def pre_raise(self):
-        if self.print_cause and self.cause_traceback != "None\n":
-            sys.stderr.write(self.cause_traceback)
-            sys.stderr.write(
-                "\nThe above exception was the cause of the following exception:\n\n"
-            )
+  def pre_raise(self):
+    if self.print_cause and self.cause_traceback != "None\n":
+      sys.stderr.write(self.cause_traceback)
+      sys.stderr.write(
+        "\nThe above exception was the cause of the following exception:\n\n"
+      )
 
 
 class ExecuteTimeoutException(Fail):
-    pass
+  pass
 
 
 class InvalidArgument(Fail):
-    pass
+  pass
 
 
 class ClientComponentHasNoStatus(Fail):
-    """
-    Thrown when status() method is called for a CLIENT component.
-    The only valid status for CLIENT component is installed,
-    that's why exception is thrown and later silently processed at script.py
-    """
+  """
+  Thrown when status() method is called for a CLIENT component.
+  The only valid status for CLIENT component is installed,
+  that's why exception is thrown and later silently processed at script.py
+  """
 
-    pass
+  pass
 
 
 class ComponentIsNotRunning(Fail):
-    """
-    Thrown when status() method is called for a component (only
-    in situations when component process is not running).
-    Later exception is silently processed at script.py
-    """
+  """
+  Thrown when status() method is called for a component (only
+  in situations when component process is not running).
+  Later exception is silently processed at script.py
+  """
 
-    pass
+  pass
 
 
 class ExecutionFailed(Fail):
-    """
-    Is thrown when shell command returns non-zero return code
-    """
+  """
+  Is thrown when shell command returns non-zero return code
+  """
 
-    def __init__(self, exception_message, code, out, err=None):
-        self.exception_message = exception_message
-        self.code = code
-        self.out = out
-        self.err = err
+  def __init__(self, exception_message, code, out, err=None):
+    self.exception_message = exception_message
+    self.code = code
+    self.out = out
+    self.err = err
 
-        super(ExecutionFailed, self).__init__(exception_message)
+    super(ExecutionFailed, self).__init__(exception_message)

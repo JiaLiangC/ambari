@@ -27,79 +27,77 @@ from only_for_platform import not_for_platform, os_distro_value, PLATFORM_WINDOW
 
 
 class TestNetUtil:  # (unittest.TestCase):
-    @patch.object(
-        OSCheck, "os_distribution", new=MagicMock(return_value=os_distro_value)
+  @patch.object(OSCheck, "os_distribution", new=MagicMock(return_value=os_distro_value))
+  @patch("urlparse.urlparse")
+  @patch("httplib.HTTPSConnection")
+  def test_checkURL(self, httpsConMock, parseMock):
+    NetUtil.logger = MagicMock()
+    parseMock.return_value = [1, 2]
+    ca_connection = MagicMock()
+    response = MagicMock()
+    response.status = 200
+    ca_connection.getresponse.return_value = response
+    httpsConMock.return_value = ca_connection
+
+    # test 200
+    netutil = NetUtil.NetUtil(MagicMock())
+    self.assertTrue(netutil.checkURL("url")[0])
+
+    # test fail
+    response.status = 404
+    self.assertFalse(netutil.checkURL("url")[0])
+
+    # test Exception
+    response.status = 200
+    httpsConMock.side_effect = Exception("test")
+    self.assertFalse(netutil.checkURL("url")[0])
+
+  @not_for_platform(PLATFORM_WINDOWS)
+  @patch("time.sleep")
+  @patch.object(threading.Event, "wait")
+  def test_try_to_connect(self, event_mock, sleepMock):
+    event_mock.return_value = False
+    netutil = NetUtil.NetUtil(MagicMock())
+    checkURL = MagicMock(name="checkURL")
+    checkURL.return_value = True, "test"
+    netutil.checkURL = checkURL
+
+    # one successful get
+    self.assertEqual((0, True, False), netutil.try_to_connect("url", 10))
+
+    # got successful after N retries
+    gets = [[True, ""], [False, ""], [False, ""]]
+
+    def side_effect(*args):
+      return gets.pop()
+
+    checkURL.side_effect = side_effect
+    self.assertEqual((2, True, False), netutil.try_to_connect("url", 10))
+
+    # max retries
+    checkURL.side_effect = None
+    checkURL.return_value = False, "test"
+    self.assertEqual((5, False, False), netutil.try_to_connect("url", 5))
+
+  def test_get_agent_heartbeat_idle_interval_sec(self):
+    netutil = NetUtil.NetUtil(MagicMock())
+
+    heartbeat_interval = netutil.get_agent_heartbeat_idle_interval_sec(1, 10, 32)
+
+    self.assertEqual(heartbeat_interval, 3)
+
+  def test_get_agent_heartbeat_idle_interval_sec_max(self):
+    netutil = NetUtil.NetUtil(MagicMock())
+
+    heartbeat_interval = netutil.get_agent_heartbeat_idle_interval_sec(1, 10, 1500)
+
+    self.assertEqual(
+      heartbeat_interval, netutil.HEARTBEAT_IDLE_INTERVAL_DEFAULT_MAX_SEC
     )
-    @patch("urlparse.urlparse")
-    @patch("httplib.HTTPSConnection")
-    def test_checkURL(self, httpsConMock, parseMock):
-        NetUtil.logger = MagicMock()
-        parseMock.return_value = [1, 2]
-        ca_connection = MagicMock()
-        response = MagicMock()
-        response.status = 200
-        ca_connection.getresponse.return_value = response
-        httpsConMock.return_value = ca_connection
 
-        # test 200
-        netutil = NetUtil.NetUtil(MagicMock())
-        self.assertTrue(netutil.checkURL("url")[0])
+  def test_get_agent_heartbeat_idle_interval_sec_min(self):
+    netutil = NetUtil.NetUtil(MagicMock())
 
-        # test fail
-        response.status = 404
-        self.assertFalse(netutil.checkURL("url")[0])
+    heartbeat_interval = netutil.get_agent_heartbeat_idle_interval_sec(1, 10, 5)
 
-        # test Exception
-        response.status = 200
-        httpsConMock.side_effect = Exception("test")
-        self.assertFalse(netutil.checkURL("url")[0])
-
-    @not_for_platform(PLATFORM_WINDOWS)
-    @patch("time.sleep")
-    @patch.object(threading.Event, "wait")
-    def test_try_to_connect(self, event_mock, sleepMock):
-        event_mock.return_value = False
-        netutil = NetUtil.NetUtil(MagicMock())
-        checkURL = MagicMock(name="checkURL")
-        checkURL.return_value = True, "test"
-        netutil.checkURL = checkURL
-
-        # one successful get
-        self.assertEqual((0, True, False), netutil.try_to_connect("url", 10))
-
-        # got successful after N retries
-        gets = [[True, ""], [False, ""], [False, ""]]
-
-        def side_effect(*args):
-            return gets.pop()
-
-        checkURL.side_effect = side_effect
-        self.assertEqual((2, True, False), netutil.try_to_connect("url", 10))
-
-        # max retries
-        checkURL.side_effect = None
-        checkURL.return_value = False, "test"
-        self.assertEqual((5, False, False), netutil.try_to_connect("url", 5))
-
-    def test_get_agent_heartbeat_idle_interval_sec(self):
-        netutil = NetUtil.NetUtil(MagicMock())
-
-        heartbeat_interval = netutil.get_agent_heartbeat_idle_interval_sec(1, 10, 32)
-
-        self.assertEqual(heartbeat_interval, 3)
-
-    def test_get_agent_heartbeat_idle_interval_sec_max(self):
-        netutil = NetUtil.NetUtil(MagicMock())
-
-        heartbeat_interval = netutil.get_agent_heartbeat_idle_interval_sec(1, 10, 1500)
-
-        self.assertEqual(
-            heartbeat_interval, netutil.HEARTBEAT_IDLE_INTERVAL_DEFAULT_MAX_SEC
-        )
-
-    def test_get_agent_heartbeat_idle_interval_sec_min(self):
-        netutil = NetUtil.NetUtil(MagicMock())
-
-        heartbeat_interval = netutil.get_agent_heartbeat_idle_interval_sec(1, 10, 5)
-
-        self.assertEqual(heartbeat_interval, 1)
+    self.assertEqual(heartbeat_interval, 1)

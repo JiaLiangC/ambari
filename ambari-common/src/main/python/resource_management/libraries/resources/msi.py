@@ -24,9 +24,9 @@ from resource_management.core.base import Resource, ForcedListArgument, Resource
 
 
 class Msi(Resource):
-    action = ForcedListArgument(default="install")
-    msi_name = ResourceArgument(default=lambda obj: obj.name)
-    http_source = ResourceArgument(default=None)
-    dict_args = ResourceArgument(default={})
-    list_args = ResourceArgument(default={})
-    actions = Resource.actions + ["install", "uninstall"]
+  action = ForcedListArgument(default="install")
+  msi_name = ResourceArgument(default=lambda obj: obj.name)
+  http_source = ResourceArgument(default=None)
+  dict_args = ResourceArgument(default={})
+  list_args = ResourceArgument(default={})
+  actions = Resource.actions + ["install", "uninstall"]

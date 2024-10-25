@@ -36,10 +36,10 @@ solr_pidfile = format("{solr_piddir}/solr-{solr_port}.pid")
 
 prev_solr_pidfile = ""
 if path.isdir(solr_piddir):
-    for file in listdir(solr_piddir):
-        prev_solr_pidfile = solr_piddir + "/" + file
+  for file in listdir(solr_piddir):
+    prev_solr_pidfile = solr_piddir + "/" + file
 
 security_enabled = config["configurations"]["cluster-env"]["security_enabled"]
 kinit_path_local = get_kinit_path(
-    default("/configurations/kerberos-env/executable_search_paths", None)
+  default("/configurations/kerberos-env/executable_search_paths", None)
 )

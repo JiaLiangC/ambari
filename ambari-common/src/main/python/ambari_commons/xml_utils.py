@@ -20,20 +20,20 @@ import os
 
 
 class ConvertToXml:
-    "Template class, allow to output fields in xml format"
+  "Template class, allow to output fields in xml format"
 
-    def getField(self):
-        return [
-            name
-            for name, obj in inspect.getmembers(self)
-            if not name.startswith("__") and not inspect.isroutine(obj)
-        ]
+  def getField(self):
+    return [
+      name
+      for name, obj in inspect.getmembers(self)
+      if not name.startswith("__") and not inspect.isroutine(obj)
+    ]
 
-    def attributesToXml(self):
-        result = ""
-        listOfAttr = self.getField()
-        for attrName in listOfAttr:
-            result += "<" + attrName + ">"
-            result += str(getattr(self, attrName))
-            result += "</" + attrName + ">\n"
-        return result
+  def attributesToXml(self):
+    result = ""
+    listOfAttr = self.getField()
+    for attrName in listOfAttr:
+      result += "<" + attrName + ">"
+      result += str(getattr(self, attrName))
+      result += "</" + attrName + ">\n"
+    return result

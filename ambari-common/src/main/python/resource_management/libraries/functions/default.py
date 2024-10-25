@@ -27,20 +27,20 @@ from resource_management.core.logger import Logger
 
 
 def default(name, default_value):
-    subdicts = [_f for _f in name.split("/") if _f]
+  subdicts = [_f for _f in name.split("/") if _f]
 
-    curr_dict = Script.get_config()
-    if not curr_dict:
-        return default_value
-    for x in subdicts:
-        if x in curr_dict:
-            curr_dict = curr_dict[x]
-        else:
-            return default_value
+  curr_dict = Script.get_config()
+  if not curr_dict:
+    return default_value
+  for x in subdicts:
+    if x in curr_dict:
+      curr_dict = curr_dict[x]
+    else:
+      return default_value
 
-    return curr_dict
+  return curr_dict
 
 
 def default_string(name, default_value, delimiter):
-    default_list = default(name, default_value)
-    return delimiter.join(default_list)
+  default_list = default(name, default_value)
+  return delimiter.join(default_list)

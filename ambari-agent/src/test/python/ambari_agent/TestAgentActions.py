@@ -22,10 +22,10 @@ from unittest import TestCase
 
 
 class TestAgentActions(TestCase):
-    # This feature is not yet implemented in ActionQueue
-    def test_installAndConfigAction(self):
-        pass
+  # This feature is not yet implemented in ActionQueue
+  def test_installAndConfigAction(self):
+    pass
 
-    # This feature is not yet implemented in ActionQueue
-    def test_startAndStopAction(self):
-        pass
+  # This feature is not yet implemented in ActionQueue
+  def test_startAndStopAction(self):
+    pass

@@ -23,66 +23,66 @@ from ams import ams
 from ams_service import ams_service
 from status import check_service_status
 from ambari_commons.repo_manager.repo_manager_helper import (
-    check_installed_metrics_hadoop_sink_version,
+  check_installed_metrics_hadoop_sink_version,
 )
 
 
 class AmsMonitor(Script):
-    def install(self, env):
-        import params
+  def install(self, env):
+    import params
 
-        env.set_params(params)
-        self.install_packages(env)
-        self.configure(env)  # for security
+    env.set_params(params)
+    self.install_packages(env)
+    self.configure(env)  # for security
 
-    def configure(self, env):
-        import params
+  def configure(self, env):
+    import params
 
-        env.set_params(params)
-        ams(name="monitor")
+    env.set_params(params)
+    ams(name="monitor")
 
-    def start(self, env, upgrade_type=None):
-        self.configure(env)  # for security
+  def start(self, env, upgrade_type=None):
+    self.configure(env)  # for security
 
-        ams_service("monitor", action="start")
+    ams_service("monitor", action="start")
 
-    def stop(self, env, upgrade_type=None):
-        import params
+  def stop(self, env, upgrade_type=None):
+    import params
 
-        env.set_params(params)
+    env.set_params(params)
 
-        ams_service("monitor", action="stop")
+    ams_service("monitor", action="stop")
 
-    def status(self, env):
-        import status_params
+  def status(self, env):
+    import status_params
 
-        env.set_params(status_params)
-        check_service_status(env, name="monitor")
+    env.set_params(status_params)
+    check_service_status(env, name="monitor")
 
-    def get_log_folder(self):
-        import params
+  def get_log_folder(self):
+    import params
 
-        return params.ams_monitor_log_dir
+    return params.ams_monitor_log_dir
 
-    def get_pid_files(self):
-        import status_params
+  def get_pid_files(self):
+    import status_params
 
-        return [status_params.monitor_pid_file]
+    return [status_params.monitor_pid_file]
 
-    def get_user(self):
-        import params
+  def get_user(self):
+    import params
 
-        return params.ams_user
+    return params.ams_user
 
-    def check_hadoop_sink_version(self, env):
-        import params
+  def check_hadoop_sink_version(self, env):
+    import params
 
-        check_installed_metrics_hadoop_sink_version(
-            checked_version=params.min_hadoop_sink_version,
-            less_valid=False,
-            equal_valid=True,
-        )
+    check_installed_metrics_hadoop_sink_version(
+      checked_version=params.min_hadoop_sink_version,
+      less_valid=False,
+      equal_valid=True,
+    )
 
 
 if __name__ == "__main__":
-    AmsMonitor().execute()
+  AmsMonitor().execute()

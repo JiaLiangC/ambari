@@ -26,41 +26,41 @@ from unittest import TestCase
 
 from only_for_platform import not_for_platform, PLATFORM_WINDOWS
 from resource_management.libraries.functions.fcntl_based_process_lock import (
-    FcntlBasedProcessLock,
+  FcntlBasedProcessLock,
 )
 
 
 class TestFcntlBasedProcessLock(TestCase):
-    @not_for_platform(PLATFORM_WINDOWS)
-    def test_fcntl_based_lock(self):
-        """
-        Test blocking_lock using multiprocessing.Lock
-        """
-        test_temp_dir = tempfile.mkdtemp(prefix="test_file_based_lock")
-        try:
-            lock_file = os.path.join(test_temp_dir, "lock")
+  @not_for_platform(PLATFORM_WINDOWS)
+  def test_fcntl_based_lock(self):
+    """
+    Test blocking_lock using multiprocessing.Lock
+    """
+    test_temp_dir = tempfile.mkdtemp(prefix="test_file_based_lock")
+    try:
+      lock_file = os.path.join(test_temp_dir, "lock")
 
-            # Raises an exception if mutex.acquire fails.
-            # It indicates that more than one process acquired the lock.
-            def dummy_task(index, mutex):
-                with FcntlBasedProcessLock(lock_file, skip_fcntl_failures=False):
-                    if not mutex.acquire(block=False):
-                        raise Exception(
-                            "ERROR: FcntlBasedProcessLock was acquired by several processes"
-                        )
-                    time.sleep(0.1)
-                    mutex.release()
+      # Raises an exception if mutex.acquire fails.
+      # It indicates that more than one process acquired the lock.
+      def dummy_task(index, mutex):
+        with FcntlBasedProcessLock(lock_file, skip_fcntl_failures=False):
+          if not mutex.acquire(block=False):
+            raise Exception(
+              "ERROR: FcntlBasedProcessLock was acquired by several processes"
+            )
+          time.sleep(0.1)
+          mutex.release()
 
-            mutex = multiprocessing.Lock()
-            process_list = []
-            for i in range(0, 3):
-                p = multiprocessing.Process(target=dummy_task, args=(i, mutex))
-                p.start()
-                process_list.append(p)
+      mutex = multiprocessing.Lock()
+      process_list = []
+      for i in range(0, 3):
+        p = multiprocessing.Process(target=dummy_task, args=(i, mutex))
+        p.start()
+        process_list.append(p)
 
-            for p in process_list:
-                p.join(2)
-                self.assertEqual(p.exitcode, 0)
+      for p in process_list:
+        p.join(2)
+        self.assertEqual(p.exitcode, 0)
 
-        finally:
-            shutil.rmtree(test_temp_dir)
+    finally:
+      shutil.rmtree(test_temp_dir)

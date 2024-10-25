@@ -25,53 +25,53 @@ import io, sys
 
 
 class TestSubstituteVars(TestCase):
-    def setUp(self):
-        # disable stdout
-        out = io.StringIO()
-        sys.stdout = out
+  def setUp(self):
+    # disable stdout
+    out = io.StringIO()
+    sys.stdout = out
 
-    def test_substitute_vars(self):
-        raw_config = {
-            "val.intvar": "42",
-            "pass.intvar": "${val.intvar}",
-            "fail.unknown": "a${unknown}b",
-            "fail.empty": "${}",
-            "fail.space": "${ my.int}",
-            "val.0": "will_fail",
-            "fail.digit": "${val.0}",
-            "val.file": "hello",
-            "val.suffix": ".txt",
-            "pass.seq.depth": "${val.file}${val.suffix}${pass.intvar}",
-            "fail.seq.depth.a": "${val.file}${unknown}${pass.intvar}",
-            "fail.seq.depth.b": "${val.file}${fail.seq.depth.a}${pass.intvar}",
-            "val.name": "val.intvar",
-            "pass.name.as.param": "${${val.name}}",
-            "fail.inf.loop": "${fail.inf.loop}",
-        }
-        expected_config = {
-            "val.intvar": "42",
-            "pass.intvar": "42",
-            "fail.unknown": "a${unknown}b",
-            "fail.empty": "${}",
-            "fail.space": "${ my.int}",
-            "val.0": "will_fail",
-            "fail.digit": "${val.0}",
-            "val.file": "hello",
-            "val.suffix": ".txt",
-            "pass.seq.depth": "hello.txt42",
-            "fail.seq.depth.a": "hello${unknown}${pass.intvar}",
-            "fail.seq.depth.b": "hellohello${unknown}${pass.intvar}${pass.intvar}",
-            "val.name": "val.intvar",
-            "pass.name.as.param": "42",
-            "fail.inf.loop": "${fail.inf.loop}",
-        }
+  def test_substitute_vars(self):
+    raw_config = {
+      "val.intvar": "42",
+      "pass.intvar": "${val.intvar}",
+      "fail.unknown": "a${unknown}b",
+      "fail.empty": "${}",
+      "fail.space": "${ my.int}",
+      "val.0": "will_fail",
+      "fail.digit": "${val.0}",
+      "val.file": "hello",
+      "val.suffix": ".txt",
+      "pass.seq.depth": "${val.file}${val.suffix}${pass.intvar}",
+      "fail.seq.depth.a": "${val.file}${unknown}${pass.intvar}",
+      "fail.seq.depth.b": "${val.file}${fail.seq.depth.a}${pass.intvar}",
+      "val.name": "val.intvar",
+      "pass.name.as.param": "${${val.name}}",
+      "fail.inf.loop": "${fail.inf.loop}",
+    }
+    expected_config = {
+      "val.intvar": "42",
+      "pass.intvar": "42",
+      "fail.unknown": "a${unknown}b",
+      "fail.empty": "${}",
+      "fail.space": "${ my.int}",
+      "val.0": "will_fail",
+      "fail.digit": "${val.0}",
+      "val.file": "hello",
+      "val.suffix": ".txt",
+      "pass.seq.depth": "hello.txt42",
+      "fail.seq.depth.a": "hello${unknown}${pass.intvar}",
+      "fail.seq.depth.b": "hellohello${unknown}${pass.intvar}${pass.intvar}",
+      "val.name": "val.intvar",
+      "pass.name.as.param": "42",
+      "fail.inf.loop": "${fail.inf.loop}",
+    }
 
-        for key in raw_config.keys():
-            actual_value = substitute_vars(raw_config[key], raw_config)
-            expected_value = expected_config[key]
+    for key in raw_config.keys():
+      actual_value = substitute_vars(raw_config[key], raw_config)
+      expected_value = expected_config[key]
 
-            self.assertEqual(actual_value, expected_value)
+      self.assertEqual(actual_value, expected_value)
 
-    def tearDown(self):
-        # enable stdout
-        sys.stdout = sys.__stdout__
+  def tearDown(self):
+    # enable stdout
+    sys.stdout = sys.__stdout__

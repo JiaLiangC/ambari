@@ -27,80 +27,80 @@ FAILED = "FAILED"
 
 
 class PrallelProcessResult(object):
-    def __init__(self, element, status, result):
-        self.result = result
-        self.status = status
-        self.element = element
+  def __init__(self, element, status, result):
+    self.result = result
+    self.status = status
+    self.element = element
 
 
 class ParallelProcess(Process):
-    def __init__(self, function, element, params, queue):
-        self.function = function
-        self.element = element
-        self.params = params
-        self.queue = queue
-        super(ParallelProcess, self).__init__()
+  def __init__(self, function, element, params, queue):
+    self.function = function
+    self.element = element
+    self.params = params
+    self.queue = queue
+    super(ParallelProcess, self).__init__()
 
-    def return_name(self):
-        ## NOTE: self.name is an attribute of multiprocessing.Process
-        return "Process running function '%s' for element '%s'" % (
-            self.function,
-            self.element,
+  def return_name(self):
+    ## NOTE: self.name is an attribute of multiprocessing.Process
+    return "Process running function '%s' for element '%s'" % (
+      self.function,
+      self.element,
+    )
+
+  def run(self):
+    try:
+      result = self.function(self.element, self.params)
+      self.queue.put(PrallelProcessResult(self.element, SUCCESS, result))
+    except Exception as e:
+      self.queue.put(
+        PrallelProcessResult(
+          self.element,
+          FAILED,
+          "Exception while running function '%s' for '%s'. Reason : %s"
+          % (self.function, self.element, str(e)),
         )
-
-    def run(self):
-        try:
-            result = self.function(self.element, self.params)
-            self.queue.put(PrallelProcessResult(self.element, SUCCESS, result))
-        except Exception as e:
-            self.queue.put(
-                PrallelProcessResult(
-                    self.element,
-                    FAILED,
-                    "Exception while running function '%s' for '%s'. Reason : %s"
-                    % (self.function, self.element, str(e)),
-                )
-            )
-        return
+      )
+    return
 
 
 def execute_in_parallel(function, array, params, wait_for_all=False):
-    logger.info("Started running %s for %s" % (function, array))
-    processs = []
-    q = Queue()
-    counter = len(array)
-    results = {}
+  logger.info("Started running %s for %s" % (function, array))
+  processs = []
+  q = Queue()
+  counter = len(array)
+  results = {}
 
-    for element in array:
-        process = ParallelProcess(function, element, params, q)
-        process.start()
-        processs.append(process)
+  for element in array:
+    process = ParallelProcess(function, element, params, q)
+    process.start()
+    processs.append(process)
 
-    while counter > 0:
-        tmp = q.get()
-        counter -= 1
-        results[tmp.element] = tmp
-        if tmp.status == SUCCESS and not wait_for_all:
-            counter = 0
+  while counter > 0:
+    tmp = q.get()
+    counter -= 1
+    results[tmp.element] = tmp
+    if tmp.status == SUCCESS and not wait_for_all:
+      counter = 0
 
-    for process in processs:
-        process.terminate()
+  for process in processs:
+    process.terminate()
 
-    logger.info("Finished running %s for %s" % (function, array))
+  logger.info("Finished running %s for %s" % (function, array))
 
-    return results
+  return results
 
 
 def func(elem, params):
-    if elem == "S":
-        return "lalala"
-    else:
-        raise Exception("Exception")
+  if elem == "S":
+    return "lalala"
+  else:
+    raise Exception("Exception")
 
 
 if __name__ == "__main__":
-    results = execute_in_parallel(func, ["F", "BF", "S"], None)
-    for result in results:
-        print(results[result].element)
-        print(results[result].status)
-        print(results[result].result)
+  results = execute_in_parallel(func, ["F", "BF", "S"], None)
+  for result in results:
+    print(results[result].element)
+    print(results[result].status)
+    print(results[result].result)

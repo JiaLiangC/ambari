@@ -23,32 +23,30 @@ import ambari_simplejson as json  # simplejson is much faster comparing to Pytho
 from resource_management.core import shell
 from resource_management.core.logger import Logger
 from resource_management.libraries.functions.get_user_call_output import (
-    get_user_call_output,
+  get_user_call_output,
 )
 
 
 def get_value_from_jmx(
-    qry, property, security_enabled, run_user, is_https_enabled, last_retry=True
+  qry, property, security_enabled, run_user, is_https_enabled, last_retry=True
 ):
-    try:
-        if security_enabled:
-            cmd = ["curl", "--negotiate", "-u", ":", "-s"]
-        else:
-            cmd = ["curl", "-s"]
+  try:
+    if security_enabled:
+      cmd = ["curl", "--negotiate", "-u", ":", "-s"]
+    else:
+      cmd = ["curl", "-s"]
 
-        if is_https_enabled:
-            cmd.append("-k")
+    if is_https_enabled:
+      cmd.append("-k")
 
-        cmd.append(qry)
+    cmd.append(qry)
 
-        _, data, _ = get_user_call_output(cmd, user=run_user, quiet=False)
+    _, data, _ = get_user_call_output(cmd, user=run_user, quiet=False)
 
-        if data:
-            data_dict = json.loads(data)
-            return data_dict["beans"][0][property]
-    except:
-        if last_retry:
-            Logger.logger.exception(
-                "Getting jmx metrics from NN failed. URL: " + str(qry)
-            )
-        return None
+    if data:
+      data_dict = json.loads(data)
+      return data_dict["beans"][0][property]
+  except:
+    if last_retry:
+      Logger.logger.exception("Getting jmx metrics from NN failed. URL: " + str(qry))
+    return None

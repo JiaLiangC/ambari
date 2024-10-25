@@ -2,50 +2,50 @@
 # -*- coding: utf-8 -*-
 
 __all__ = [
-    "WebSocketException",
-    "FrameTooLargeException",
-    "ProtocolException",
-    "UnsupportedFrameTypeException",
-    "TextFrameEncodingException",
-    "UnsupportedFrameTypeException",
-    "TextFrameEncodingException",
-    "StreamClosed",
-    "HandshakeError",
-    "InvalidBytesError",
+  "WebSocketException",
+  "FrameTooLargeException",
+  "ProtocolException",
+  "UnsupportedFrameTypeException",
+  "TextFrameEncodingException",
+  "UnsupportedFrameTypeException",
+  "TextFrameEncodingException",
+  "StreamClosed",
+  "HandshakeError",
+  "InvalidBytesError",
 ]
 
 
 class WebSocketException(Exception):
-    pass
+  pass
 
 
 class ProtocolException(WebSocketException):
-    pass
+  pass
 
 
 class FrameTooLargeException(WebSocketException):
-    pass
+  pass
 
 
 class UnsupportedFrameTypeException(WebSocketException):
-    pass
+  pass
 
 
 class TextFrameEncodingException(WebSocketException):
-    pass
+  pass
 
 
 class InvalidBytesError(WebSocketException):
-    pass
+  pass
 
 
 class StreamClosed(Exception):
-    pass
+  pass
 
 
 class HandshakeError(WebSocketException):
-    def __init__(self, msg):
-        self.msg = msg
+  def __init__(self, msg):
+    self.msg = msg
 
-    def __str__(self):
-        return self.msg
+  def __str__(self):
+    return self.msg

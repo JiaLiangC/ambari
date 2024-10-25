@@ -69,7 +69,7 @@ exclude = [
 
 # Same as Black.
 line-length = 88
-indent-width = 4
+indent-width = 2
 
 # Assume Python 3.6
 target-version = "py37"

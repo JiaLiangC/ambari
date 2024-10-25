@@ -7,7 +7,7 @@ from lib2to3.fixer_util import Name, BlankLine
 
 
 class FixXrange2(fixer_base.BaseFix):
-    PATTERN = "'xrange'"
+  PATTERN = "'xrange'"
 
-    def transform(self, node, results):
-        node.replace(Name("range", prefix=node.prefix))
+  def transform(self, node, results):
+    node.replace(Name("range", prefix=node.prefix))

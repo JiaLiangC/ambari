@@ -27,14 +27,14 @@ import itertools
 @patch("os.path.exists", new=MagicMock(return_value=True))
 @patch.object(Hook, "run_custom_hook")
 class TestHookBeforeSetKeytab(RMFTestCase):
-    def test_hook_default(self, run_custom_hook_mock):
-        self.executeScript(
-            "before-SET_KEYTAB/scripts/hook.py",
-            classname="BeforeSetKeytabHook",
-            command="hook",
-            target=RMFTestCase.TARGET_STACK_HOOKS,
-            config_file="default.json",
-            call_mocks=itertools.cycle([(0, "1000")]),
-        )
+  def test_hook_default(self, run_custom_hook_mock):
+    self.executeScript(
+      "before-SET_KEYTAB/scripts/hook.py",
+      classname="BeforeSetKeytabHook",
+      command="hook",
+      target=RMFTestCase.TARGET_STACK_HOOKS,
+      config_file="default.json",
+      call_mocks=itertools.cycle([(0, "1000")]),
+    )
 
-        run_custom_hook_mock.assert_called_with("before-ANY")
+    run_custom_hook_mock.assert_called_with("before-ANY")

@@ -24,15 +24,15 @@ from repo_initialization import install_repos
 
 
 class BeforeInstallHook(Hook):
-    def hook(self, env):
-        import params
+  def hook(self, env):
+    import params
 
-        self.run_custom_hook("before-ANY")
-        env.set_params(params)
+    self.run_custom_hook("before-ANY")
+    env.set_params(params)
 
-        install_repos()
-        install_packages()
+    install_repos()
+    install_packages()
 
 
 if __name__ == "__main__":
-    BeforeInstallHook().execute()
+  BeforeInstallHook().execute()

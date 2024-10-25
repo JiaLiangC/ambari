@@ -27,7 +27,7 @@ tmp_dir = Script.get_tmp_dir()
 
 hostname = config["agentLevelParams"]["hostname"]
 kinit_path_local = functions.get_kinit_path(
-    default("/configurations/kerberos-env/executable_search_paths", None)
+  default("/configurations/kerberos-env/executable_search_paths", None)
 )
 
 security_enabled = config["configurations"]["cluster-env"]["security_enabled"]
@@ -35,5 +35,5 @@ security_enabled = config["configurations"]["cluster-env"]["security_enabled"]
 smoke_user_keytab = config["configurations"]["cluster-env"]["smokeuser_keytab"]
 smoke_user = config["configurations"]["cluster-env"]["smokeuser"]
 smoke_user_principal = config["configurations"]["cluster-env"][
-    "smokeuser_principal_name"
+  "smokeuser_principal_name"
 ]

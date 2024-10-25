@@ -30,19 +30,19 @@ from resource_management.core.shell import quote_bash_args
 
 
 class ExecuteHadoopProvider(Provider):
-    def action_run(self):
-        conf_dir = self.resource.conf_dir
-        command = self.resource.command
+  def action_run(self):
+    conf_dir = self.resource.conf_dir
+    command = self.resource.command
 
-        if isinstance(command, (list, tuple)):
-            command = " ".join(quote_bash_args(x) for x in command)
+    if isinstance(command, (list, tuple)):
+      command = " ".join(quote_bash_args(x) for x in command)
 
-        Execute(
-            format("hadoop --config {conf_dir} {command}"),
-            user=self.resource.user,
-            tries=self.resource.tries,
-            try_sleep=self.resource.try_sleep,
-            logoutput=self.resource.logoutput,
-            path=self.resource.bin_dir,
-            environment=self.resource.environment,
-        )
+    Execute(
+      format("hadoop --config {conf_dir} {command}"),
+      user=self.resource.user,
+      tries=self.resource.tries,
+      try_sleep=self.resource.try_sleep,
+      logoutput=self.resource.logoutput,
+      path=self.resource.bin_dir,
+      environment=self.resource.environment,
+    )

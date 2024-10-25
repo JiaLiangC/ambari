@@ -27,20 +27,20 @@ from ambari_commons import os_check
 
 
 def get_unique_id_and_date():
-    if os_check.OSCheck.is_windows_family():
-        from ambari_commons.os_utils import run_os_command
+  if os_check.OSCheck.is_windows_family():
+    from ambari_commons.os_utils import run_os_command
 
-        code, out, err = run_os_command("cmd /c vol C:")
-        for line in out.splitlines():
-            if line.startswith(" Volume Serial Number is"):
-                id = line[25:]
-    else:
-        out = shell.checked_call("hostid")[1].split("\n")[
-            -1
-        ]  # bugfix: take the lastline (stdin is not tty part cut)
-        id = out.strip()
+    code, out, err = run_os_command("cmd /c vol C:")
+    for line in out.splitlines():
+      if line.startswith(" Volume Serial Number is"):
+        id = line[25:]
+  else:
+    out = shell.checked_call("hostid")[1].split("\n")[
+      -1
+    ]  # bugfix: take the lastline (stdin is not tty part cut)
+    id = out.strip()
 
-    now = datetime.datetime.now()
-    date = now.strftime("%M%d%y")
+  now = datetime.datetime.now()
+  date = now.strftime("%M%d%y")
 
-    return "id{id}_date{date}".format(id=id, date=date)
+  return "id{id}_date{date}".format(id=id, date=date)
