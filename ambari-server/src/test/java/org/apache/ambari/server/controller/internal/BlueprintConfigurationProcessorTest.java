@@ -91,6 +91,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.powermock.api.easymock.PowerMock;
+import org.powermock.core.classloader.annotations.PowerMockIgnore;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 
@@ -107,6 +108,7 @@ import com.google.common.collect.Sets;
  */
 @RunWith(PowerMockRunner.class)
 @PrepareForTest(AmbariServer.class)
+@PowerMockIgnore({"org.apache.logging.log4j.*","org.slf4j.*"})
 public class BlueprintConfigurationProcessorTest extends EasyMockSupport {
 
   private static final Configuration EMPTY_CONFIG = new Configuration(emptyMap(), emptyMap());
