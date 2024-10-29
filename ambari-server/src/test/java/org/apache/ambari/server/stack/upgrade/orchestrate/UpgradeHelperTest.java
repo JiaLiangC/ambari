@@ -122,15 +122,13 @@ import org.apache.ambari.spi.RepositoryType;
 import org.apache.ambari.spi.upgrade.OrchestrationOptions;
 import org.apache.ambari.spi.upgrade.UpgradeType;
 import org.apache.commons.io.FileUtils;
-import org.easymock.Capture;
-import org.easymock.EasyMock;
-import org.easymock.EasyMockSupport;
-import org.easymock.IAnswer;
+import org.easymock.*;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.mockito.ArgumentMatcher;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.google.common.collect.ImmutableMap;
@@ -2549,7 +2547,6 @@ public class UpgradeHelperTest extends EasyMockSupport {
     }
   }
 
-
   /**
    * Tests merging configurations between existing and new stack values on
    * upgrade.
@@ -2725,6 +2722,33 @@ public class UpgradeHelperTest extends EasyMockSupport {
     assertEquals("three-changed", expectedBazType.get("3"));
   }
 
+
+  private static class ClusterEnvCaptureWrapper {
+    private final Capture<Map<String, Map<String, String>>> capture;
+    private final Map<String, String> clusterEnvMap;
+
+    public ClusterEnvCaptureWrapper(Map<String, String> clusterEnvMap) {
+      this.capture = Capture.newInstance();
+      this.clusterEnvMap = clusterEnvMap;
+    }
+
+    public Capture<Map<String, Map<String, String>>> getCapture() {
+      return capture;
+    }
+
+    public void handleCapturedValue() {
+      Map<String, Map<String, String>> value = capture.getValue();
+      System.out.println("Captured value: " + value); // Debug print
+
+      if (value.containsKey("cluster-env")) {
+        clusterEnvMap.putAll(value.get("cluster-env"));
+      }
+      System.out.println("ClusterEnvMap after handling: " + clusterEnvMap); // Debug print
+
+    }
+  }
+
+
   @Test
   public void testMergeConfigurationsWithClusterEnv() throws Exception {
     Cluster cluster = makeCluster(true);
@@ -2735,12 +2759,12 @@ public class UpgradeHelperTest extends EasyMockSupport {
     ConfigFactory cf = injector.getInstance(ConfigFactory.class);
 
     Config clusterEnv = cf.createNew(cluster, "cluster-env", "version1",
-        ImmutableMap.<String, String>builder().put("a", "b").build(),
-        Collections.emptyMap());
+            ImmutableMap.<String, String>builder().put("a", "b").build(),
+            Collections.emptyMap());
 
     Config zooCfg = cf.createNew(cluster, "zoo.cfg", "version1",
-        ImmutableMap.<String, String>builder().put("c", "d").build(),
-        Collections.emptyMap());
+            ImmutableMap.<String, String>builder().put("c", "d").build(),
+            Collections.emptyMap());
 
     cluster.addDesiredConfig("admin", Sets.newHashSet(clusterEnv, zooCfg));
 
@@ -2748,25 +2772,8 @@ public class UpgradeHelperTest extends EasyMockSupport {
     stackMap.put("cluster-env", new HashMap<>());
     stackMap.put("hive-site", new HashMap<>());
 
-    final Map<String, String> clusterEnvMap = new HashMap<>();
-
-    Capture<Cluster> captureCluster = Capture.newInstance();
-    Capture<StackId> captureStackId = Capture.newInstance();
-    Capture<AmbariManagementController> captureAmc = Capture.newInstance();
-
-    Capture<Map<String, Map<String, String>>> cap = Capture.newInstance();
-
-    /*Capture<Map<String, Map<String, String>>> cap = new Capture<Map<String, Map<String, String>>>() {
-      @Override
-      public void setValue(Map<String, Map<String, String>> value) {
-        if (value.containsKey("cluster-env")) {
-          clusterEnvMap.putAll(value.get("cluster-env"));
-        }
-      }
-    };*/
-
-    Capture<String> captureUsername = Capture.newInstance();
-    Capture<String> captureNote = Capture.newInstance();
+    final ClusterEnvWrapper clusterEnvWrapper = new ClusterEnvWrapper();
+    System.out.println("Initial clusterEnvMap: " + clusterEnvWrapper.getClusterEnvMap()); // Debug print
 
     EasyMock.reset(m_configHelper);
     expect(m_configHelper.getDefaultProperties(oldStack, "HIVE")).andReturn(stackMap).atLeastOnce();
@@ -2774,14 +2781,13 @@ public class UpgradeHelperTest extends EasyMockSupport {
     expect(m_configHelper.getDefaultProperties(oldStack, "ZOOKEEPER")).andReturn(stackMap).atLeastOnce();
     expect(m_configHelper.getDefaultProperties(newStack, "ZOOKEEPER")).andReturn(stackMap).atLeastOnce();
     expect(m_configHelper.createConfigTypes(
-        EasyMock.capture(captureCluster),
-        EasyMock.capture(captureStackId),
-        EasyMock.capture(captureAmc),
-        EasyMock.capture(cap),
-
-        EasyMock.capture(captureUsername),
-        EasyMock.capture(captureNote))).andReturn(true);
-
+            EasyMock.anyObject(Cluster.class),
+            EasyMock.anyObject(StackId.class),
+            EasyMock.anyObject(AmbariManagementController.class),
+            eqClusterEnv(clusterEnvWrapper),
+            EasyMock.anyString(),
+            EasyMock.anyString()
+    )).andReturn(true);
     replay(m_configHelper);
 
     RepositoryVersionEntity repoVersionEntity = helper.getOrCreateRepositoryVersion(new StackId("HDP-2.5.0"), "2.5.0-1234");
@@ -2798,13 +2804,52 @@ public class UpgradeHelperTest extends EasyMockSupport {
     UpgradeHelper upgradeHelper = injector.getInstance(UpgradeHelper.class);
     upgradeHelper.updateDesiredRepositoriesAndConfigs(context);
 
-    assertNotNull(clusterEnvMap);
-    assertTrue(clusterEnvMap.containsKey("a"));
+    assertEquals("b",clusterEnvWrapper.getClusterEnvMap().get("a"));
 
+    assertTrue(clusterEnvWrapper.getClusterEnvMap().containsKey("a"));
     // Do stacks cleanup
     stackManagerMock.invalidateCurrentPaths();
     ambariMetaInfo.init();
   }
+
+  // Custom matcher for cluster-env map
+  private static Map<String, Map<String, String>> eqClusterEnv(final ClusterEnvWrapper wrapper) {
+    EasyMock.reportMatcher(new IArgumentMatcher() {
+      @Override
+      public boolean matches(Object argument) {
+        if (argument instanceof Map) {
+          Map<String, Map<String, String>> map = (Map<String, Map<String, String>>) argument;
+          if (map.containsKey("cluster-env")) {
+            wrapper.updateClusterEnvMap(map.get("cluster-env"));
+            return true;
+          }
+        }
+        return false;
+      }
+
+      @Override
+      public void appendTo(StringBuffer buffer) {
+        buffer.append("eqClusterEnv(");
+        buffer.append(wrapper);
+        buffer.append(")");
+      }
+    });
+    return null;
+  }
+
+  // Custom wrapper class to hold and update clusterEnvMap
+  private static class ClusterEnvWrapper {
+    private final Map<String, String> clusterEnvMap = new HashMap<>();
+
+    public void updateClusterEnvMap(Map<String, String> newMap) {
+      clusterEnvMap.putAll(newMap);
+    }
+
+    public Map<String, String> getClusterEnvMap() {
+      return clusterEnvMap;
+    }
+  }
+
 
   @Test
   public void testSequentialServiceChecks() throws Exception {

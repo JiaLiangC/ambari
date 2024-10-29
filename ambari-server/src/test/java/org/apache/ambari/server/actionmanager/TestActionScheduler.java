@@ -24,6 +24,7 @@ import static org.easymock.EasyMock.replay;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.anyCollectionOf;
@@ -426,7 +427,7 @@ public class TestActionScheduler {
     ServiceComponentHost sch = mock(ServiceComponentHost.class);
     UnitOfWork unitOfWork = mock(UnitOfWork.class);
     AgentCommandsPublisher agentCommandsPublisher = mock(AgentCommandsPublisher.class);
-    when(fsm.getCluster(anyString())).thenReturn(oneClusterMock);
+    when(fsm.getCluster(nullable(String.class))).thenReturn(oneClusterMock);
     when(oneClusterMock.getService(anyString())).thenReturn(serviceObj);
     when(serviceObj.getServiceComponent(anyString())).thenReturn(scomp);
     when(scomp.getServiceComponentHost(anyString())).thenReturn(sch);
@@ -475,7 +476,7 @@ public class TestActionScheduler {
         command.setStatus(HostRoleStatus.TIMEDOUT);
         return null;
       }
-    }).when(db).timeoutHostRole(anyString(), anyLong(), anyLong(), anyString(), anyBoolean(), eq(false));
+    }).when(db).timeoutHostRole(nullable(String.class), anyLong(), anyLong(), anyString(), anyBoolean(), eq(false));
 
 
     //Small action timeout to test rescheduling
@@ -526,7 +527,7 @@ public class TestActionScheduler {
     ServiceComponentHost sch = mock(ServiceComponentHost.class);
     UnitOfWork unitOfWork = mock(UnitOfWork.class);
     AgentCommandsPublisher agentCommandsPublisher = mock(AgentCommandsPublisher.class);
-    when(fsm.getCluster(anyString())).thenReturn(oneClusterMock);
+    when(fsm.getCluster(nullable(String.class))).thenReturn(oneClusterMock);
     when(oneClusterMock.getService(anyString())).thenReturn(serviceObj);
     when(serviceObj.getServiceComponent(anyString())).thenReturn(scomp);
     when(scomp.getServiceComponentHost(anyString())).thenReturn(sch);
@@ -566,7 +567,7 @@ public class TestActionScheduler {
         command.setStatus(HostRoleStatus.ABORTED);
         return null;
       }
-    }).when(db).timeoutHostRole(anyString(), anyLong(), anyLong(), anyString(), anyBoolean(), eq(true));
+    }).when(db).timeoutHostRole(nullable(String.class), anyLong(), anyLong(), anyString(), anyBoolean(), eq(true));
 
     //Small action timeout to test rescheduling
     AmbariEventPublisher aep = EasyMock.createNiceMock(AmbariEventPublisher.class);
@@ -624,7 +625,7 @@ public class TestActionScheduler {
 
     UnitOfWork unitOfWork = mock(UnitOfWork.class);
     AgentCommandsPublisher agentCommandsPublisher = mock(AgentCommandsPublisher.class);
-    when(fsm.getCluster(anyString())).thenReturn(oneClusterMock);
+    when(fsm.getCluster(nullable(String.class))).thenReturn(oneClusterMock);
     when(oneClusterMock.getService(anyString())).thenReturn(serviceObj);
     when(serviceObj.getServiceComponent(anyString())).thenReturn(scomp);
     when(serviceObj.getCluster()).thenReturn(oneClusterMock);
@@ -657,7 +658,7 @@ public class TestActionScheduler {
         command.setStatus(HostRoleStatus.ABORTED);
         return null;
       }
-    }).when(db).timeoutHostRole(anyString(), anyLong(), anyLong(), anyString(), anyBoolean(), eq(true));
+    }).when(db).timeoutHostRole(nullable(String.class), anyLong(), anyLong(), anyString(), anyBoolean(), eq(true));
 
     doAnswer(new Answer<Collection<HostRoleCommandEntity>>() {
       @Override
@@ -782,7 +783,7 @@ public class TestActionScheduler {
         command.setStatus(HostRoleStatus.valueOf(commandReport.getStatus()));
         return null;
       }
-    }).when(db).updateHostRoleState(anyString(), anyLong(), anyLong(), anyString(), any(CommandReport.class));
+    }).when(db).updateHostRoleState(nullable(String.class), anyLong(), anyLong(), anyString(), any(CommandReport.class));
 
     doAnswer(new Answer<HostRoleCommand>() {
       @Override
@@ -944,7 +945,7 @@ public class TestActionScheduler {
         command.setStatus(HostRoleStatus.valueOf(commandReport.getStatus()));
         return null;
       }
-    }).when(db).updateHostRoleState(anyString(), anyLong(), anyLong(), anyString(), any(CommandReport.class));
+    }).when(db).updateHostRoleState(nullable(String.class), anyLong(), anyLong(), anyString(), any(CommandReport.class));
 
     doAnswer(new Answer<HostRoleCommand>() {
       @Override
@@ -1160,7 +1161,7 @@ public class TestActionScheduler {
         command.setStatus(HostRoleStatus.valueOf(commandReport.getStatus()));
         return null;
       }
-    }).when(db).updateHostRoleState(anyString(), anyLong(), anyLong(), anyString(), any(CommandReport.class));
+    }).when(db).updateHostRoleState(nullable(String.class), anyLong(), anyLong(), anyString(), any(CommandReport.class));
 
     doAnswer(new Answer<HostRoleCommand>() {
       @Override
@@ -2426,7 +2427,7 @@ public class TestActionScheduler {
         command.setStatus(HostRoleStatus.valueOf(commandReport.getStatus()));
         return null;
       }
-    }).when(db).updateHostRoleState(anyString(), anyLong(), anyLong(), anyString(), any(CommandReport.class));
+    }).when(db).updateHostRoleState(nullable(String.class), anyLong(), anyLong(), anyString(), any(CommandReport.class));
 
     doAnswer(new Answer<List<HostRoleCommand>>() {
       @Override
