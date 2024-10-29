@@ -2722,33 +2722,6 @@ public class UpgradeHelperTest extends EasyMockSupport {
     assertEquals("three-changed", expectedBazType.get("3"));
   }
 
-
-  private static class ClusterEnvCaptureWrapper {
-    private final Capture<Map<String, Map<String, String>>> capture;
-    private final Map<String, String> clusterEnvMap;
-
-    public ClusterEnvCaptureWrapper(Map<String, String> clusterEnvMap) {
-      this.capture = Capture.newInstance();
-      this.clusterEnvMap = clusterEnvMap;
-    }
-
-    public Capture<Map<String, Map<String, String>>> getCapture() {
-      return capture;
-    }
-
-    public void handleCapturedValue() {
-      Map<String, Map<String, String>> value = capture.getValue();
-      System.out.println("Captured value: " + value); // Debug print
-
-      if (value.containsKey("cluster-env")) {
-        clusterEnvMap.putAll(value.get("cluster-env"));
-      }
-      System.out.println("ClusterEnvMap after handling: " + clusterEnvMap); // Debug print
-
-    }
-  }
-
-
   @Test
   public void testMergeConfigurationsWithClusterEnv() throws Exception {
     Cluster cluster = makeCluster(true);
