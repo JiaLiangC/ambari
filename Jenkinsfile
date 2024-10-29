@@ -117,7 +117,7 @@ pipeline {
         }
         stage('Ambari Server JTests') {
             steps {
-                sh 'mvn -am test -pl ambari-server -DskipPythonTests -Dmaven.test.failure.ignore -Dmaven.artifact.threads=10 -Drat.skip'
+                sh 'mvn -am test -pl ambari-server -DskipPythonTests  -Dmaven.artifact.threads=10 -Drat.skip'
             }
         }
     }
