@@ -264,11 +264,11 @@ public class DatabaseConsistencyCheckHelper {
    */
   static void checkForLargeTables() {
     LOG.info("Checking for tables with large physical size");
+    ensureConnection();
+
     if (dbAccessor.getDbType() == DBAccessor.DbType.H2) {
       return;
     }
-
-    ensureConnection();
 
     DBAccessor.DbType dbType = dbAccessor.getDbType();
     String schemaName = dbAccessor.getDbSchema();

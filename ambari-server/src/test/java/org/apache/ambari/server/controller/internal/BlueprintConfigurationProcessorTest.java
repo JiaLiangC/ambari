@@ -760,6 +760,10 @@ public class BlueprintConfigurationProcessorTest extends EasyMockSupport {
     hiveSiteProps.put("javax.jdo.option.ConnectionURL", "jdbc:mysql://testhost/hive?createDatabaseIfNotExist=true");
     properties.put("hive-site", hiveSiteProps);
 
+    Map<String, String> hiveEnvProperties = new HashMap<>();
+    hiveEnvProperties.put("hive_database", "New MySQL Database");
+    properties.put("hive-env", hiveEnvProperties);
+
     Configuration clusterConfig = new Configuration(properties,
       emptyMap());
 
@@ -816,7 +820,7 @@ public class BlueprintConfigurationProcessorTest extends EasyMockSupport {
     BlueprintConfigurationProcessor configProcessor = new BlueprintConfigurationProcessor(topology);
     configProcessor.doUpdateForBlueprintExport(BlueprintExportType.FULL);
 
-    assertFalse(properties.get("hive-site").containsKey("javax.jdo.option.ConnectionURL"));
+    assertTrue(properties.get("hive-site").containsKey("javax.jdo.option.ConnectionURL"));
   }
 
   @Test
@@ -1616,6 +1620,8 @@ public class BlueprintConfigurationProcessorTest extends EasyMockSupport {
     configProperties.put("webhcat-site", webHCatSiteProperties);
     configProperties.put("core-site", coreSiteProperties);
 
+    hiveEnvProperties.put("hive_database", "New MySQL Database");
+
     // setup properties that include host information
     hiveSiteProperties.put("hive.metastore.uris", "thrift://" + expectedHostName + ":" + expectedPortNum);
     hiveSiteProperties.put("javax.jdo.option.ConnectionURL", expectedHostName + ":" + expectedPortNum);
@@ -1664,7 +1670,7 @@ public class BlueprintConfigurationProcessorTest extends EasyMockSupport {
     assertEquals("hive property not properly exported",
       createExportedAddress(expectedPortNum, expectedHostGroupName), hiveSiteProperties.get("javax.jdo.option.ConnectionURL"));
     assertEquals("hive property not properly exported",
-      createExportedHostName(expectedHostGroupName) + "," + createExportedHostName(expectedHostGroupNameTwo),
+            expectedHostName + "," + expectedHostNameTwo,
       webHCatSiteProperties.get("templeton.hive.properties"));
 
     assertEquals("hive property not properly exported",
@@ -1710,6 +1716,8 @@ public class BlueprintConfigurationProcessorTest extends EasyMockSupport {
     configProperties.put("hive-env", hiveEnvProperties);
     configProperties.put("webhcat-site", webHCatSiteProperties);
     configProperties.put("core-site", coreSiteProperties);
+
+    hiveEnvProperties.put("hive_database", "New MySQL Database");
 
     // setup properties that include host information
     hiveSiteProperties.put("hive.metastore.uris", "thrift://" + expectedHostName + ":" + expectedPortNum + "," + "thrift://" + expectedHostNameTwo + ":" + expectedPortNum);
@@ -1759,7 +1767,7 @@ public class BlueprintConfigurationProcessorTest extends EasyMockSupport {
     assertEquals("hive property not properly exported",
       createExportedAddress(expectedPortNum, expectedHostGroupName), hiveSiteProperties.get("javax.jdo.option.ConnectionURL"));
     assertEquals("hive property not properly exported",
-      createExportedHostName(expectedHostGroupName) + "," + createExportedHostName(expectedHostGroupNameTwo),
+      expectedHostName + "," + expectedHostNameTwo,
       webHCatSiteProperties.get("templeton.hive.properties"));
 
     assertEquals("hive property not properly exported",
@@ -2179,7 +2187,7 @@ public class BlueprintConfigurationProcessorTest extends EasyMockSupport {
     configProcessor.doUpdateForBlueprintExport(BlueprintExportType.FULL);
 
     assertEquals("Property was incorrectly exported",
-      "%HOSTGROUP::" + expectedHostGroupName + "%", properties.get("storm.zookeeper.servers"));
+      "['%HOSTGROUP::" + expectedHostGroupName + "%']", properties.get("storm.zookeeper.servers"));
     assertEquals("Property with undefined host was incorrectly exported",
       "undefined", properties.get("nimbus.childopts"));
     assertEquals("Property with undefined host was incorrectly exported",

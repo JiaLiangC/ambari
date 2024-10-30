@@ -522,7 +522,7 @@ public class DatabaseConsistencyCheckHelperTest {
     expect(requestResultSet.getLong(1)).andReturn(1111L).atLeastOnce();
     expect(alertHistoryResultSet.getLong(1)).andReturn(2223L).atLeastOnce();
     expect(mockDBDbAccessor.getConnection()).andReturn(mockConnection);
-    expect(mockDBDbAccessor.getDbType()).andReturn(DBAccessor.DbType.MYSQL);
+    expect(mockDBDbAccessor.getDbType()).andReturn(DBAccessor.DbType.MYSQL).anyTimes();
     expect(mockDBDbAccessor.getDbSchema()).andReturn("test_schema");
     expect(mockConnection.createStatement(ResultSet.TYPE_SCROLL_SENSITIVE, ResultSet.CONCUR_UPDATABLE)).andReturn(mockStatement).anyTimes();
     expect(mockStatement.executeQuery("SELECT (data_length + index_length) \"Table Size\" " +
