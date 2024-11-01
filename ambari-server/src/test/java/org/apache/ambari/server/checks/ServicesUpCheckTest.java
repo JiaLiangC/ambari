@@ -17,6 +17,8 @@
  */
 package org.apache.ambari.server.checks;
 
+import static org.mockito.ArgumentMatchers.nullable;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -60,8 +62,6 @@ import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 
 import com.google.inject.Provider;
-
-import static org.mockito.ArgumentMatchers.nullable;
 
 
 /**

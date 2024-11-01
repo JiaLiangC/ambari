@@ -17,10 +17,11 @@
  */
 package org.apache.ambari.server.checks;
 
+import static org.mockito.ArgumentMatchers.nullable;
+
 import java.util.HashMap;
 import java.util.Map;
 
-import org.apache.ambari.server.api.services.AmbariMetaInfo;
 import org.apache.ambari.server.orm.dao.HostVersionDAO;
 import org.apache.ambari.server.orm.dao.RepositoryVersionDAO;
 import org.apache.ambari.server.orm.entities.HostVersionEntity;
@@ -37,7 +38,6 @@ import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.state.repository.ClusterVersionSummary;
 import org.apache.ambari.server.state.repository.VersionDefinitionXml;
 import org.apache.ambari.spi.ClusterInformation;
-import org.apache.ambari.spi.RepositoryType;
 import org.apache.ambari.spi.RepositoryVersion;
 import org.apache.ambari.spi.upgrade.UpgradeCheckRequest;
 import org.apache.ambari.spi.upgrade.UpgradeCheckResult;
@@ -53,7 +53,7 @@ import org.mockito.runners.MockitoJUnitRunner;
 
 import com.google.inject.Provider;
 
-import static org.mockito.ArgumentMatchers.nullable;
+
 
 /**
  * Unit tests for HostsRepositoryVersionCheck

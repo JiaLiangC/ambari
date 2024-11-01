@@ -122,13 +122,16 @@ import org.apache.ambari.spi.RepositoryType;
 import org.apache.ambari.spi.upgrade.OrchestrationOptions;
 import org.apache.ambari.spi.upgrade.UpgradeType;
 import org.apache.commons.io.FileUtils;
-import org.easymock.*;
+import org.easymock.Capture;
+import org.easymock.EasyMock;
+import org.easymock.EasyMockSupport;
+import org.easymock.IAnswer;
+import org.easymock.IArgumentMatcher;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
-import org.mockito.ArgumentMatcher;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.google.common.collect.ImmutableMap;
@@ -228,12 +231,21 @@ public class UpgradeHelperTest extends EasyMockSupport {
     SecurityContextHolder.getContext().setAuthentication(TestAuthenticationFactory.createAdministrator("admin"));
   }
 
+
   @After
   public void teardown() throws AmbariException, SQLException {
+    try{
     H2DatabaseCleaner.clearDatabaseAndStopPersistenceService(injector);
 
     // Clear the authenticated user
     SecurityContextHolder.getContext().setAuthentication(null);
+
+    if (stackManagerMock != null) {
+      stackManagerMock.invalidateCurrentPaths();
+    }
+   }finally {
+      EasyMock.reset(m_configHelper, m_masterHostResolver);
+    }
   }
 
   @Test

@@ -17,6 +17,9 @@
  */
 package org.apache.ambari.server.scheduler;
 
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.Properties;
 
@@ -24,13 +27,12 @@ import org.apache.ambari.server.configuration.Configuration;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.quartz.Scheduler;
 
 import junit.framework.Assert;
-import static org.mockito.Mockito.*;
 
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ExecutionSchedulerTest {
