@@ -603,7 +603,7 @@ public class ClientConfigResourceProviderTest {
     expect(cluster.getClusterName()).andReturn(clusterName);
     expect(managementController.getHostComponents(EasyMock.anyObject())).andReturn(responses).anyTimes();
 
-    try (MockedStatic<StageUtils> mockedStageUtils = mockStatic(StageUtils.class)) {
+    PowerMock.mockStaticPartial(StageUtils.class, "getClusterHostInfo");
 
 
     Map<String, Set<String>> clusterHostInfo = new HashMap<>();
@@ -620,7 +620,7 @@ public class ClientConfigResourceProviderTest {
       }
     }
     clusterHostInfo.put("all_hosts", all_hosts);
-    mockedStageUtils.when(() -> StageUtils.getClusterHostInfo(cluster)).thenReturn(clusterHostInfo);
+    expect(StageUtils.getClusterHostInfo(cluster)).andReturn(clusterHostInfo);
 
     expect(stackId.getStackName()).andReturn(stackName).anyTimes();
     expect(stackId.getStackVersion()).andReturn(stackVersion).anyTimes();
@@ -685,7 +685,6 @@ public class ClientConfigResourceProviderTest {
         clusterConfig, host, service, serviceComponent, serviceComponentHost, serviceInfo, configHelper,
         runtime, process);
     PowerMock.verifyAll();
-    }
   }
 
 
