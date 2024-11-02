@@ -35,3 +35,11 @@ createDDL.jdbc
 ambari_python.egg-info
 **/Crashpad
 .org.chromium.*
+
+#jialiang will remove after finish
+log
+keyss
+ambari-server/src/main/resources/ambari.properties
+ambari-server/src/main/resources/log4j.properties
+ambari-server/src/main/resources/password.dat
+version
