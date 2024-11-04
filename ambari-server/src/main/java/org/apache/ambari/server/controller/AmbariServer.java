@@ -836,13 +836,14 @@ public class AmbariServer {
     if (configs.isApiGzipped()) {
       GzipHandler gzipHandler = new GzipHandler();
       gzipHandler.setIncludedMethods("GET", "POST", "PUT", "DELETE");
-      gzipHandler.setExcludedPaths(".*\\.woff", ".*\\.ttf", ".*\\.woff2", ".*\\.eot", ".*\\.svg");
+      gzipHandler.setExcludedPaths("*.woff", "*.ttf", "*.woff2", "*.eot", "*.svg");
       gzipHandler.setIncludedMimeTypes(
               "text/html", "text/plain", "text/xml", "text/css",
               "application/x-javascript", "application/xml",
-              "application/x-www-form-urlencoded", "application/javascript", "application/json"
+              "application/x-www-form-urlencoded", "application/javascript",
+              "application/json"
       );
-      gzipHandler.setMinGzipSize(Integer.valueOf(configs.getApiGzipMinSize()));
+      gzipHandler.setMinGzipSize(Integer.parseInt(configs.getApiGzipMinSize()));
       context.setGzipHandler(gzipHandler);
     }
   }
