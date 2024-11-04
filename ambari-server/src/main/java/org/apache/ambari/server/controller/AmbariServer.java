@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.logging.LogManager;
 
 import javax.crypto.BadPaddingException;
+
 import jakarta.servlet.DispatcherType;
 
 import org.apache.ambari.server.AmbariException;
@@ -130,11 +131,10 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpVersion;
 import org.apache.log4j.PropertyConfigurator;
 import org.apache.velocity.app.Velocity;
-import org.eclipse.jetty.http.MimeTypes;
+import org.eclipse.jetty.server.CustomRequestLog;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
-import org.eclipse.jetty.server.CustomRequestLog;
 import org.eclipse.jetty.server.SecureRequestCustomizer;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
