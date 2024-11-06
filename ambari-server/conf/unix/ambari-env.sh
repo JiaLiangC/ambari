@@ -13,15 +13,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
-AMBARI_PASSHPHRASE="DEV"
-export AMBARI_JVM_ARGS="$AMBARI_JVM_ARGS -Xms512m -Xmx2048m -XX:MaxPermSize=128m -Djdk.tls.ephemeralDHKeySize=2048 -Djava.security.auth.login.config=$ROOT/etc/ambari-server/conf/krb5JAASLogin.conf -Djava.security.krb5.conf=/etc/krb5.conf -Djavax.security.auth.useSubjectCredsOnly=false -Dcom.sun.jndi.ldap.connect.pool.protocol=\"plain ssl\" -Dcom.sun.jndi.ldap.connect.pool.maxsize=20 -Dcom.sun.jndi.ldap.connect.pool.timeout=300000"
-export PATH=$PATH:$ROOT/var/lib/ambari-server
-export PYTHONPATH=$ROOT/usr/lib/ambari-server/lib:$PYTHONPATH
-
-# customize python binary for ambari
-# export PYTHON=/usr/bin/python3
-
+: "${AMBARI_JVM_ARGS:=}"
+AMBARI_JVM_ARGS="$AMBARI_JVM_ARGS --add-opens java.base/java.lang=ALL-UNNAMED "
+AMBARI_JVM_ARGS="$AMBARI_JVM_ARGS --add-opens java.base/java.util.regex=ALL-UNNAMED "
+AMBARI_JVM_ARGS="$AMBARI_JVM_ARGS --add-opens java.base/java.util=ALL-UNNAMED "
+export AMBARI_JVM_ARGS="$AMBARI_JVM_ARGS  --add-opens java.base/java.lang.reflect=ALL-UNNAMED "
+export AMBARI_JVM_ARGS="$AMBARI_JVM_ARGS -Xms512m -Xmx2048m -Djava.security.auth.login.config=$ROOT/etc/ambari-server/conf/krb5JAASLogin.conf -Djava.security.krb5.conf=/etc/krb5.conf -Djavax.security.auth.useSubjectCredsOnly=false -Dcom.sun.jndi.ldap.connect.pool.protocol=\"plain ssl\" -Dcom.sun.jndi.ldap.connect.pool.maxsize=20 -Dcom.sun.jndi.ldap.connect.pool.timeout=300000"
+AMBARI_PID_DIR=/var/run/ambari-server
+AMBARI_PASSPHRASE="DEV"
+export PYTHONPATH=/usr/lib/ambari-server/lib:$PYTHONPATH
 # to add additional directory or jar to server classpath use SERVER_CLASSPATH variable
 # export SERVER_CLASSPATH=/etc/hadoop/conf/secure
