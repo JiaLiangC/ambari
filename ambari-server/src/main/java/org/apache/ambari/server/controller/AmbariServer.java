@@ -642,6 +642,8 @@ public class AmbariServer {
       sslContextFactory.setKeyStoreType(configsMap.get(Configuration.KSTR_TYPE.getKey()));
       sslContextFactory.setTrustStoreType(configsMap.get(Configuration.TSTR_TYPE.getKey()));
       sslContextFactory.setNeedClientAuth(needClientAuth);
+      sslContextFactory.setSniRequired(false);
+
       ServerConnector agentSslConnector = new ServerConnector(server, acceptors, -1,
         new SslConnectionFactory(sslContextFactory, HttpVersion.HTTP_1_1.toString()),
         new HttpConnectionFactory(https_config));
