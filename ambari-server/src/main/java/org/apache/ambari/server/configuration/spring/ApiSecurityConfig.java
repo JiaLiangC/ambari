@@ -5,6 +5,7 @@ import java.util.Arrays;
 import org.apache.ambari.server.security.AmbariEntryPoint;
 import org.apache.ambari.server.security.authentication.AmbariDelegatingAuthenticationFilter;
 import org.apache.ambari.server.security.authentication.AmbariLocalAuthenticationProvider;
+import org.apache.ambari.server.security.authentication.RequestBodyCachingFilter;
 import org.apache.ambari.server.security.authentication.jwt.AmbariJwtAuthenticationProvider;
 import org.apache.ambari.server.security.authentication.kerberos.AmbariAuthToLocalUserDetailsService;
 import org.apache.ambari.server.security.authentication.kerberos.AmbariKerberosAuthenticationProvider;
@@ -23,6 +24,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.FilterSecurityInterceptor;
@@ -55,6 +57,7 @@ public class ApiSecurityConfig {
             .exceptionHandling(exceptionHandling -> exceptionHandling.authenticationEntryPoint(ambariEntryPoint))
             .sessionManagement(sessionManagement -> sessionManagement
                     .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+            .addFilterBefore(new RequestBodyCachingFilter(), BasicAuthenticationFilter.class)
             .addFilterBefore(guiceBeansConfig.ambariUserAuthorizationFilter(), BasicAuthenticationFilter.class)
             .addFilterAt(delegatingAuthenticationFilter, BasicAuthenticationFilter.class)
             .addFilterBefore(authorizationFilter, FilterSecurityInterceptor.class);
@@ -77,6 +80,11 @@ public class ApiSecurityConfig {
             ambariInternalAuthenticationProvider,
             ambariKerberosAuthenticationProvider
     ));
+  }
+
+  @Bean
+  public WebSecurityCustomizer webSecurityCustomizer() {
+    return (web) -> web.debug(true);
   }
 
   @Bean
