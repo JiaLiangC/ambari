@@ -151,6 +151,7 @@ import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
+import org.eclipse.jetty.websocket.server.config.JettyWebSocketServletContainerInitializer;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.servlet.ServletContainer;
 import org.slf4j.Logger;
@@ -496,6 +497,12 @@ public class AmbariServer {
       agentroot.addServlet(cert, "/*");
       cert.setInitOrder(4);
 
+      // WebSocket container initialization for Jetty
+      JettyWebSocketServletContainerInitializer.configure(agentroot, (context, jettyContainer) -> {
+        jettyContainer.setMaxTextMessageSize(configs.getStompMaxIncomingMessageSize());
+      });
+
+
       File resourcesDirectory = new File(configs.getResourceDirPath());
       ServletHolder resources = new ServletHolder(DefaultServlet.class);
       resources.setInitParameter("resourceBase", resourcesDirectory.getParent());
@@ -623,15 +630,16 @@ public class AmbariServer {
 
       String srvrCrtPass = configsMap.get(Configuration.SRVR_CRT_PASS.getKey());
 
-
+      SecureRequestCustomizer src = new SecureRequestCustomizer();
+      src.setSniHostCheck(false);
+      src.setSniRequired(false);
       HttpConfiguration https_config = new HttpConfiguration();
-      https_config.addCustomizer(new SecureRequestCustomizer());
+      https_config.addCustomizer(src);
       https_config.setRequestHeaderSize(configs.getHttpRequestHeaderSize());
       https_config.setResponseHeaderSize(configs.getHttpResponseHeaderSize());
       https_config.setSendServerVersion(false);
 
       // Secured connector - default constructor sets trustAll = true for certs
-    //  SslContextFactory sslContextFactory = new SslContextFactory(); depricated
       SslContextFactory.Server sslContextFactory = new SslContextFactory.Server();
       disableInsecureProtocols(sslContextFactory);
       sslContextFactory.setKeyStorePath(keystore);
@@ -677,7 +685,10 @@ public class AmbariServer {
       String httpsCrtPass = configsMap.get(Configuration.CLIENT_API_SSL_CRT_PASS.getKey());
 
       HttpConfiguration https_config = new HttpConfiguration(http_config);
-      https_config.addCustomizer(new SecureRequestCustomizer());
+      SecureRequestCustomizer src = new SecureRequestCustomizer();
+      src.setSniRequired(false);
+      src.setSniHostCheck(false);
+      https_config.addCustomizer(src);
       https_config.setSecurePort(configs.getClientSSLApiPort());
 
       SslContextFactory.Server contextFactoryApi = new SslContextFactory.Server();
@@ -689,6 +700,7 @@ public class AmbariServer {
       contextFactoryApi.setTrustStorePassword(httpsCrtPass);
       contextFactoryApi.setKeyStoreType(configsMap.get(Configuration.CLIENT_API_SSL_KSTR_TYPE.getKey()));
       contextFactoryApi.setTrustStoreType(configsMap.get(Configuration.CLIENT_API_SSL_KSTR_TYPE.getKey()));
+      contextFactoryApi.setSniRequired(false);
       apiConnector = new ServerConnector(server, acceptors, -1,
         new SslConnectionFactory(contextFactoryApi, HttpVersion.HTTP_1_1.toString()),
         new HttpConnectionFactory(https_config));
