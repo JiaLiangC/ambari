@@ -42,7 +42,7 @@ from ambari_server.serverConfiguration import configDefaults, JDKRelease, get_st
   JAVA_HOME, JAVA_HOME_PROPERTY, JCE_NAME_PROPERTY, JDBC_RCA_URL_PROPERTY, JDBC_URL_PROPERTY, \
   JDK_NAME_PROPERTY, JDK_RELEASES, NR_USER_PROPERTY, OS_FAMILY, OS_FAMILY_PROPERTY, OS_TYPE, OS_TYPE_PROPERTY, OS_VERSION, \
   VIEWS_DIR_PROPERTY, JDBC_DATABASE_PROPERTY, JDK_DOWNLOAD_SUPPORTED_PROPERTY, JCE_DOWNLOAD_SUPPORTED_PROPERTY, SETUP_DONE_PROPERTIES, \
-  STACK_JAVA_HOME_PROPERTY, STACK_JDK_NAME_PROPERTY, STACK_JCE_NAME_PROPERTY, STACK_JAVA_VERSION, GPL_LICENSE_ACCEPTED_PROPERTY
+  STACK_JAVA_HOME_PROPERTY, STACK_JDK_NAME_PROPERTY, STACK_JCE_NAME_PROPERTY, STACK_JAVA_VERSION, GPL_LICENSE_ACCEPTED_PROPERTY,AMBARI_JAVA_HOME_PROPERTY
 from ambari_server.serverUtils import is_server_runing
 from ambari_server.setupSecurity import adjust_directory_permissions
 from ambari_server.userInput import get_YN_input, get_validated_string_input
@@ -413,6 +413,33 @@ class JDKSetup(object):
   def download_and_install_jdk(self, args, properties, ambariOnly = False):
     jcePolicyWarn = "JCE Policy files are required for configuring Kerberos security. If you plan to use Kerberos," \
                     "please make sure JCE Unlimited Strength Jurisdiction Policy Files are valid on all hosts."
+
+    if args.ambari_java_home:
+      print('start setting AMBARI_JAVA_HOME for Ambari...')
+      # 验证 ambari_java_home 是否有效
+      if not validate_jdk(args.ambari_java_home):
+        err = "Path to Ambari java home " + args.ambari_java_home + " or java binary file does not exist"
+        raise FatalException(1, err)
+
+      print_warning_msg("AMBARI_JAVA_HOME " + args.ambari_java_home + " must be valid on ALL hosts")
+      print_warning_msg(jcePolicyWarn)
+      IS_CUSTOM_JDK = True
+
+      # 更新 AMBARI_JAVA_HOME_PROPERTY 相关配置
+      properties.process_pair(AMBARI_JAVA_HOME_PROPERTY, args.ambari_java_home)
+      properties.removeOldProp(JDK_NAME_PROPERTY)
+      properties.removeOldProp(JCE_NAME_PROPERTY)
+
+      if not ambariOnly:
+        properties.process_pair(STACK_JAVA_HOME_PROPERTY, args.ambari_java_home)
+        properties.removeOldProp(STACK_JDK_NAME_PROPERTY)
+        properties.removeOldProp(STACK_JCE_NAME_PROPERTY)
+
+      self._ensure_java_home_env_var_is_set(args.ambari_java_home)
+      self.jdk_index = self.custom_jdk_number
+      print('Setting AMBARI_JAVA_HOME for Ambari finished')
+
+      return
 
     if args.java_home:
       #java_home was specified among the command-line arguments. Use it as custom JDK location.

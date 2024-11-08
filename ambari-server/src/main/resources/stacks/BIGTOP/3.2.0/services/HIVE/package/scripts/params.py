@@ -180,6 +180,8 @@ hive_jdbc_connection_url = config['configurations']['hive-site']['javax.jdo.opti
 
 jdk_location = config['ambariLevelParams']['jdk_location']
 
+print(f"------{config}")
+
 if credential_store_enabled:
   if 'hadoop.security.credential.provider.path' in config['configurations']['hive-site']:
     cs_lib_path = config['configurations']['hive-site']['credentialStoreClassPath']
