@@ -56,7 +56,7 @@ if ambari_provider_module is not None:
   ambari_provider_module_option = "-Dprovider.module.class=" + \
                                   ambari_provider_module + " "
 
-jvm_args = os.getenv('AMBARI_JVM_ARGS', '-Xms512m -Xmx2048m -XX:MaxPermSize=128m')
+jvm_args = os.getenv('AMBARI_JVM_ARGS', '-Xms512m -Xmx2048m')
 
 ENV_FOREGROUND_KEY = "AMBARI_SERVER_RUN_IN_FOREGROUND"
 CHECK_DATABASE_HELPER_CMD = "{0} -cp {1} org.apache.ambari.server.checks.DatabaseConsistencyChecker"
