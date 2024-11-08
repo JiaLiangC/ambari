@@ -180,15 +180,14 @@ hive_jdbc_connection_url = config['configurations']['hive-site']['javax.jdo.opti
 
 jdk_location = config['ambariLevelParams']['jdk_location']
 
-print(f"------{config}")
 
 if credential_store_enabled:
   if 'hadoop.security.credential.provider.path' in config['configurations']['hive-site']:
     cs_lib_path = config['configurations']['hive-site']['credentialStoreClassPath']
-    java_home = config['ambariLevelParams']['java_home']
+    ambari_java_home = config['ambariLevelParams']['ambari_java_home']
     alias = 'javax.jdo.option.ConnectionPassword'
     provider_path = config['configurations']['hive-site']['hadoop.security.credential.provider.path']
-    hive_metastore_user_passwd = PasswordString(get_password_from_credential_store(alias, provider_path, cs_lib_path, java_home, jdk_location))
+    hive_metastore_user_passwd = PasswordString(get_password_from_credential_store(alias, provider_path, cs_lib_path, ambari_java_home, jdk_location))
   else:
     raise Exception("hadoop.security.credential.provider.path property should be set")
 else:
@@ -378,7 +377,8 @@ else:
 hive_metastore_heapsize = config['configurations']['hive-env']['hive.metastore.heapsize']
 
 java64_home = config['ambariLevelParams']['java_home']
-java_exec = format("{java64_home}/bin/java")
+ambari_java_home = config['ambariLevelParams']['ambari_java_home']
+ambari_java_exec = format("{ambari_java_home}/bin/java")
 java_version = expect("/ambariLevelParams/java_version", int)
 
 ##### MYSQL

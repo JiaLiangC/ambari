@@ -97,7 +97,7 @@ class HiveServer(Script):
 
   def disable_security(self, env):
     import params
-    zkmigrator = ZkMigrator(params.hive_zookeeper_quorum, params.java_exec, params.java64_home, params.jaas_file, params.hive_user)
+    zkmigrator = ZkMigrator(params.hive_zookeeper_quorum, params.ambari_java_exec, params.ambari_java_home, params.jaas_file, params.hive_user)
     if params.hive_cluster_token_zkstore:
       zkmigrator.set_acls(self._base_node(params.hive_cluster_token_zkstore), 'world:anyone:crdwa')
     if params.hive_zk_namespace:

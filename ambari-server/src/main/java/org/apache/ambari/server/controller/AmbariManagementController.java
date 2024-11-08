@@ -718,6 +718,13 @@ public interface AmbariManagementController {
    */
   String getJavaHome();
 
+
+  /**
+   * Getter for the java home, stored in ambari.properties
+   */
+  String getAmbariJavaHome();
+
+
   /**
    * Getter for the jdk name, stored in ambari.properties
    */
