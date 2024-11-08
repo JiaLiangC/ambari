@@ -439,7 +439,6 @@ class JDKSetup(object):
       self.jdk_index = self.custom_jdk_number
       print('Setting AMBARI_JAVA_HOME for Ambari finished')
 
-      return
 
     if args.java_home:
       #java_home was specified among the command-line arguments. Use it as custom JDK location.
