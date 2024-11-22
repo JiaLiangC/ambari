@@ -2916,6 +2916,7 @@ class TestAmbariServer(TestCase):
 
     # Successful JDK download
     args.java_home = None
+    args.ambari_java_home = None
     validate_jdk_mock.return_value = False
     path_existsMock.reset_mock()
     path_existsMock.side_effect = [False, False, False]
