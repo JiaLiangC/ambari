@@ -422,19 +422,10 @@ class JDKSetup(object):
 
       print_warning_msg("AMBARI_JAVA_HOME " + args.ambari_java_home + " must be valid on ALL hosts")
       print_warning_msg(jcePolicyWarn)
-      IS_CUSTOM_JDK = True
 
       properties.process_pair(AMBARI_JAVA_HOME_PROPERTY, args.ambari_java_home)
       properties.removeOldProp(JDK_NAME_PROPERTY)
       properties.removeOldProp(JCE_NAME_PROPERTY)
-
-      if not ambariOnly:
-        properties.process_pair(STACK_JAVA_HOME_PROPERTY, args.ambari_java_home)
-        properties.removeOldProp(STACK_JDK_NAME_PROPERTY)
-        properties.removeOldProp(STACK_JCE_NAME_PROPERTY)
-
-      self._ensure_java_home_env_var_is_set(args.ambari_java_home)
-      self.jdk_index = self.custom_jdk_number
       print('Setting AMBARI_JAVA_HOME for Ambari finished')
 
 
