@@ -597,10 +597,11 @@ public class StageUtilsTest extends EasyMockSupport {
     Map<String, String> commandParams = new HashMap<>();
     Configuration configuration = new Configuration();
     configuration.setProperty("java.home", "myJavaHome");
+    configuration.setProperty("ambari.java.home", "ambari_java_home");
     // WHEN
     StageUtils.useAmbariJdkInCommandParams(commandParams, configuration);
     // THEN
-    assertEquals("myJavaHome", commandParams.get("ambari_java_home"));
+    assertEquals("ambari_java_home", commandParams.get("ambari_java_home"));
     assertEquals(2, commandParams.size());
   }
 
@@ -612,10 +613,11 @@ public class StageUtilsTest extends EasyMockSupport {
     configuration.setProperty("java.home", "myJavaHome");
     configuration.setProperty("jdk.name", "myJdkName");
     configuration.setProperty("jce.name", "myJceName");
+    configuration.setProperty("ambari.java.home", "ambari_java_home");
     // WHEN
     StageUtils.useAmbariJdkInCommandParams(commandParams, configuration);
     // THEN
-    assertEquals("myJavaHome", commandParams.get("ambari_java_home"));
+    assertEquals("ambari_java_home", commandParams.get("ambari_java_home"));
     assertEquals("myJdkName", commandParams.get("ambari_jdk_name"));
     assertEquals("myJceName", commandParams.get("ambari_jce_name"));
     assertEquals(4, commandParams.size());
