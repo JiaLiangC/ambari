@@ -204,7 +204,7 @@ def kms(upgrade_type=None):
       cp = cp + os.pathsep + path_to_jdbc
 
     db_connection_check_command = format(
-      "{java_home}/bin/java -cp {cp} org.apache.ambari.server.DBConnectionVerification '{ranger_kms_jdbc_connection_url}' {db_user} {db_password!p} {ranger_kms_jdbc_driver}")
+      "{ambari_java_home}/bin/java -cp {cp} org.apache.ambari.server.DBConnectionVerification '{ranger_kms_jdbc_connection_url}' {db_user} {db_password!p} {ranger_kms_jdbc_driver}")
 
     env_dict = {}
     if params.db_flavor.lower() == 'sqla':

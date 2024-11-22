@@ -150,7 +150,7 @@ def validate_connection(target_path_to_jdbc, hive_lib_path):
       Logger.error(error_message)
 
   db_connection_check_command = format(
-    "{java64_home}/bin/java -cp {check_db_connection_jar}:{path_to_jdbc} org.apache.ambari.server.DBConnectionVerification '{hive_jdbc_connection_url}' {hive_metastore_user_name} {hive_metastore_user_passwd!p} {hive_jdbc_driver}")
+    "{ambari_java_home}/bin/java -cp {check_db_connection_jar}:{path_to_jdbc} org.apache.ambari.server.DBConnectionVerification '{hive_jdbc_connection_url}' {hive_metastore_user_name} {hive_metastore_user_passwd!p} {hive_jdbc_driver}")
 
   try:
     Execute(db_connection_check_command,

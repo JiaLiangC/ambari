@@ -117,6 +117,8 @@ usersync_stop  = format('{usersync_services_file} stop')
 usersync_start = format('{usersync_services_file} start')
 
 java_home = config['ambariLevelParams']['java_home']
+ambari_java_home = config['ambariLevelParams']['ambari_java_home']
+ambari_java_exec = format("{ambari_java_home}/bin/java")
 unix_user  = config['configurations']['ranger-env']['ranger_user']
 unix_group = config['configurations']['ranger-env']['ranger_group']
 ranger_pid_dir = default("/configurations/ranger-env/ranger_pid_dir", "/var/run/ranger")

@@ -793,6 +793,15 @@ public class Configuration {
       "java.home", null);
 
   /**
+   * The location of the JDK on the Ambari Agent hosts.
+   */
+  @Markdown(
+          description = "The location of the JDK on the Ambari Agent hosts. This is only used by Ambari Server",
+          examples = { "/usr/jdk64/jdk1.8.0_112" })
+  public static final ConfigurationProperty<String> AMBARI_JAVA_HOME = new ConfigurationProperty<>(
+          "ambari.java.home", null);
+
+  /**
    * The name of the JDK installation binary.
    */
   @Markdown(
@@ -4113,6 +4122,10 @@ public class Configuration {
 
   public String getJavaHome() {
     return getProperty(JAVA_HOME);
+  }
+
+  public String getAmbariJavaHome() {
+    return getProperty(AMBARI_JAVA_HOME);
   }
 
   public String getJDKName() {

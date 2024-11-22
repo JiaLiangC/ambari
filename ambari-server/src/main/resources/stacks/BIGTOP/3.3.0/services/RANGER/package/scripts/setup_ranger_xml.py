@@ -86,7 +86,7 @@ def setup_ranger_admin(upgrade_type=None):
   cp = cp + os.pathsep + format("{ranger_home}/ews/lib/*")
 
   db_connection_check_command = format(
-    "{java_home}/bin/java -cp {cp} org.apache.ambari.server.DBConnectionVerification '{ranger_jdbc_connection_url}' {ranger_db_user} {ranger_db_password!p} {ranger_jdbc_driver}")
+    "{ambari_java_home}/bin/java -cp {cp} org.apache.ambari.server.DBConnectionVerification '{ranger_jdbc_connection_url}' {ranger_db_user} {ranger_db_password!p} {ranger_jdbc_driver}")
 
   env_dict = {}
   if params.db_flavor.lower() == 'sqla':

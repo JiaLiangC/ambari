@@ -67,6 +67,8 @@ ranger_kms_setup_marker = os.path.join(kms_conf_dir, "kms_setup")
 kms_lib_path = format('{kms_home}/ews/lib/')
 kms_log_dir = default("/configurations/kms-env/kms_log_dir", "/var/log/ranger/kms")
 java_home = config['ambariLevelParams']['java_home']
+ambari_java_home = config['ambariLevelParams']['ambari_java_home']
+ambari_java_exec = format("{ambari_java_home}/bin/java")
 kms_user  = default("/configurations/kms-env/kms_user", "kms")
 kms_group = default("/configurations/kms-env/kms_group", "kms")
 
