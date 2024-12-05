@@ -41,7 +41,6 @@ from resource_management.libraries.functions import get_unique_id_and_date
 from resource_management.libraries.functions.get_not_managed_resources import get_not_managed_resources
 from resource_management.libraries.script.script import Script
 from resource_management.libraries.functions.expect import expect
-from ambari_commons.ambari_metrics_helper import select_metric_collector_hosts_from_hostnames
 from resource_management.libraries.functions.setup_ranger_plugin_xml import get_audit_configs, generate_ranger_service_config
 
 # server configurations
