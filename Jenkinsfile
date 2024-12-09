@@ -58,6 +58,7 @@ pipeline {
         stage('Find and Run Ruff') {
             steps {
                 script {
+                    sh 'pip3 install --user ruff'
                     echo "Contents of /home/jenkins/.local/bin:"
                     sh 'ls -l /home/jenkins/.local/bin || echo "Directory not found"'
                 }
