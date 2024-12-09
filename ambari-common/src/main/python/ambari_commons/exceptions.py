@@ -20,12 +20,12 @@ limitations under the License.
 
 
 class FatalException(Exception):
-    def __init__(self, code, reason):
-      self.code = code
-      self.reason = reason
+  def __init__(self, code, reason):
+    self.code = code
+    self.reason = reason
 
-    def __str__(self):
-        return repr("Fatal exception: %s, exit code %s" % (self.reason, self.code))
+  def __str__(self):
+    return repr("Fatal exception: %s, exit code %s" % (self.reason, self.code))
 
 
 class NonFatalException(Exception):

@@ -24,13 +24,14 @@ from resource_management.libraries.functions.is_empty import is_empty
 from resource_management.core.exceptions import Fail
 import re
 
+
 def get_port_from_url(address):
   """
   Return port from URL. If the address is numeric, the address is assumed to be a port and is returned.
-  If address is UnknownConfiguration, UnknownConfiguration will be returned. 
+  If address is UnknownConfiguration, UnknownConfiguration will be returned.
   If no port was found, Fail will be raised.
   """
-  
+
   if is_empty(address):
     return address
 
@@ -39,7 +40,7 @@ def get_port_from_url(address):
 
   if address is None or address.strip() == "":
     return ""
-  
+
   port = re.findall(":([\d]{1,5})(?=/|$)", address)
   if port:
     return port[0]

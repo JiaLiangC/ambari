@@ -26,12 +26,14 @@ CRITICAL_KEY = "ulimit.critical.threshold"
 DEFAULT_WARNING_KEY = 200000
 DEFAULT_CRITICAL_KEY = 800000
 
+
 def get_tokens():
   """
   Returns a tuple of tokens in the format {{site/property}} that will be used
   to build the dictionary passed into execute
   """
   return None
+
 
 def execute(configurations={}, parameters={}, host_name=None):
   """
@@ -54,8 +56,8 @@ def execute(configurations={}, parameters={}, host_name=None):
 
   return return_code, [label]
 
-def _get_warnings_for_partition(parameters, soft_ulimit):
 
+def _get_warnings_for_partition(parameters, soft_ulimit):
   # start with hard coded defaults
   warning_count = DEFAULT_WARNING_KEY
   critical_count = DEFAULT_CRITICAL_KEY
@@ -67,17 +69,16 @@ def _get_warnings_for_partition(parameters, soft_ulimit):
     critical_count = int(parameters[CRITICAL_KEY])
 
   if soft_ulimit is None or soft_ulimit == "":
-    return 'CRITICAL', ['Unable to determine ulimit for open files (-n)']
+    return "CRITICAL", ["Unable to determine ulimit for open files (-n)"]
 
   return_code = "OK"
   label = f"Ulimit for open files (-n) is {soft_ulimit}"
 
   if soft_ulimit >= critical_count:
     label = f"Ulimit for open files (-n) is {soft_ulimit} which is higher or equal than critical value of {critical_count}"
-    return_code = 'CRITICAL'
+    return_code = "CRITICAL"
   elif soft_ulimit >= warning_count:
     label = f"Ulimit for open files (-n) is {soft_ulimit} which is higher or equal than warning value of {warning_count}"
-    return_code = 'WARNING'
+    return_code = "WARNING"
 
   return return_code, label
-

@@ -17,31 +17,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from ambari_commons.repo_manager.generic_manager import GenericManagerProperties, GenericManager
+from ambari_commons.repo_manager.generic_manager import (
+  GenericManagerProperties,
+  GenericManager,
+)
 from ambari_commons.shell import shellRunner
 
 from resource_management.core.logger import Logger
-#from ambari_commons.shell import shellRunner
+# from ambari_commons.shell import shellRunner
 
 
 INSTALL_CMD = {
-  True: ['cmd', '/c', 'choco', 'install', '--pre', '-y', '-v'],
-  False: ['cmd', '/c', 'choco', 'install', '--pre', '-y'],
+  True: ["cmd", "/c", "choco", "install", "--pre", "-y", "-v"],
+  False: ["cmd", "/c", "choco", "install", "--pre", "-y"],
 }
 
 UPGRADE_CMD = {
-  True: ['cmd', '/c', 'choco', 'upgrade', '--pre', '-y', '-f', '-v'],
-  False: ['cmd', '/c', 'choco', 'upgrade', '--pre', '-y', '-f'],
+  True: ["cmd", "/c", "choco", "upgrade", "--pre", "-y", "-f", "-v"],
+  False: ["cmd", "/c", "choco", "upgrade", "--pre", "-y", "-f"],
 }
 
 REMOVE_CMD = {
-  True: ['cmd', '/c', 'choco', 'uninstall', '-y', '-v'],
-  False: ['cmd', '/c', 'choco', 'uninstall', '-y'],
+  True: ["cmd", "/c", "choco", "uninstall", "-y", "-v"],
+  False: ["cmd", "/c", "choco", "uninstall", "-y"],
 }
 
 CHECK_CMD = {
-  True: ['cmd', '/c', 'choco', 'list', '--pre', '--local-only', '-v'],
-  False: ['cmd', '/c', 'choco', 'list', '--pre', '--local-only'],
+  True: ["cmd", "/c", "choco", "list", "--pre", "--local-only", "-v"],
+  False: ["cmd", "/c", "choco", "list", "--pre", "--local-only"],
 }
 
 
@@ -60,15 +63,21 @@ class ChocoManager(GenericManager):
     if not self._check_existence(name) or context.use_repos:
       cmd = INSTALL_CMD[context.log_output]
       if context.use_repos:
-        enable_repo_option = '-s' + ",".join(sorted(context.use_repos.keys()))
+        enable_repo_option = "-s" + ",".join(sorted(context.use_repos.keys()))
         cmd = cmd + [enable_repo_option]
       cmd = cmd + [name]
       cmdString = " ".join(cmd)
       Logger.info("Installing package %s ('%s')" % (name, cmdString))
       runner = shellRunner()
       res = runner.run(cmd)
-      if res['exitCode'] != 0:
-        raise Exception("Error while installing choco package " + name + ". " + res['error'] + res['output'])
+      if res["exitCode"] != 0:
+        raise Exception(
+          "Error while installing choco package "
+          + name
+          + ". "
+          + res["error"]
+          + res["output"]
+        )
     else:
       Logger.info("Skipping installation of existing package %s" % (name))
 
@@ -81,15 +90,21 @@ class ChocoManager(GenericManager):
     """
     cmd = UPGRADE_CMD[context.log_output]
     if context.use_repos:
-      enable_repo_option = '-s' + ",".join(sorted(context.use_repos.keys()))
+      enable_repo_option = "-s" + ",".join(sorted(context.use_repos.keys()))
       cmd = cmd + [enable_repo_option]
     cmd = cmd + [name]
     cmdString = " ".join(cmd)
     Logger.info("Upgrading package %s ('%s')" % (name, cmdString))
     runner = shellRunner()
     res = runner.run(cmd)
-    if res['exitCode'] != 0:
-      raise Exception("Error while upgrading choco package " + name + ". " + res['error'] + res['output'])
+    if res["exitCode"] != 0:
+      raise Exception(
+        "Error while upgrading choco package "
+        + name
+        + ". "
+        + res["error"]
+        + res["output"]
+      )
 
   def remove_package(self, name, context, ignore_dependencies=False):
     """
@@ -105,8 +120,14 @@ class ChocoManager(GenericManager):
       Logger.info("Removing package %s ('%s')" % (name, " ".join(cmd)))
       runner = shellRunner()
       res = runner.run(cmd)
-      if res['exitCode'] != 0:
-        raise Exception("Error while upgrading choco package " + name + ". " + res['error'] + res['output'])
+      if res["exitCode"] != 0:
+        raise Exception(
+          "Error while upgrading choco package "
+          + name
+          + ". "
+          + res["error"]
+          + res["output"]
+        )
     else:
       Logger.info("Skipping removal of non-existing package %s" % (name))
 
@@ -114,6 +135,6 @@ class ChocoManager(GenericManager):
     cmd = CHECK_CMD[context.log_output] + [name]
     runner = shellRunner()
     res = runner.run(cmd)
-    if name in res['output']:
+    if name in res["output"]:
       return True
     return False

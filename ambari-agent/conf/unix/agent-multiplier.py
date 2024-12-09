@@ -27,6 +27,7 @@ class Host:
   """
   Abstraction of the elements unique to each Ambari Agent running on this VM.
   """
+
   def __init__(self, host_name, ping_port, home_dir):
     self.host_name = host_name
     self.ping_port = ping_port
@@ -46,12 +47,19 @@ class Multiplier:
   -v --verbose : Increase logging
 
   """
+
   CONFIG_FILE = "/etc/ambari-agent/conf/agent-multiplier.conf"
 
   def __init__(self, args):
     parser = OptionParser()
-    parser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False,
-                      help="Verbose logging")
+    parser.add_option(
+      "-v",
+      "--verbose",
+      dest="verbose",
+      action="store_true",
+      default=False,
+      help="Verbose logging",
+    )
     (options, args) = parser.parse_args(args)
     self.verbose = options.verbose
 
@@ -77,8 +85,10 @@ class Multiplier:
     self.parse_configs()
 
     if len(args) != 2:
-      print("Sample Usage: python agent_multiplier.py [action]\n" \
-            "actions: start|stop|restart|status")
+      print(
+        "Sample Usage: python agent_multiplier.py [action]\n"
+        "actions: start|stop|restart|status"
+      )
     self.command = args[1]
 
     # Validate configs
@@ -114,7 +124,7 @@ class Multiplier:
         index = line.index("=") if "=" in line else None
         if index is not None:
           config = line[0:index].strip()
-          value = line[index+1:].strip()
+          value = line[index + 1 :].strip()
           params[config] = value
 
     # Convert some configs to ints
@@ -139,9 +149,11 @@ class Multiplier:
       errors.append("Number of agents on this host must be a positive integer")
     if self.prefix is None or self.prefix.strip() == "":
       errors.append("Prefix is a required field")
-    
+
     if not os.path.isfile(self.source_config_file):
-      errors.append(f"Ambari Agent config file does not exist at {self.source_config_file}")
+      errors.append(
+        f"Ambari Agent config file does not exist at {self.source_config_file}"
+      )
 
     valid_commands = set(["start", "stop", "restart", "status"])
     if self.command is None or self.command not in valid_commands:
@@ -169,7 +181,14 @@ class Multiplier:
       if self.verbose:
         print("Analyzing host %s with port %d" % (host_name, host.ping_port))
 
-      for dir in [host_home_dir, host_log_dir, host_config_dir, host_pid_dir, host_prefix, host_cache_dir]:
+      for dir in [
+        host_home_dir,
+        host_log_dir,
+        host_config_dir,
+        host_pid_dir,
+        host_prefix,
+        host_cache_dir,
+      ]:
         if not os.path.isdir(dir):
           print(f"Creating dir {dir}")
           os.makedirs(dir)
@@ -196,13 +215,15 @@ class Multiplier:
       self.create_host_name_script(host_name, host_name_script)
 
       # Overwrite the port and hostname
-      config_dict = {"ping_port": host.ping_port,
-                     "hostname_script": host_name_script,
-                     "public_hostname_script": host_name_script,
-                     "logdir": host_log_dir,
-                     "piddir": host_pid_dir,
-                     "prefix": host_prefix,
-                     "cache_dir": host_cache_dir}
+      config_dict = {
+        "ping_port": host.ping_port,
+        "hostname_script": host_name_script,
+        "public_hostname_script": host_name_script,
+        "logdir": host_log_dir,
+        "piddir": host_pid_dir,
+        "prefix": host_prefix,
+        "cache_dir": host_cache_dir,
+      }
       self.change_config(host_config_file, config_dict)
 
       # Change /etc/hosts file by appending each hostname.
@@ -223,8 +244,7 @@ class Multiplier:
     :param host_name: Host name to echo
     :param host_name_script: Location to save the scrip to
     """
-    template = "#!/bin/sh\n" \
-               "echo HOSTNAME"
+    template = "#!/bin/sh\n" "echo HOSTNAME"
     with open(str(host_name_script), "w+") as f:
       f.writelines(template.replace("HOSTNAME", host_name))
     subprocess.call(f"chmod +x {host_name_script}", shell=True)
@@ -265,7 +285,9 @@ class Multiplier:
     # TODO, if can append configs, then this is not needed.
     if len(configs_found) < len(config_dict.keys()):
       missing_configs = set(config_dict.keys()) - configs_found
-      print(f"ERROR: Did not find all required configs. Missing: {', '.join(missing_configs)}")
+      print(
+        f"ERROR: Did not find all required configs. Missing: {', '.join(missing_configs)}"
+      )
       sys.exit(-1)
 
     if len(configs_changed) > 0:
@@ -288,12 +310,16 @@ class Multiplier:
       lines = f.readlines()
 
     # Value to search for when using Vagrant VMs
-    localhost_line_start = "127.0.0.1 localhost localhost.localdomain localhost4 localhost4.localdomain4 "
+    localhost_line_start = (
+      "127.0.0.1 localhost localhost.localdomain localhost4 localhost4.localdomain4 "
+    )
     new_lines = []
     line_changed = False
     for line in lines:
       if line.startswith("127.0.0.1"):
-        new_change = localhost_line_start + " ".join([x.host_name for x in self.hosts]) + "\n"
+        new_change = (
+          localhost_line_start + " ".join([x.host_name for x in self.hosts]) + "\n"
+        )
         if line != new_change:
           line = new_change
           line_changed = True
@@ -321,21 +347,27 @@ class Multiplier:
     print(f"Starting {len(self.hosts)} host(s)")
     for host in self.hosts:
       cmd = f"ambari-agent start --home {host.home_dir}"
-      os.environ['AMBARI_AGENT_CONF_DIR'] = os.path.join(host.home_dir, "etc/ambari-agent/conf")
+      os.environ["AMBARI_AGENT_CONF_DIR"] = os.path.join(
+        host.home_dir, "etc/ambari-agent/conf"
+      )
       subprocess.call(cmd, shell=True, env=os.environ)
 
   def cmd_stop(self):
     print(f"Stopping {len(self.hosts)} host(s)")
     for host in self.hosts:
       cmd = f"ambari-agent stop --home {host.home_dir}"
-      os.environ['AMBARI_AGENT_CONF_DIR'] = os.path.join(host.home_dir, "etc/ambari-agent/conf")
+      os.environ["AMBARI_AGENT_CONF_DIR"] = os.path.join(
+        host.home_dir, "etc/ambari-agent/conf"
+      )
       subprocess.call(cmd, shell=True, env=os.environ)
 
   def cmd_restart(self):
     print(f"Restarting {len(self.hosts)} host(s)")
     for host in self.hosts:
       cmd = f"ambari-agent restart --home {host.home_dir}"
-      os.environ['AMBARI_AGENT_CONF_DIR'] = os.path.join(host.home_dir, "etc/ambari-agent/conf")
+      os.environ["AMBARI_AGENT_CONF_DIR"] = os.path.join(
+        host.home_dir, "etc/ambari-agent/conf"
+      )
       subprocess.call(cmd, shell=True, env=os.environ)
 
   def cmd_status(self):
@@ -390,13 +422,14 @@ class Multiplier:
 
   @classmethod
   def check_pid(cls, pid):
-    """ Check For the existence of a unix pid. """
+    """Check For the existence of a unix pid."""
     try:
       os.kill(pid, 0)
     except OSError:
       return False
     else:
       return True
+
 
 if __name__ == "__main__":
   m = Multiplier(sys.argv)

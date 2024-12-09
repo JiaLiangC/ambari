@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''
+"""
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
 distributed with this work for additional information
@@ -15,10 +15,17 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-'''
+"""
 
-__all__ = ["get_stack_tool", "get_stack_tool_name", "get_stack_tool_path",
-           "get_stack_tool_package", "get_stack_name", "STACK_SELECTOR_NAME", "CONF_SELECTOR_NAME"]
+__all__ = [
+  "get_stack_tool",
+  "get_stack_tool_name",
+  "get_stack_tool_path",
+  "get_stack_tool_package",
+  "get_stack_name",
+  "STACK_SELECTOR_NAME",
+  "CONF_SELECTOR_NAME",
+]
 
 # simplejson is much faster comparing to Python 2.6 json module and has the same functions set.
 import ambari_simplejson as json
@@ -42,7 +49,9 @@ def get_stack_tool(name):
 
   stack_name = default("/clusterLevelParams/stack_name", None)
   if stack_name is None:
-    Logger.warning("Cannot find the stack name in the command. Stack tools cannot be loaded")
+    Logger.warning(
+      "Cannot find the stack name in the command. Stack tools cannot be loaded"
+    )
     return None, None, None
 
   stack_tools = None
@@ -62,13 +71,16 @@ def get_stack_tool(name):
   stack_tools = stack_tools[stack_name]
 
   if not stack_tools or not name or name.lower() not in stack_tools:
-    Logger.warning(f"Cannot find config for {str(name)} stack tool in {str(stack_tools)}")
+    Logger.warning(
+      f"Cannot find config for {str(name)} stack tool in {str(stack_tools)}"
+    )
     return None, None, None
 
   tool_config = stack_tools[name.lower()]
 
   # Return fixed length (tool_name, tool_path, tool_package) tuple
   return tuple(pad(tool_config[:3], 3))
+
 
 def get_stack_tool_name(name):
   """
@@ -128,7 +140,7 @@ def get_stack_name(stack_formatted):
   if stack_formatted is None:
     return None
 
-  if '-' not in stack_formatted:
+  if "-" not in stack_formatted:
     return stack_formatted
 
-  return stack_formatted.split('-')[0]
+  return stack_formatted.split("-")[0]

@@ -65,35 +65,39 @@ class ServiceProvider(Provider):
         else:
           ret = 1
       else:
-        ret,out = shell.call(custom_cmd)
+        ret, out = shell.call(custom_cmd)
     else:
-      ret,out = self._init_cmd(command)
+      ret, out = self._init_cmd(command)
 
     if expect is not None and expect != ret:
-      raise Fail("%r command %s for service %s failed with return code: %d. %s" % (
-      self, command, self.resource.service_name, ret, out))
+      raise Fail(
+        "%r command %s for service %s failed with return code: %d. %s"
+        % (self, command, self.resource.service_name, ret, out)
+      )
     return ret
 
   def _init_cmd(self, command):
     if self._upstart:
       if command == "status":
-        ret,out = shell.call(["/sbin/" + command, self.resource.service_name])
-        _proc, state = out.strip().split(' ', 1)
+        ret, out = shell.call(["/sbin/" + command, self.resource.service_name])
+        _proc, state = out.strip().split(" ", 1)
         ret = 0 if state != "stop/waiting" else 1
       else:
-        ret,out = shell.call(["/sbin/" + command, self.resource.service_name])
+        ret, out = shell.call(["/sbin/" + command, self.resource.service_name])
     else:
-      ret,out = shell.call(["/etc/init.d/%s" % self.resource.service_name, command])
-    return ret,out
+      ret, out = shell.call(["/etc/init.d/%s" % self.resource.service_name, command])
+    return ret, out
 
   @property
   def _upstart(self):
     try:
       return self.__upstart
     except AttributeError:
-      self.__upstart = os.path.exists("/sbin/start") \
-        and os.path.exists("/etc/init/%s.conf" % self.resource.service_name)
+      self.__upstart = os.path.exists("/sbin/start") and os.path.exists(
+        "/etc/init/%s.conf" % self.resource.service_name
+      )
     return self.__upstart
+
 
 class ServiceConfigProvider(Provider):
   pass

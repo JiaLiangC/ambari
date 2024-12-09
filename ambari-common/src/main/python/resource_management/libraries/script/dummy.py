@@ -40,6 +40,7 @@ from resource_management.libraries.functions import conf_select
 from resource_management.libraries.functions import stack_select
 from resource_management.libraries.functions import StackFeature
 
+
 class Dummy(Script):
   """
   Dummy component to be used for performance testing since doesn't actually run a service.
@@ -99,28 +100,34 @@ class Dummy(Script):
     print("Start")
     self.prepare()
 
-    if self.config['configurations']['cluster-env']['security_enabled'] :
+    if self.config["configurations"]["cluster-env"]["security_enabled"]:
       print("Executing kinit... ")
-      kinit_path_local = get_kinit_path(default('/configurations/kerberos-env/executable_search_paths', None))
-      principal_replaced = self.config['configurations'][self.principal_conf_name][self.principal_name].replace("_HOST", self.host_name)
-      keytab_path_replaced = self.config['configurations'][self.keytab_conf_name][self.keytab_name].replace("_HOST", self.host_name)
-      Execute("%s -kt %s %s" % (kinit_path_local, keytab_path_replaced, principal_replaced),
-              user="root")
+      kinit_path_local = get_kinit_path(
+        default("/configurations/kerberos-env/executable_search_paths", None)
+      )
+      principal_replaced = self.config["configurations"][self.principal_conf_name][
+        self.principal_name
+      ].replace("_HOST", self.host_name)
+      keytab_path_replaced = self.config["configurations"][self.keytab_conf_name][
+        self.keytab_name
+      ].replace("_HOST", self.host_name)
+      Execute(
+        "%s -kt %s %s" % (kinit_path_local, keytab_path_replaced, principal_replaced),
+        user="root",
+      )
 
     if not os.path.isfile(self.pid_file):
       print("Creating pid file: %s" % self.pid_file)
 
-      Directory(os.path.dirname(self.pid_file),
-                owner=self.user,
-                group=self.user_group,
-                mode=0o755,
-                create_parents=True
-                )
+      Directory(
+        os.path.dirname(self.pid_file),
+        owner=self.user,
+        group=self.user_group,
+        mode=0o755,
+        create_parents=True,
+      )
 
-      File(self.pid_file,
-           owner=self.user,
-           content=""
-           )
+      File(self.pid_file, owner=self.user, content="")
 
   def stop(self, env, upgrade_type=None):
     print("Stop")

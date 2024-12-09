@@ -48,7 +48,7 @@ PROVIDERS = dict(
     Execute="resource_management.core.providers.windows.system.ExecuteProvider",
     File="resource_management.core.providers.windows.system.FileProvider",
     Directory="resource_management.core.providers.windows.system.DirectoryProvider",
-    Package="resource_management.core.providers.package.choco.ChocoProvider"
+    Package="resource_management.core.providers.package.choco.ChocoProvider",
   ),
   default=dict(
     File="resource_management.core.providers.system.FileProvider",
@@ -88,7 +88,7 @@ def find_provider(env, resource, class_path=None):
         break
 
   try:
-    mod_path, class_name = class_path.rsplit('.', 1)
+    mod_path, class_name = class_path.rsplit(".", 1)
   except ValueError:
     raise Fail("Unable to find provider for %s as %s" % (resource, class_path))
   mod = __import__(mod_path, {}, {}, [class_name])

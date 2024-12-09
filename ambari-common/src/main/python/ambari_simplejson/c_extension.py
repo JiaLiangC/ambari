@@ -41,7 +41,12 @@ def _import_c_scanstring():
 def get():
   _path = ".".join(__name__.split(".")[:-1])
   # trying to load extension from available platforms
-  _import_paths = ["_speedups.posix.usc2", "_speedups.posix.usc4", "_speedups.ppc", "_speedups.win"]
+  _import_paths = [
+    "_speedups.posix.usc2",
+    "_speedups.posix.usc4",
+    "_speedups.ppc",
+    "_speedups.win",
+  ]
 
   for _import_path in _import_paths:
     try:

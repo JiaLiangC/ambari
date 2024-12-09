@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-  Licensed to the Apache Software Foundation (ASF) under one
-  or more contributor license agreements.  See the NOTICE file
-  distributed with this work for additional information
-  regarding copyright ownership.  The ASF licenses this file
-  to you under the Apache License, Version 2.0 (the
-  "License"); you may not use this file except in compliance
-  with the License.  You may obtain a copy of the License at
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
 
-      http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 """
 
 import re
@@ -26,11 +26,15 @@ import re
  parsed version. Same thing you should do with another version, with which you are
  planning to compare previous one. After that, use "==", "<", ">" to get final result.
 """
+
+
 class ModuleVersion(object):
   __module_version_pattern = "(?P<aMajor>[0-9]+).(?P<aMinor>[0-9]+).(?P<iMinor>[0-9]+).(?P<iMaint>[0-9]+)(-h(?P<hotfix>[0-9]+))*-b(?P<build>[0-9]+)"
   __module_version_regex = re.compile(__module_version_pattern)
 
-  def __init__(self, apache_major, apache_minor, internal_minor, internal_maint, hotfix, build):
+  def __init__(
+    self, apache_major, apache_minor, internal_minor, internal_maint, hotfix, build
+  ):
     """
     :type apache_major int
     :type apache_minor int
@@ -61,7 +65,7 @@ class ModuleVersion(object):
       self.__internal_minor,
       self.__internal_maint,
       self.__hotfix,
-      self.__build
+      self.__build,
     ]
 
   def cmp_version(self, other):
@@ -99,11 +103,11 @@ class ModuleVersion(object):
   @classmethod
   def parse(cls, module_version):
     """
-      Parse string to module version
+    Parse string to module version
 
-      :type module_version str
-      :rtype ModuleVersion
-      """
+    :type module_version str
+    :rtype ModuleVersion
+    """
     matcher = cls.validate(module_version)
     return ModuleVersion(
       matcher.group("aMajor"),
@@ -111,7 +115,7 @@ class ModuleVersion(object):
       matcher.group("iMinor"),
       matcher.group("iMaint"),
       matcher.group("hotfix"),
-      matcher.group("build")
+      matcher.group("build"),
     )
 
   @classmethod
@@ -166,6 +170,3 @@ class ModuleVersion(object):
   @property
   def build(self):
     return self.__build
-
-
-

@@ -24,15 +24,17 @@ import socket
 import json
 
 from resource_management.libraries.script.script import Script
-from resource_management.libraries.functions.stack_select import unsafe_get_stack_versions
+from resource_management.libraries.functions.stack_select import (
+  unsafe_get_stack_versions,
+)
 
-RESULT_STATE_OK = 'OK'
-RESULT_STATE_WARNING = 'WARNING'
-RESULT_STATE_CRITICAL = 'CRITICAL'
-RESULT_STATE_UNKNOWN = 'UNKNOWN'
+RESULT_STATE_OK = "OK"
+RESULT_STATE_WARNING = "WARNING"
+RESULT_STATE_CRITICAL = "CRITICAL"
+RESULT_STATE_UNKNOWN = "UNKNOWN"
 
-STACK_NAME = '{{cluster-env/stack_name}}'
-STACK_TOOLS = '{{cluster-env/stack_tools}}'
+STACK_NAME = "{{cluster-env/stack_name}}"
+STACK_TOOLS = "{{cluster-env/stack_tools}}"
 
 
 logger = logging.getLogger()
@@ -60,11 +62,17 @@ def execute(configurations={}, parameters={}, host_name=None):
   msg = []
   try:
     if configurations is None:
-      return (RESULT_STATE_UNKNOWN, ['There were no configurations supplied to the script.'])
+      return (
+        RESULT_STATE_UNKNOWN,
+        ["There were no configurations supplied to the script."],
+      )
 
     # Check required properties
     if STACK_TOOLS not in configurations:
-      return (RESULT_STATE_UNKNOWN, [f'{STACK_TOOLS} is a required parameter for the script'])
+      return (
+        RESULT_STATE_UNKNOWN,
+        [f"{STACK_TOOLS} is a required parameter for the script"],
+      )
 
     stack_name = Script.get_stack_name()
 
@@ -73,7 +81,10 @@ def execute(configurations={}, parameters={}, host_name=None):
     stack_tools_str = configurations[STACK_TOOLS]
 
     if stack_tools_str is None:
-      return (RESULT_STATE_UNKNOWN, [f'{STACK_TOOLS} is a required parameter for the script and the value is null'])
+      return (
+        RESULT_STATE_UNKNOWN,
+        [f"{STACK_TOOLS} is a required parameter for the script and the value is null"],
+      )
 
     distro_select = "unknown-distro-select"
     try:
@@ -96,7 +107,9 @@ def execute(configurations={}, parameters={}, host_name=None):
           msg.append(f"reported the following versions: {', '.join(versions)}")
         return (RESULT_STATE_OK, ["\n".join(msg)])
       else:
-        msg.append(f"{distro_select} could not properly read {stack_root_dir}. Check this directory for unexpected contents.")
+        msg.append(
+          f"{distro_select} could not properly read {stack_root_dir}. Check this directory for unexpected contents."
+        )
         if out is not None:
           msg.append(out)
 

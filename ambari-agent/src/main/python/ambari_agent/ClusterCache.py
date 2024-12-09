@@ -27,12 +27,14 @@ from ambari_agent.Utils import Utils
 
 logger = logging.getLogger(__name__)
 
+
 class ClusterCache(dict):
   """
   Maintains an in-memory cache and disk cache (for debugging purposes) for
   every cluster. This is useful for having quick access to any of the properties.
   """
-  COMMON_DATA_CLUSTER = '-1'
+
+  COMMON_DATA_CLUSTER = "-1"
 
   file_locks = defaultdict(threading.RLock)
 
@@ -45,8 +47,12 @@ class ClusterCache(dict):
 
     self.cluster_cache_dir = cluster_cache_dir
 
-    self.__current_cache_json_file = os.path.join(self.cluster_cache_dir, self.get_cache_name()+'.json')
-    self.__current_cache_hash_file = os.path.join(self.cluster_cache_dir, '.'+self.get_cache_name()+'.hash')
+    self.__current_cache_json_file = os.path.join(
+      self.cluster_cache_dir, self.get_cache_name() + ".json"
+    )
+    self.__current_cache_hash_file = os.path.join(
+      self.cluster_cache_dir, "." + self.get_cache_name() + ".hash"
+    )
 
     self._cache_lock = threading.RLock()
     self.__file_lock = ClusterCache.file_locks[self.__current_cache_json_file]
@@ -57,14 +63,16 @@ class ClusterCache(dict):
     try:
       with self.__file_lock:
         if os.path.isfile(self.__current_cache_json_file):
-          with open(self.__current_cache_json_file, 'r') as fp:
+          with open(self.__current_cache_json_file, "r") as fp:
             cache_dict = json.load(fp)
 
         if os.path.isfile(self.__current_cache_hash_file):
-          with open(self.__current_cache_hash_file, 'r') as fp:
+          with open(self.__current_cache_hash_file, "r") as fp:
             self.hash = fp.read()
-    except (IOError,ValueError):
-      logger.exception(f"Cannot load data from {self.__current_cache_json_file} and {self.__current_cache_hash_file}")
+    except (IOError, ValueError):
+      logger.exception(
+        f"Cannot load data from {self.__current_cache_json_file} and {self.__current_cache_hash_file}"
+      )
       self.hash = None
       cache_dict = {}
 
@@ -133,11 +141,11 @@ class ClusterCache(dict):
       os.makedirs(self.cluster_cache_dir)
 
     with self.__file_lock:
-      with open(self.__current_cache_json_file, 'w') as f:
+      with open(self.__current_cache_json_file, "w") as f:
         json.dump(self, f, indent=2)
 
       if self.hash is not None:
-        with open(self.__current_cache_hash_file, 'w') as fp:
+        with open(self.__current_cache_hash_file, "w") as fp:
           fp.write(cache_hash)
 
     # if all of above are successful finally set the hash
@@ -151,7 +159,9 @@ class ClusterCache(dict):
     try:
       return super(ClusterCache, self).__getitem__(key)
     except KeyError:
-      raise KeyError(f"{self.get_cache_name().title()} for cluster_id={key} is missing. Check if server sent it.")
+      raise KeyError(
+        f"{self.get_cache_name().title()} for cluster_id={key} is missing. Check if server sent it."
+      )
 
   def on_cache_update(self):
     """

@@ -19,6 +19,7 @@ limitations under the License.
 Ambari Agent
 
 """
+
 import threading
 from resource_management.core.exceptions import Fail
 
@@ -27,9 +28,8 @@ from resource_management.core.exceptions import Fail
 LOCK_TYPE_KERBEROS = "KERBEROS_LOCK"
 
 # dictionary of all global lock instances
-__GLOBAL_LOCKS = {
-  LOCK_TYPE_KERBEROS : threading.RLock()
-}
+__GLOBAL_LOCKS = {LOCK_TYPE_KERBEROS: threading.RLock()}
+
 
 def get_lock(lock_type):
   """

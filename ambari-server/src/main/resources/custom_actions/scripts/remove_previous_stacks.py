@@ -19,6 +19,7 @@ limitations under the License.
 Ambari Agent
 
 """
+
 import re
 
 import os
@@ -34,13 +35,13 @@ stack_root_current = stack_root + CURRENT_
 
 
 class RemovePreviousStacks(Script):
-
-
   def actionexecute(self, env):
     config = Script.get_config()
     structured_output = {}
-    version = config['commandParams']['version']
-    self.stack_tool_package = stack_tools.get_stack_tool_package(stack_tools.STACK_SELECTOR_NAME)
+    version = config["commandParams"]["version"]
+    self.stack_tool_package = stack_tools.get_stack_tool_package(
+      stack_tools.STACK_SELECTOR_NAME
+    )
 
     versions_to_remove = self.get_lower_versions(version)
     self.pkg_provider = ManagerFactory.get()
@@ -55,25 +56,27 @@ class RemovePreviousStacks(Script):
     for package in packages_to_remove:
       Package(package, action="remove")
     self.remove_stack_folder(structured_output, version)
-    structured_output["remove_previous_stacks"] = {"exit_code": 0,
-                                       "message": format(f"Stack version {version} successfully removed!")}
+    structured_output["remove_previous_stacks"] = {
+      "exit_code": 0,
+      "message": format(f"Stack version {version} successfully removed!"),
+    }
     self.put_structured_out(structured_output)
 
   def remove_stack_folder(self, structured_output, version):
-    if version and version != '' and stack_root and stack_root != '':
-
+    if version and version != "" and stack_root and stack_root != "":
       Logger.info(f"Removing {stack_root}/{version}")
       try:
-        Execute(('rm', '-f', stack_root + version),
-                sudo=True)
+        Execute(("rm", "-f", stack_root + version), sudo=True)
       finally:
-        structured_output["remove_previous_stacks"] = {"exit_code": -1,
-                                           "message": f"Failed to remove version {stack_root}{version}"}
+        structured_output["remove_previous_stacks"] = {
+          "exit_code": -1,
+          "message": f"Failed to remove version {stack_root}{version}",
+        }
         self.put_structured_out(structured_output)
 
   def get_packages_to_remove(self, version):
     packages = []
-    formated_version = version.replace('.', '_').replace('-', '_')
+    formated_version = version.replace(".", "_").replace("-", "_")
     all_installed_packages = self.pkg_provider.all_installed_packages()
 
     all_installed_packages = [package[0] for package in all_installed_packages]
@@ -87,11 +90,16 @@ class RemovePreviousStacks(Script):
     files = os.listdir(stack_root_current)
     for file in files:
       if version in os.path.realpath(stack_root_current + file):
-        structured_output["remove_previous_stacks"] = {"exit_code": -1,
-                                           "message": "{0} contains symlink to version for remove! {1}".format(
-                                             stack_root_current, version)}
+        structured_output["remove_previous_stacks"] = {
+          "exit_code": -1,
+          "message": "{0} contains symlink to version for remove! {1}".format(
+            stack_root_current, version
+          ),
+        }
         self.put_structured_out(structured_output)
-        raise Fail(f"{stack_root_current} contains symlink to version for remove! {version}")
+        raise Fail(
+          f"{stack_root_current} contains symlink to version for remove! {version}"
+        )
 
   def get_lower_versions(self, current_version):
     versions = get_stack_versions(stack_root)
@@ -99,7 +107,7 @@ class RemovePreviousStacks(Script):
 
     lover_versions = []
     for version in versions:
-      if self.compare(version, current_version) < 0 :
+      if self.compare(version, current_version) < 0:
         lover_versions.append(version)
         Logger.info(f"version {version} added to remove")
     return lover_versions
@@ -113,9 +121,12 @@ class RemovePreviousStacks(Script):
     """
     vesion1_sections = re.findall(r"[\w']+", version1)
     vesion2_sections = re.findall(r"[\w']+", version2)
+
     def cmp(a, b):
       return (a > b) - (a < b)
+
     return cmp(vesion1_sections, vesion2_sections)
+
 
 if __name__ == "__main__":
   RemovePreviousStacks().execute()

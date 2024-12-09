@@ -23,9 +23,11 @@ Ambari Agent
 from resource_management.core.exceptions import ComponentIsNotRunning
 from resource_management.core.logger import Logger
 from resource_management.core import shell
+
 __all__ = ["check_process_status"]
 
 import os
+
 
 def check_process_status(pid_file):
   """
@@ -41,11 +43,13 @@ def check_process_status(pid_file):
   if not pid_file or not os.path.isfile(pid_file):
     Logger.info(f"Pid file {str(pid_file)} is empty or does not exist")
     raise ComponentIsNotRunning()
-  
+
   try:
     pid = int(sudo.read_file(pid_file))
   except:
-    Logger.info(f"Pid file {pid_file} does not exist or does not contain a process id number")
+    Logger.info(
+      f"Pid file {pid_file} does not exist or does not contain a process id number"
+    )
     raise ComponentIsNotRunning()
 
   try:
@@ -62,10 +66,11 @@ def check_process_status(pid_file):
 
 def wait_process_stopped(pid_file):
   """
-    Waits until component is actually stopped (check is performed using
-    check_process_status() method.
-    """
+  Waits until component is actually stopped (check is performed using
+  check_process_status() method.
+  """
   import time
+
   component_is_stopped = False
   counter = 0
   while not component_is_stopped:
