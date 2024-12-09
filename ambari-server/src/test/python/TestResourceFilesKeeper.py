@@ -98,7 +98,7 @@ class TestResourceFilesKeeper(TestCase):
   )
 
   if get_platform() != PLATFORM_WINDOWS:
-    DUMMY_UNCHANGEABLE_PACKAGE_HASH = "66e2d69a8d0666ae21cb3870b07ce2e5c3eb668f"
+    DUMMY_UNCHANGEABLE_PACKAGE_HASH = "290e2adef52648fba2865c192ccdc1dd6858c974"
   else:
     DUMMY_UNCHANGEABLE_PACKAGE_HASH = "2e438f4f9862420ed8930a56b8809b8aca359e87"
   DUMMY_HASH = "dummy_hash"
