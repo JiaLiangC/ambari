@@ -1,0 +1,686 @@
+#!/usr/bin/env python
+"""
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+"""
+from unittest import TestCase
+
+import instance_manager
+import subprocess
+import sys
+import os
+import shutil
+import json
+
+TMP_ROOT_FOLDER = "/tmp/instance_manager_test"
+CLI_PATH = os.path.abspath(os.path.join(
+  os.path.dirname(__file__), "../../../main/python/instance_manager/mpack-instance-manager.py"))
+# Set the root directory to an isolated test location.
+instance_manager.configure_root(TMP_ROOT_FOLDER)
+
+MPACK_NAME = 'hdpcore'
+MPACK_NAME2 = 'edw'
+MPACK_VERSION_1 = '1.0.0-b1'
+MPACK_VERSION_2 = '1.5.0-b1'
+INSTANCE_NAME_1 = 'Production'
+INSTANCE_NAME_2 = 'eCommerce'
+SUBGROUP_NAME = 'default'
+CLIENT_MODULE_NAME = 'hdfs-clients'
+CLIENT_COMPONENT_NAME = 'hdfs_client'
+SERVER_MODULE_NAME = 'hdfs'
+SERVER_COMPONENT_NAME = 'hdfs_server'
+MODULE_VERSION_MAPPING = {CLIENT_MODULE_NAME: '3.1.0.0-b1', SERVER_MODULE_NAME: '3.1.0.0-b1'}
+MODULE_COMPONENT_MAPPING = {CLIENT_MODULE_NAME: CLIENT_COMPONENT_NAME, SERVER_MODULE_NAME: SERVER_COMPONENT_NAME}
+
+MPACK_JSON = {"modules": [
+  {"category": "CLIENT", "components": [{"id": CLIENT_COMPONENT_NAME}], "id": CLIENT_MODULE_NAME},
+  {"category": "SERVER", "components": [{"id": SERVER_COMPONENT_NAME}], "id": SERVER_MODULE_NAME}]}
+
+
+class TestInstanceManager(TestCase):
+  def setUp(self):
+    build_rpm_structure()
+
+  def tearDown(self):
+    remove_rpm_structure()
+
+  def test_create_mpack_client_module(self):
+    create_mpack_with_defaults(module_name=CLIENT_MODULE_NAME)
+    current_link = os.path.join(TMP_ROOT_FOLDER, instance_manager.INSTANCES_FOLDER_NAME, MPACK_NAME,
+                                INSTANCE_NAME_1, SUBGROUP_NAME, CLIENT_COMPONENT_NAME,
+                                instance_manager.CURRENT_SOFTLINK_NAME)
+
+    self.assertTrue(os.path.exists(current_link))
+    self.assertEqual(os.readlink(current_link),
+                      os.path.join(TMP_ROOT_FOLDER, instance_manager.MPACKS_FOLDER_NAME, MPACK_NAME,
+                                   MPACK_VERSION_1, CLIENT_COMPONENT_NAME))
+
+    self.assertTrue(os.path.exists(os.path.join(TMP_ROOT_FOLDER, instance_manager.INSTANCES_FOLDER_NAME, MPACK_NAME,
+                                                instance_manager.DEFAULT_MPACK_INSTANCE_NAME)))
+
+  def test_create_mpack_server_module_with_default_component_instance(self):
+    create_mpack_with_defaults()
+    current_link = os.path.join(TMP_ROOT_FOLDER, instance_manager.INSTANCES_FOLDER_NAME, MPACK_NAME,
+                                INSTANCE_NAME_1, SUBGROUP_NAME, SERVER_MODULE_NAME, SERVER_COMPONENT_NAME,
+                                instance_manager.DEFAULT_COMPONENT_INSTANCE_NAME,
+                                instance_manager.CURRENT_SOFTLINK_NAME)
+
+    self.assertTrue(os.path.exists(current_link))
+    self.assertEqual(os.readlink(current_link),
+                      os.path.join(TMP_ROOT_FOLDER, instance_manager.MPACKS_FOLDER_NAME, MPACK_NAME,
+                                   MPACK_VERSION_1, SERVER_COMPONENT_NAME))
+
+    self.assertTrue(os.path.exists(os.path.join(TMP_ROOT_FOLDER, instance_manager.INSTANCES_FOLDER_NAME, MPACK_NAME,
+                                                instance_manager.DEFAULT_MPACK_INSTANCE_NAME)))
+
+  def test_create_mpack_server_module_with_multiple_component_instances(self):
+    create_mpack_with_defaults(components=None, components_map={SERVER_COMPONENT_NAME.upper(): ['server1', 'server2']})
+
+    current_link_1 = os.path.join(TMP_ROOT_FOLDER, instance_manager.INSTANCES_FOLDER_NAME, MPACK_NAME,
+                                  INSTANCE_NAME_1, SUBGROUP_NAME, SERVER_MODULE_NAME, SERVER_COMPONENT_NAME,
+                                  'server1', instance_manager.CURRENT_SOFTLINK_NAME)
+    self.assertTrue(os.path.exists(current_link_1))
+    self.assertEqual(os.readlink(current_link_1),
+                     os.path.join(TMP_ROOT_FOLDER, instance_manager.MPACKS_FOLDER_NAME, MPACK_NAME,
+                                  MPACK_VERSION_1, SERVER_COMPONENT_NAME))
+
+    current_link_2 = os.path.join(TMP_ROOT_FOLDER, instance_manager.INSTANCES_FOLDER_NAME, MPACK_NAME,
+                                  INSTANCE_NAME_1, SUBGROUP_NAME, SERVER_MODULE_NAME, SERVER_COMPONENT_NAME,
+                                  'server2', instance_manager.CURRENT_SOFTLINK_NAME)
+
+    self.assertTrue(os.path.exists(current_link_2))
+    self.assertEqual(os.readlink(current_link_2),
+                     os.path.join(TMP_ROOT_FOLDER, instance_manager.MPACKS_FOLDER_NAME, MPACK_NAME,
+                                  MPACK_VERSION_1, SERVER_COMPONENT_NAME))
+
+  def test_set_version_server_module_asterisk(self):
+    create_mpack_with_defaults()
+
+    build_rpm_structure(mpack_version=MPACK_VERSION_2, remove_old_content=False, create_modules=False)
+
+    instance_manager.set_mpack_instance(MPACK_NAME, MPACK_VERSION_2, INSTANCE_NAME_1, SUBGROUP_NAME,
+                                        SERVER_MODULE_NAME, '*')
+
+    current_link = os.path.join(TMP_ROOT_FOLDER, instance_manager.INSTANCES_FOLDER_NAME, MPACK_NAME,
+                                INSTANCE_NAME_1, SUBGROUP_NAME, SERVER_MODULE_NAME, SERVER_COMPONENT_NAME,
+                                instance_manager.DEFAULT_COMPONENT_INSTANCE_NAME,
+                                instance_manager.CURRENT_SOFTLINK_NAME)
+
+    self.assertEqual(os.readlink(current_link),
+                     os.path.join(TMP_ROOT_FOLDER, instance_manager.MPACKS_FOLDER_NAME, MPACK_NAME,
+                                  MPACK_VERSION_2, SERVER_COMPONENT_NAME))
+
+  def test_set_version_client_module_asterisk(self):
+    create_mpack_with_defaults(module_name=CLIENT_MODULE_NAME.upper())
+
+    build_rpm_structure(mpack_version=MPACK_VERSION_2, remove_old_content=False, create_modules=False)
+
+    instance_manager.set_mpack_instance(MPACK_NAME.upper(), MPACK_VERSION_2, INSTANCE_NAME_1, SUBGROUP_NAME,
+                                        CLIENT_MODULE_NAME.upper(), '*')
+
+    current_link = os.path.join(TMP_ROOT_FOLDER, instance_manager.INSTANCES_FOLDER_NAME, MPACK_NAME,
+                                INSTANCE_NAME_1, SUBGROUP_NAME, CLIENT_COMPONENT_NAME,
+                                instance_manager.CURRENT_SOFTLINK_NAME)
+
+    self.assertEqual(os.readlink(current_link),
+                     os.path.join(TMP_ROOT_FOLDER, instance_manager.MPACKS_FOLDER_NAME, MPACK_NAME,
+                                  MPACK_VERSION_2, CLIENT_COMPONENT_NAME))
+
+  def test_set_version_for_one_of_two_component_instances(self):
+    create_mpack_with_defaults(components=None, components_map={SERVER_COMPONENT_NAME: ['server1', 'server2']})
+
+    build_rpm_structure(mpack_version=MPACK_VERSION_2, remove_old_content=False, create_modules=False)
+
+    instance_manager.set_mpack_instance(MPACK_NAME, MPACK_VERSION_2, INSTANCE_NAME_1, SUBGROUP_NAME,
+                                        SERVER_MODULE_NAME, None, {SERVER_COMPONENT_NAME: ['server2']})
+
+    current_link_1 = os.path.join(TMP_ROOT_FOLDER, instance_manager.INSTANCES_FOLDER_NAME, MPACK_NAME,
+                                  INSTANCE_NAME_1, SUBGROUP_NAME, SERVER_MODULE_NAME, SERVER_COMPONENT_NAME,
+                                  'server1', instance_manager.CURRENT_SOFTLINK_NAME)
+    self.assertEqual(os.readlink(current_link_1),
+                     os.path.join(TMP_ROOT_FOLDER, instance_manager.MPACKS_FOLDER_NAME, MPACK_NAME,
+                                  MPACK_VERSION_1, SERVER_COMPONENT_NAME))
+
+    current_link_2 = os.path.join(TMP_ROOT_FOLDER, instance_manager.INSTANCES_FOLDER_NAME, MPACK_NAME,
+                                  INSTANCE_NAME_1, SUBGROUP_NAME, SERVER_MODULE_NAME, SERVER_COMPONENT_NAME,
+                                  'server2', instance_manager.CURRENT_SOFTLINK_NAME)
+
+    self.assertEqual(os.readlink(current_link_2),
+                     os.path.join(TMP_ROOT_FOLDER, instance_manager.MPACKS_FOLDER_NAME, MPACK_NAME,
+                                  MPACK_VERSION_2, SERVER_COMPONENT_NAME))
+
+  def test_get_conf_dir_all(self):
+    create_mpack_with_defaults(module_name=CLIENT_MODULE_NAME.upper())
+    create_mpack_with_defaults(module_name=SERVER_MODULE_NAME.upper(), components=None,
+                               components_map={SERVER_COMPONENT_NAME.upper(): ['server1']})
+
+    conf_server_dir = instance_manager.get_conf_dir(components_map={"hdfs_server": ["server1"]}, module_name="hdfs")
+    conf_client_dir = instance_manager.get_conf_dir(components_map={"hdfs_client": [""]}, module_name="hdfs-clients")
+    """
+    This is the conf_dir_json
+    expected_json = {
+      "mpacks": {
+        "hdpcore": {
+          "mpack-instances": {
+            "Production": {
+              "name": "Production",
+              "subgroups": {
+                "default": {
+                  "modules": {
+                    "hdfs": {
+                      "category": "SERVER",
+                      "name": "hdfs",
+                      "components": {
+                        "hdfs_server": {
+                          "component-instances": {
+                            "server1": {
+                              "config_dir": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs/hdfs_server/server1/conf",
+                              "name": "server1"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "hdfs-clients": {
+                      "category": "CLIENT",
+                      "components": {
+                        "hdfs_client": {
+                          "component-instances": {
+                            "default": {
+                              "config_dir": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs_client/conf",
+                              "name": "default"
+                            }
+                          }
+                        }
+                      },
+                      "name": "hdfs-clients"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    expected_conf_server_dir = "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs/hdfs_server/server1/conf"
+    expected_conf_client_dir = "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs_client/conf"
+    self.assertEqual(conf_server_dir, expected_conf_server_dir)
+    self.assertEqual(conf_client_dir, expected_conf_client_dir)
+
+  def test_get_log_dir_all(self):
+    create_mpack_with_defaults(module_name=CLIENT_MODULE_NAME.upper())
+    create_mpack_with_defaults(module_name=SERVER_MODULE_NAME.upper(), components=None,
+                               components_map={SERVER_COMPONENT_NAME.upper(): ['server1']})
+
+    log_server_dir = instance_manager.get_log_dir(components_map={"hdfs_server": ["server1"]}, module_name="hdfs")
+    log_client_dir = instance_manager.get_log_dir(components_map={"hdfs_client": [""]}, module_name="hdfs-clients")
+    """
+    expected_json = {
+      "mpacks": {
+        "hdpcore": {
+          "mpack-instances": {
+            "Production": {
+              "name": "Production",
+              "subgroups": {
+                "default": {
+                  "modules": {
+                    "hdfs": {
+                      "category": "SERVER",
+                      "name": "hdfs",
+                      "components": {
+                        "hdfs_server": {
+                          "component-instances": {
+                            "server1": {
+                              "log_dir": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs/hdfs_server/server1/log",
+                              "name": "server1"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "hdfs-clients": {
+                      "category": "CLIENT",
+                      "components": {
+                        "hdfs_client": {
+                          "component-instances": {
+                            "default": {
+                              "log_dir": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs_client/log",
+                              "name": "default"
+                            }
+                          }
+                        }
+                      },
+                      "name": "hdfs-clients"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    expected_log_server_dir = "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs/hdfs_server/server1/log"
+    expected_log_client_dir = "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs_client/log"
+    self.assertEqual(log_server_dir, expected_log_server_dir)
+    self.assertEqual(log_client_dir, expected_log_client_dir)
+
+
+  def test_get_run_dir_all(self):
+    create_mpack_with_defaults(module_name=CLIENT_MODULE_NAME.upper())
+    create_mpack_with_defaults(module_name=SERVER_MODULE_NAME.upper(), components=None,
+                               components_map={SERVER_COMPONENT_NAME.upper(): ['server1']})
+
+    run_server_dir = instance_manager.get_run_dir(components_map={"hdfs_server": ["server1"]}, module_name="hdfs")
+    run_client_dir = instance_manager.get_run_dir(components_map={"hdfs_client": [""]}, module_name="hdfs-clients")
+    """
+    expected_json = {
+      "mpacks": {
+        "hdpcore": {
+          "mpack-instances": {
+            "Production": {
+              "name": "Production",
+              "subgroups": {
+                "default": {
+                  "modules": {
+                    "hdfs": {
+                      "category": "SERVER",
+                      "name": "hdfs",
+                      "components": {
+                        "hdfs_server": {
+                          "component-instances": {
+                            "server1": {
+                              "name": "server1",
+                              "run_dir": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs/hdfs_server/server1/run"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "hdfs-clients": {
+                      "category": "CLIENT",
+                      "components": {
+                        "hdfs_client": {
+                          "component-instances": {
+                            "default": {
+                              "name": "default",
+                              "run_dir": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs_client/run"
+                            }
+                          }
+                        }
+                      },
+                      "name": "hdfs-clients"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    expected_run_server_dir = "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs/hdfs_server/server1/run"
+    expected_run_client_dir = "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs_client/run"
+    self.assertEqual(run_server_dir, expected_run_server_dir)
+    self.assertEqual(run_client_dir, expected_run_client_dir)
+
+  def test_get_mpack_module_versions(self):
+    MPACK_VERSION_KEY_NAME = 'mpack_version'
+    MODULE_VERSION_KEY_NAME = 'module_version'
+
+    create_mpack_with_defaults(module_name=CLIENT_MODULE_NAME.upper())
+    create_mpack_with_defaults(module_name=SERVER_MODULE_NAME.upper(), components=None,
+                               components_map={SERVER_COMPONENT_NAME.upper(): ['server1']})
+
+    instances_json = instance_manager.list_instances(module_name=CLIENT_MODULE_NAME)
+    dirs = set()
+    instance_manager.walk_mpack_dict(instances_json, MPACK_VERSION_KEY_NAME, dirs)
+    self.assertEqual(next(iter(dirs)), "1.0.0-b1")
+    dirs.clear()
+    instance_manager.walk_mpack_dict(instances_json, MODULE_VERSION_KEY_NAME, dirs)
+    self.assertEqual(next(iter(dirs)), "3.1.0.0-b1")
+    instances_json = instance_manager.list_instances(module_name=SERVER_MODULE_NAME)
+    dirs.clear()
+    instance_manager.walk_mpack_dict(instances_json, MPACK_VERSION_KEY_NAME, dirs)
+    self.assertEqual(next(iter(dirs)), "1.0.0-b1")
+    dirs.clear()
+    instance_manager.walk_mpack_dict(instances_json, MODULE_VERSION_KEY_NAME, dirs)
+    self.assertEqual(next(iter(dirs)), "3.1.0.0-b1")
+
+  def test_list_instances_all(self):
+    create_mpack_with_defaults(module_name=CLIENT_MODULE_NAME.upper())
+    create_mpack_with_defaults(module_name=SERVER_MODULE_NAME.upper(), components=None,
+                               components_map={SERVER_COMPONENT_NAME.upper(): ['server1']})
+
+    instance_json = instance_manager.list_instances()
+
+    expected_json = {
+      "mpacks": {
+        "hdpcore": {
+          "mpack-instances": {
+            "Production": {
+              "name": "Production",
+              "subgroups": {
+                "default": {
+                  "modules": {
+                    "hdfs": {
+                      "category": "SERVER",
+                      "name": "hdfs",
+                      "components": {
+                        "hdfs_server": {
+                          "component-instances": {
+                            "server1": {
+                              "run_dir": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs/hdfs_server/server1/run",
+                              "module_version": "3.1.0.0-b1",
+                              "name": "server1",
+                              "mpack_path": "/tmp/instance_manager_test/mpacks/hdpcore/1.0.0-b1/hdfs_server",
+                              "mpack_version": "1.0.0-b1",
+                              "instance_path": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs/hdfs_server/server1/current",
+                              "log_dir": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs/hdfs_server/server1/log",
+                              "module_path": "/tmp/instance_manager_test/modules/hdfs/3.1.0.0-b1",
+                              "config_dir": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs/hdfs_server/server1/conf"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "hdfs-clients": {
+                      "category": "CLIENT",
+                      "components": {
+                        "hdfs_client": {
+                          "component-instances": {
+                            "default": {
+                              "run_dir": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs_client/run",
+                              "module_version": "3.1.0.0-b1",
+                              "name": "default",
+                              "mpack_path": "/tmp/instance_manager_test/mpacks/hdpcore/1.0.0-b1/hdfs_client",
+                              "mpack_version": "1.0.0-b1",
+                              "instance_path": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs_client/current",
+                              "log_dir": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs_client/log",
+                              "module_path": "/tmp/instance_manager_test/modules/hdfs-clients/3.1.0.0-b1",
+                              "config_dir": "/tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs_client/conf"
+                            }
+                          }
+                        }
+                      },
+                      "name": "hdfs-clients"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    self.assertDictEqual(instance_json, expected_json)
+
+  def test_granularity(self):
+    create_mpack_with_defaults()
+    create_mpack_with_defaults(module_name=CLIENT_MODULE_NAME)
+
+    conf_dir = instance_manager.get_conf_dir()
+    self.assertTrue('/hdfs_server/default/conf' in conf_dir)
+
+    conf_dir = instance_manager.get_conf_dir(mpack=MPACK_NAME, module_name=SERVER_MODULE_NAME)
+    self.assertTrue('/hdfs_server/default/conf' in conf_dir)
+
+    instance_conf_dir = instance_manager.get_conf_dir(mpack=MPACK_NAME, mpack_instance=INSTANCE_NAME_1,
+                                                           subgroup_name=None)
+    self.assertTrue('/hdfs_server/default/conf' in instance_conf_dir)
+
+    subgroup_conf_dir = instance_manager.get_conf_dir(mpack=MPACK_NAME, mpack_instance=INSTANCE_NAME_1,
+                                                           subgroup_name=SUBGROUP_NAME)
+    self.assertTrue('/hdfs_server/default/conf' in subgroup_conf_dir)
+
+    module_conf_dir = instance_manager.get_conf_dir(mpack=MPACK_NAME, mpack_instance=INSTANCE_NAME_1,
+                                                         subgroup_name=SUBGROUP_NAME, module_name=SERVER_MODULE_NAME)
+    self.assertTrue('/hdfs_server/default/conf' in module_conf_dir)
+
+    module_conf_dir = instance_manager.get_conf_dir(mpack=MPACK_NAME, mpack_instance=INSTANCE_NAME_1,
+                                                         subgroup_name=SUBGROUP_NAME, module_name=CLIENT_MODULE_NAME)
+    self.assertTrue('/hdfs_client/conf' in module_conf_dir)
+
+    # The mpack level filter not specified
+    module_conf_dir = instance_manager.get_conf_dir(mpack_instance=INSTANCE_NAME_1, subgroup_name=SUBGROUP_NAME,
+                                                       module_name=SERVER_MODULE_NAME)
+    self.assertTrue('/hdfs_server/default/conf' in module_conf_dir)
+
+    # The instance level filter not specified
+    module_conf_dir = instance_manager.get_conf_dir(mpack=MPACK_NAME, subgroup_name=SUBGROUP_NAME,
+                                                        module_name=SERVER_MODULE_NAME)
+    self.assertTrue('/hdfs_server/default/conf' in module_conf_dir)
+
+  def test_filtering(self):
+    create_mpack_with_defaults(module_name=CLIENT_MODULE_NAME)
+    create_mpack_with_defaults(module_name=SERVER_MODULE_NAME, components=None,
+                               components_map={})
+
+    create_mpack_with_defaults(module_name=CLIENT_MODULE_NAME, mpack_instance=INSTANCE_NAME_2)
+    create_mpack_with_defaults(module_name=SERVER_MODULE_NAME, mpack_instance=INSTANCE_NAME_2, components=None,
+                               components_map={SERVER_COMPONENT_NAME: ['server1']})
+
+    build_rpm_structure(mpack_name=MPACK_NAME2, remove_old_content=False, create_modules=False)
+    create_mpack_with_defaults(mpack_name=MPACK_NAME2, mpack_instance=INSTANCE_NAME_2,
+                               module_name=CLIENT_MODULE_NAME)
+    create_mpack_with_defaults(mpack_name=MPACK_NAME2, mpack_instance=INSTANCE_NAME_2,
+                               module_name=SERVER_MODULE_NAME, components=None,
+                               components_map={SERVER_COMPONENT_NAME: ['server2']})
+
+    filter_by_module_json = instance_manager.list_instances(module_name=SERVER_MODULE_NAME)
+    self.assertTrue(MPACK_NAME in filter_by_module_json['mpacks'])
+    self.assertTrue(MPACK_NAME2 in filter_by_module_json['mpacks'])
+    self.assertTrue(INSTANCE_NAME_2 in filter_by_module_json['mpacks'][MPACK_NAME]['mpack-instances'])
+    self.assertTrue(INSTANCE_NAME_1 not in filter_by_module_json['mpacks'][MPACK_NAME]['mpack-instances'])
+
+    filter_by_component_instance_name_json = instance_manager.list_instances(
+      components_map={SERVER_COMPONENT_NAME: ['server2']})
+    expected_filter_result = {'mpacks': {'edw': {'mpack-instances': {'eCommerce': {'name': 'eCommerce', 'subgroups': {
+      'default': {'modules': {'hdfs': {'category': 'SERVER', 'name': 'hdfs', 'components': {'hdfs_server': {
+        'component-instances': {
+          'server2': {'run_dir': '/tmp/instance_manager_test/instances/edw/eCommerce/default/hdfs/hdfs_server/server2/run', 'module_version': '3.1.0.0-b1', 'name': 'server2', 'mpack_path': '/tmp/instance_manager_test/mpacks/edw/1.0.0-b1/hdfs_server', 'mpack_version': '1.0.0-b1', 'instance_path': '/tmp/instance_manager_test/instances/edw/eCommerce/default/hdfs/hdfs_server/server2/current', 'log_dir': '/tmp/instance_manager_test/instances/edw/eCommerce/default/hdfs/hdfs_server/server2/log', 'module_path': '/tmp/instance_manager_test/modules/hdfs/3.1.0.0-b1', 'config_dir': '/tmp/instance_manager_test/instances/edw/eCommerce/default/hdfs/hdfs_server/server2/conf'}}}}}}}}}}}}}
+    self.assertEqual(expected_filter_result, filter_by_component_instance_name_json)
+
+  def test_validation(self):
+    try:
+      create_mpack_with_defaults(mpack_name=MPACK_NAME2)
+      raise AssertionError("The previous call should have thrown exception")
+    except ValueError as e:
+      self.assertEqual(str(e), "Mpack {0} doesn't exist, please check mpack name.".format(MPACK_NAME2))
+
+    try:
+      create_mpack_with_defaults(mpack_version=MPACK_VERSION_2)
+      raise AssertionError("The previous call should have thrown exception")
+    except ValueError as e:
+      self.assertEqual(str(e),
+                        "Mpack version {0} doesn't exist for mpack {1}, please check mpack name and version".format(
+                          MPACK_VERSION_2, MPACK_NAME))
+
+    try:
+      create_mpack_with_defaults(module_name=SERVER_MODULE_NAME + "broken")
+      raise AssertionError("The previous call should have thrown exception")
+    except ValueError as e:
+      self.assertEqual(str(e),
+                        "There is no module {0} for mpack {1} with version {2}."
+                        " Please check mpack name, version and module name".format(
+                          SERVER_MODULE_NAME + "broken", MPACK_NAME, MPACK_VERSION_1))
+
+    try:
+      create_mpack_with_defaults(components_map={SERVER_COMPONENT_NAME: ["comp1"]}, module_name=CLIENT_MODULE_NAME)
+      raise AssertionError("The previous call should have thrown exception")
+    except ValueError as e:
+      self.assertEqual(str(e),
+                        "There is no component {0} in module {1} for mpack {2} with version {3}."
+                        " Please check mpack name, version, module name and component name".format(
+                          SERVER_COMPONENT_NAME, CLIENT_MODULE_NAME, MPACK_NAME, MPACK_VERSION_1))
+
+    with self.assertRaisesRegex(ValueError, "component instances must be a list"):
+      create_mpack_with_defaults(components_map={SERVER_COMPONENT_NAME: "comp1"})
+
+  def test_creating_existing_component_instance(self):
+    create_mpack_with_defaults()
+    try:
+      create_mpack_with_defaults()
+      raise AssertionError("The previous call should have thrown exception")
+    except ValueError as e:
+      self.assertEqual(str(e),
+                        "The instance /tmp/instance_manager_test/instances/hdpcore/Production/default/hdfs/"
+                        "hdfs_server/default already exist. To change the version use set-mpack-instance command")
+
+  def test_normalize_parameters(self):
+    mpack_name = MPACK_NAME.upper()
+    module_name = SERVER_MODULE_NAME.upper()
+    components = [SERVER_COMPONENT_NAME.upper()]
+    components_map = {SERVER_COMPONENT_NAME.upper(): ["DEFAULT"]}
+    mpack_name, module_name, components, components_map = instance_manager.normalize_parameters(
+      mpack_name, module_name, components, components_map)
+
+    self.assertEqual(mpack_name, MPACK_NAME.lower())
+    self.assertEqual(module_name, SERVER_MODULE_NAME.lower())
+    self.assertEqual(components, [SERVER_COMPONENT_NAME.lower()])
+    self.assertEqual(components_map, {SERVER_COMPONENT_NAME.lower(): ["DEFAULT"]})
+
+  def test_set_non_existing_instance(self):
+    try:
+      instance_manager.set_mpack_instance(mpack=MPACK_NAME, mpack_version=MPACK_VERSION_1,
+                                          mpack_instance=INSTANCE_NAME_1,
+                                          subgroup_name=SUBGROUP_NAME, module_name=SERVER_MODULE_NAME,
+                                          components_map={})
+      raise AssertionError("The previous call should have thrown exception")
+    except ValueError as e:
+      self.assertEqual(str(e),
+                        "There are no created instances. Use create-mpack-instance command to add them.")
+
+    create_mpack_with_defaults()
+    try:
+      instance_manager.set_mpack_instance(mpack=MPACK_NAME, mpack_version=MPACK_VERSION_1,
+                                          mpack_instance=INSTANCE_NAME_1,
+                                          subgroup_name=SUBGROUP_NAME, module_name=SERVER_MODULE_NAME,
+                                          components_map={SERVER_COMPONENT_NAME: ["non-existing-instance"]})
+      raise AssertionError("The previous call should have thrown exception")
+    except ValueError as e:
+      self.assertEqual(str(e),
+                        "Found no instances for the given filters: mpack_name:hdpcore, instance_name:Production,"
+                        " subgroup_name:default, module_name:hdfs, components:None,"
+                        " components_map:{'hdfs_server': ['non-existing-instance']}")
+
+  def test_create_mpack_fail_if_exists(self):
+    create_mpack_with_defaults()
+    try:
+      # should throw exception
+      create_mpack_with_defaults()
+      self.assertTrue(False)
+    except ValueError as e:
+      self.assertIn("already exist", str(e))
+
+    # this call shouldn't throw exception
+    create_mpack_with_defaults(fail_if_exists=False)
+
+  def test_rejects_path_identifiers(self):
+    with self.assertRaisesRegex(ValueError, "invalid path identifier"):
+      instance_manager.create_mpack("../outside", MPACK_VERSION_1, INSTANCE_NAME_1,
+                                    SUBGROUP_NAME, SERVER_MODULE_NAME, '*')
+    self.assertFalse(os.path.exists(os.path.join(os.path.dirname(TMP_ROOT_FOLDER), "outside")))
+
+  def test_rejects_filesystem_root(self):
+    with self.assertRaisesRegex(ValueError, "filesystem root"):
+      instance_manager.configure_root(os.path.sep)
+    self.assertEqual(TMP_ROOT_FOLDER, instance_manager.ROOT_FOLDER_PATH)
+
+  def test_list_instances_cli_outputs_json(self):
+    create_mpack_with_defaults()
+    output = subprocess.check_output(
+      [sys.executable, CLI_PATH, "list-instances", "--root", TMP_ROOT_FOLDER],
+      text=True)
+    parsed = json.loads(output)
+    self.assertIn(MPACK_NAME, parsed["mpacks"])
+
+  def test_list_instances_resolves_relative_links(self):
+    mpack_path = os.path.join(TMP_ROOT_FOLDER, instance_manager.MPACKS_FOLDER_NAME,
+                              MPACK_NAME, MPACK_VERSION_1)
+    component_path = os.path.join(mpack_path, SERVER_COMPONENT_NAME)
+    module_path = os.path.join(TMP_ROOT_FOLDER, instance_manager.MODULES_FOLDER_NAME,
+                               SERVER_MODULE_NAME, MODULE_VERSION_MAPPING[SERVER_MODULE_NAME])
+    os.unlink(component_path)
+    os.symlink(os.path.relpath(module_path, mpack_path), component_path)
+
+    create_mpack_with_defaults()
+    current_link = os.path.join(TMP_ROOT_FOLDER, instance_manager.INSTANCES_FOLDER_NAME,
+                                MPACK_NAME, INSTANCE_NAME_1, SUBGROUP_NAME, SERVER_MODULE_NAME,
+                                SERVER_COMPONENT_NAME, instance_manager.DEFAULT_COMPONENT_INSTANCE_NAME,
+                                instance_manager.CURRENT_SOFTLINK_NAME)
+    os.unlink(current_link)
+    os.symlink(os.path.relpath(component_path, os.path.dirname(current_link)), current_link)
+
+    component = instance_manager.list_instances(MPACK_NAME, INSTANCE_NAME_1, SUBGROUP_NAME,
+                                                SERVER_MODULE_NAME)["components"][SERVER_COMPONENT_NAME]
+    details = component["component-instances"][instance_manager.DEFAULT_COMPONENT_INSTANCE_NAME]
+    self.assertEqual(component_path, details["mpack_path"])
+    self.assertEqual(module_path, details["module_path"])
+
+  def test_set_version_rejects_non_symlink_target(self):
+    create_mpack_with_defaults()
+    current_link = os.path.join(TMP_ROOT_FOLDER, instance_manager.INSTANCES_FOLDER_NAME,
+                                MPACK_NAME, INSTANCE_NAME_1, SUBGROUP_NAME, SERVER_MODULE_NAME,
+                                SERVER_COMPONENT_NAME, instance_manager.DEFAULT_COMPONENT_INSTANCE_NAME,
+                                instance_manager.CURRENT_SOFTLINK_NAME)
+    os.unlink(current_link)
+    with open(current_link, "w") as current_file:
+      current_file.write("not managed by the instance manager")
+
+    with self.assertRaisesRegex(ValueError, "not a symlink"):
+      instance_manager.set_mpack_instance(MPACK_NAME, MPACK_VERSION_1, INSTANCE_NAME_1,
+                                          SUBGROUP_NAME, SERVER_MODULE_NAME, '*')
+
+
+def create_mpack_with_defaults(mpack_name=MPACK_NAME, mpack_version=MPACK_VERSION_1, mpack_instance=INSTANCE_NAME_1,
+                               subgroup_name=SUBGROUP_NAME, module_name=SERVER_MODULE_NAME, components='*',
+                               components_map=None, fail_if_exists=True):
+  instance_manager.create_mpack(mpack_name, mpack_version, mpack_instance,
+                                subgroup_name, module_name, components, components_map, fail_if_exists)
+
+
+def build_rpm_structure(mpack_name=MPACK_NAME, mpack_version=MPACK_VERSION_1, mpack_json=MPACK_JSON,
+                        module_version_mapping=MODULE_VERSION_MAPPING,
+                        module_component_mapping=MODULE_COMPONENT_MAPPING,
+                        remove_old_content=True,
+                        create_modules=True):
+  if remove_old_content:
+    remove_rpm_structure()
+
+  mpack_path = os.path.join(TMP_ROOT_FOLDER, instance_manager.MPACKS_FOLDER_NAME, mpack_name, mpack_version)
+  os.makedirs(mpack_path)
+  with open(os.path.join(mpack_path, "mpack.json"), "w") as mpack_json_file:
+    json.dump(mpack_json, mpack_json_file)
+
+  modules_path = os.path.join(TMP_ROOT_FOLDER, instance_manager.MODULES_FOLDER_NAME)
+  for module_name in module_version_mapping:
+    if create_modules:
+      os.makedirs(os.path.join(modules_path, module_name, module_version_mapping[module_name], 'bin'))
+
+    os.symlink(os.path.join(modules_path, module_name, module_version_mapping[module_name]),
+               os.path.join(mpack_path, module_component_mapping[module_name]))
+
+
+def remove_rpm_structure():
+  if os.path.exists(TMP_ROOT_FOLDER):
+    shutil.rmtree(TMP_ROOT_FOLDER)

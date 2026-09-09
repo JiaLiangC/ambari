@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <!--
+     Licensed to the Apache Software Foundation (ASF) under one or more
+     contributor license agreements.  See the NOTICE file distributed with
+     this work for additional information regarding copyright ownership.
+     The ASF licenses this file to You under the Apache License, Version 2.0
+     (the "License"); you may not use this file except in compliance with
+     the License.  You may obtain a copy of the License at
+
+         http://www.apache.org/licenses/LICENSE-2.0
+
+     Unless required by applicable law or agreed to in writing, software
+     distributed under the License is distributed on an "AS IS" BASIS,
+     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+     See the License for the specific language governing permissions and
+     limitations under the License.
+    -->
+    <parent>
+        <groupId>org.apache.ambari</groupId>
+        <artifactId>ambari-project</artifactId>
+        <version>${revision}</version>
+        <relativePath>../ambari-project</relativePath>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>mpack-instance-manager</artifactId>
+    <name>Management Pack Instance Manager</name>
+    <description>Management Pack Instance Manager</description>
+    <properties>
+        <instanceManagerInstallDir>/usr/lib/mpack-instance-manager</instanceManagerInstallDir>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <final.name>${project.artifactId}-${project.version}</final.name>
+        <package.release>1</package.release>
+        <package.prefix>/usr</package.prefix>
+        <skipTests>false</skipTests>
+        <deb.architecture>${ambari.deb.architecture}</deb.architecture>
+        <deb.dependency.list>${python.deb.runtime.dependency}</deb.dependency.list>
+        <rpm.dependency.list>python3 &gt;= 3.9.2</rpm.dependency.list>
+        <python.test.mask>[Tt]est*.py</python.test.mask>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>python-test</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>${executable.python}</executable>
+                            <workingDirectory>src/test/python</workingDirectory>
+                            <arguments>
+                                <argument>-m</argument>
+                                <argument>unittest</argument>
+                                <argument>discover</argument>
+                                <argument>-s</argument>
+                                <argument>instance_manager</argument>
+                                <argument>-p</argument>
+                                <argument>${python.test.mask}</argument>
+                                <argument>-v</argument>
+                            </arguments>
+                            <environmentVariables>
+                                <PYTHONPATH>${project.basedir}/src/main/python/instance_manager</PYTHONPATH>
+                            </environmentVariables>
+                            <skip>${skipTests}</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>rpm-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <!-- unbinds rpm creation from maven lifecycle -->
+                        <phase>none</phase>
+                        <goals>
+                            <goal>rpm</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+
+                    <license>Apache License, Version 2.0</license>
+                    <group>Development</group>
+                    <description>Management Pack Instance Manager</description>
+                    <defineStatements>
+                        <defineStatement>__python 3</defineStatement>
+                        <defineStatement>__brp_mangle_shebangs %{nil}</defineStatement>
+                    </defineStatements>
+                    <requires>
+                        <require>${rpm.dependency.list}</require>
+                    </requires>
+                    <postinstallScriptlet>
+                        <scriptFile>src/main/package/rpm/postinstall.sh</scriptFile>
+                        <fileEncoding>utf-8</fileEncoding>
+                    </postinstallScriptlet>
+                    <preremoveScriptlet>
+                        <scriptFile>src/main/package/rpm/preremove.sh</scriptFile>
+                        <fileEncoding>utf-8</fileEncoding>
+                    </preremoveScriptlet>
+
+                    <needarch>${build.os_arch}</needarch>
+                    <autoRequires>false</autoRequires>
+                    <mappings>
+                        <mapping>
+                            <directory>${instanceManagerInstallDir}</directory>
+                            <filemode>755</filemode>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <sources>
+                                <source>
+                                    <location>
+                                        ${project.build.directory}${dirsep}${project.artifactId}-${project.version}${instanceManagerInstallDir}
+                                    </location>
+                                </source>
+                            </sources>
+                        </mapping>
+                    </mappings>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.vafer</groupId>
+                <artifactId>jdeb</artifactId>
+                <executions>
+                    <execution>
+                        <phase>none</phase>
+                        <goals>
+                            <goal>jdeb</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <controlDir>${basedir}/src/main/package/deb/control</controlDir>
+                    <deb>${basedir}/target/${project.artifactId}_${package-version}-${package-release}.deb</deb>
+                    <skip>false</skip>
+                    <skipPOMs>false</skipPOMs>
+                    <dataSet>
+                        <data>
+                            <src>${project.build.directory}${dirsep}${project.artifactId}-${project.version}.tar.gz</src>
+                            <type>archive</type>
+                            <mapper>
+                                <type>perm</type>
+                                <user>root</user>
+                                <group>root</group>
+                            </mapper>
+                        </data>
+                    </dataSet>
+                </configuration>
+            </plugin>
+            <plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <configuration>
+                    <appendAssemblyId>false</appendAssemblyId>
+                    <tarLongFileMode>gnu</tarLongFileMode>
+                    <descriptors>
+                        <descriptor>src/packages/tarball/all.xml</descriptor>
+                    </descriptors>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-assembly</id>
+                        <phase>${assemblyPhase}</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.rat</groupId>
+                <artifactId>apache-rat-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+    <profiles>
+        <profile>
+            <id>linux</id>
+            <activation>
+                <os>
+                    <family>unix</family>
+                </os>
+            </activation>
+            <properties>
+                <envClassifier>linux</envClassifier>
+                <dirsep>/</dirsep>
+                <pathsep>:</pathsep>
+                <executable.python>${project.basedir}/../ambari-common/src/main/unix/ambari-python-wrap</executable.python>
+                <executable.shell>sh</executable.shell>
+                <fileextension.shell>sh</fileextension.shell>
+                <fileextension.dot.shell-default></fileextension.dot.shell-default>
+            </properties>
+        </profile>
+    </profiles>
+</project>

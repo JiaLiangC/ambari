@@ -594,6 +594,7 @@
         <module>ambari-server-spi</module>
         <module>ambari-funtest</module>
         <module>ambari-agent</module>
+        <module>mpack-instance-manager</module>
       </modules>
     </profile>
     <profile>
@@ -615,6 +616,7 @@
         <module>ambari-server-spi</module>
         <module>ambari-funtest</module>
         <module>ambari-agent</module>
+        <module>mpack-instance-manager</module>
       </modules>
     </profile>
     <profile>
@@ -627,6 +629,7 @@
         <module>ambari-server-spi</module>
         <module>ambari-funtest</module>
         <module>ambari-agent</module>
+        <module>mpack-instance-manager</module>
         <module>ambari-serviceadvisor</module>
         <module>ambari-utility</module>
       </modules>
@@ -648,6 +651,7 @@
         <module>ambari-server-spi</module>
         <module>ambari-funtest</module>
         <module>ambari-agent</module>
+        <module>mpack-instance-manager</module>
         <module>ambari-serviceadvisor</module>
         <module>ambari-utility</module>
         </modules>
