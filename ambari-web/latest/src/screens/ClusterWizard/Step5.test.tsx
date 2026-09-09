@@ -22,18 +22,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ContextWrapper } from ".";
 
 const mocks = vi.hoisted(() => ({
+  assignMastersProps: null as any,
   flushStateToDb: vi.fn(),
   handleNextImperitive: vi.fn(),
 }));
 
 vi.mock("../../components/AssignMasters", () => ({
-  default: ({
-    setHasValidationIssues,
-  }: {
+  default: (props: {
     setHasValidationIssues: (hasIssues: boolean) => void;
-  }) => (
-    <button onClick={() => setHasValidationIssues(true)}>REPORT ISSUE</button>
-  ),
+  }) => {
+    mocks.assignMastersProps = props;
+    return (
+      <button onClick={() => props.setHasValidationIssues(true)}>REPORT ISSUE</button>
+    );
+  },
 }));
 vi.mock("../../components/AssignMastersAddable", () => ({
   default: () => null,
@@ -104,5 +106,262 @@ describe("Assign Masters validation", () => {
       expect(mocks.handleNextImperitive).toHaveBeenCalledOnce();
     });
   });
-});
 
+  it("checkpoints the exact draft revision before preparing reviewed providers", async () => {
+    const withStateCheckpoint = vi.fn(async (
+      request: (revision: number) => Promise<any>,
+    ) => request(12));
+    const managedPreview = {
+      binding_id: "11111111-1111-4111-8111-111111111111",
+      compatible: true,
+      consumer: {
+        lifecycle: "DRAFT",
+        planned_hbase_user: "hbase_a",
+        scope: "DRAFT",
+        service_name: "HBASE",
+      },
+      consumer_descriptor_fingerprint: "consumer-fingerprint",
+      dependency_type: "HDFS",
+      errors: [],
+      preview_schema_version: 2,
+      provider: {
+        cluster_id: 31,
+        cluster_name: "provider-a",
+        service_name: "HDFS",
+      },
+      provider_fingerprint: "provider-fingerprint",
+      snapshot_fingerprint: "snapshot-fingerprint",
+    };
+    const servicesData = {
+      managedDependencies: {
+        HDFS: {
+          mode: "managed",
+          preview: managedPreview,
+          provider: { ...managedPreview.provider, compatible: true, errors: [] },
+        },
+      },
+      services: {
+        HBASE: { installed: false, selected: true },
+      },
+    };
+    const value = {
+      state: {
+        clusterCreationSteps: {
+          SERVICES: { data: servicesData },
+          VERSION: { data: { selectedVersion: {} } },
+          HOSTS: { data: { hosts: [] } },
+        },
+      },
+      dispatch: vi.fn(),
+      draftId: "22222222-2222-4222-8222-222222222222",
+      flushStateToDb: mocks.flushStateToDb,
+      installedHosts: [],
+      installedServices: [],
+      withStateCheckpoint,
+      stepWizardUtilities: {
+        currentStep: { canGoBack: true, name: "MASTERS" },
+        handleNextImperitive: mocks.handleNextImperitive,
+        handleBackImperitive: vi.fn(),
+        jumpToStep: vi.fn(),
+      },
+    };
+    const WizardContext = createContext(value);
+    render(
+      <ContextWrapper.Provider value={{ Context: WizardContext }}>
+        <WizardContext.Provider value={value}>
+          <Step5 />
+        </WizardContext.Provider>
+      </ContextWrapper.Provider>,
+    );
+
+    const prepared = await mocks.assignMastersProps.runWithAdvisorRequest(
+      async (request: any) => request,
+    );
+
+    expect(withStateCheckpoint).toHaveBeenCalledOnce();
+    expect(prepared.properties).toEqual({
+      managed_dependency_plan: {
+        consumer: {
+          scope: "DRAFT",
+          draft_id: value.draftId,
+          expected_revision: 12,
+        },
+        selections: [{
+          binding_id: managedPreview.binding_id,
+          dependency_type: "HDFS",
+          expected_consumer_descriptor_fingerprint: "consumer-fingerprint",
+          expected_provider_fingerprint: "provider-fingerprint",
+          expected_snapshot_fingerprint: "snapshot-fingerprint",
+          preview_schema_version: 2,
+          provider: { cluster_id: 31, service_name: "HDFS" },
+        }],
+      },
+    });
+    expect(prepared.isCurrent()).toBe(true);
+  });
+
+  it("rejects a late checkpoint after the route switches to another draft", async () => {
+    let resolveCheckpoint!: (revision: number) => void;
+    const checkpoint = new Promise<number>((resolve) => {
+      resolveCheckpoint = resolve;
+    });
+    const managedPreview = {
+      binding_id: "11111111-1111-4111-8111-111111111111",
+      compatible: true,
+      consumer: {
+        lifecycle: "DRAFT",
+        planned_hbase_user: "hbase_a",
+        scope: "DRAFT",
+        service_name: "HBASE",
+      },
+      consumer_descriptor_fingerprint: "consumer-fingerprint",
+      dependency_type: "HDFS",
+      errors: [],
+      preview_schema_version: 2,
+      provider: { cluster_id: 31, cluster_name: "provider-a", service_name: "HDFS" },
+      provider_fingerprint: "provider-fingerprint",
+      snapshot_fingerprint: "snapshot-fingerprint",
+    };
+    const state = {
+      clusterCreationSteps: {
+        SERVICES: { data: {
+          managedDependencies: { HDFS: { mode: "managed", preview: managedPreview } },
+          services: { HBASE: { installed: false, selected: true } },
+        } },
+        VERSION: { data: { selectedVersion: {} } },
+        HOSTS: { data: { hosts: [] } },
+      },
+    };
+    const baseValue = {
+      state,
+      dispatch: vi.fn(),
+      flushStateToDb: mocks.flushStateToDb,
+      installedHosts: [],
+      installedServices: [],
+      withStateCheckpoint: vi.fn((
+        request: (revision: number) => Promise<any>,
+      ) => checkpoint.then(request)),
+      stepWizardUtilities: {
+        currentStep: { canGoBack: true, name: "MASTERS" },
+        handleNextImperitive: mocks.handleNextImperitive,
+        handleBackImperitive: vi.fn(),
+        jumpToStep: vi.fn(),
+      },
+    };
+    const WizardContext = createContext({ ...baseValue, draftId: "" });
+    const rendered = render(
+      <ContextWrapper.Provider value={{ Context: WizardContext }}>
+        <WizardContext.Provider value={{
+          ...baseValue,
+          draftId: "22222222-2222-4222-8222-222222222222",
+        }}>
+          <Step5 />
+        </WizardContext.Provider>
+      </ContextWrapper.Provider>,
+    );
+    const stalePreparation = mocks.assignMastersProps.runWithAdvisorRequest(
+      async (request: any) => request,
+    );
+
+    rendered.rerender(
+      <ContextWrapper.Provider value={{ Context: WizardContext }}>
+        <WizardContext.Provider value={{
+          ...baseValue,
+          draftId: "33333333-3333-4333-8333-333333333333",
+        }}>
+          <Step5 />
+        </WizardContext.Provider>
+      </ContextWrapper.Provider>,
+    );
+    resolveCheckpoint(7);
+
+    await expect(stalePreparation).rejects.toThrow(/reviewed again/i);
+  });
+
+  it("rejects late advice when provider facts change inside the same draft", async () => {
+    let resolveCheckpoint!: (revision: number) => void;
+    const checkpoint = new Promise<number>((resolve) => {
+      resolveCheckpoint = resolve;
+    });
+    const preview = {
+      binding_id: "11111111-1111-4111-8111-111111111111",
+      compatible: true,
+      consumer: {
+        lifecycle: "DRAFT",
+        planned_hbase_user: "hbase_a",
+        scope: "DRAFT",
+        service_name: "HBASE",
+      },
+      consumer_descriptor_fingerprint: "consumer-fingerprint",
+      dependency_type: "HDFS",
+      errors: [],
+      preview_schema_version: 2,
+      provider: { cluster_id: 31, cluster_name: "provider-a", service_name: "HDFS" },
+      provider_fingerprint: "provider-fingerprint",
+      snapshot_fingerprint: "snapshot-a",
+    };
+    const stateWithPreview = (snapshotFingerprint: string) => ({
+      clusterCreationSteps: {
+        SERVICES: { data: {
+          managedDependencies: { HDFS: {
+            mode: "managed",
+            preview: { ...preview, snapshot_fingerprint: snapshotFingerprint },
+          } },
+          services: { HBASE: { installed: false, selected: true } },
+        } },
+        VERSION: { data: { selectedVersion: {
+          stack_name: "BIGTOP",
+          stack_version: "3.2.0",
+        } } },
+        HOSTS: { data: { hosts: [] } },
+      },
+    });
+    const baseValue = {
+      dispatch: vi.fn(),
+      draftId: "22222222-2222-4222-8222-222222222222",
+      flushStateToDb: mocks.flushStateToDb,
+      installedHosts: [],
+      installedServices: [],
+      withStateCheckpoint: vi.fn((
+        request: (revision: number) => Promise<any>,
+      ) => checkpoint.then(request)),
+      stepWizardUtilities: {
+        currentStep: { canGoBack: true, name: "MASTERS" },
+        handleNextImperitive: mocks.handleNextImperitive,
+        handleBackImperitive: vi.fn(),
+        jumpToStep: vi.fn(),
+      },
+    };
+    const WizardContext = createContext({
+      ...baseValue,
+      state: stateWithPreview("snapshot-a"),
+    });
+    const rendered = render(
+      <ContextWrapper.Provider value={{ Context: WizardContext }}>
+        <WizardContext.Provider value={{
+          ...baseValue,
+          state: stateWithPreview("snapshot-a"),
+        }}>
+          <Step5 />
+        </WizardContext.Provider>
+      </ContextWrapper.Provider>,
+    );
+    const stalePreparation = mocks.assignMastersProps.runWithAdvisorRequest(
+      async (request: any) => request,
+    );
+
+    rendered.rerender(
+      <ContextWrapper.Provider value={{ Context: WizardContext }}>
+        <WizardContext.Provider value={{
+          ...baseValue,
+          state: stateWithPreview("snapshot-b"),
+        }}>
+          <Step5 />
+        </WizardContext.Provider>
+      </ContextWrapper.Provider>,
+    );
+    resolveCheckpoint(9);
+
+    await expect(stalePreparation).rejects.toThrow(/reviewed again/i);
+  });
+});

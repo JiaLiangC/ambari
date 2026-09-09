@@ -619,6 +619,161 @@ describe("Step 7 Theme fallback", () => {
     );
   });
 
+  it("merges reviewed provider values into read-only configuration state", async () => {
+    const steps = createWizardSteps() as any;
+    steps.SERVICES.data.services = { HBASE: { selected: true } };
+    steps.SERVICES.data.managedDependencies = {
+      HDFS: {
+        mode: "managed",
+        provider: {
+          cluster_id: 9,
+          cluster_name: "provider-a",
+          service_name: "HDFS",
+        },
+        preview: {
+          binding_id: "11111111-1111-4111-8111-111111111111",
+          client_config: {
+            "hbase-site": { "existing.property": "provider-required" },
+          },
+          compatible: true,
+          consumer: {
+            lifecycle: "INIT",
+            planned_hbase_user: "hbase_a",
+            scope: "DRAFT",
+            service_name: "HBASE",
+          },
+          dependency_type: "HDFS",
+          errors: [],
+          preview_schema_version: 1,
+          provider: {
+            cluster_id: 9,
+            cluster_name: "provider-a",
+            service_name: "HDFS",
+          },
+        },
+      },
+    };
+    steps.CONFIGURATION = {
+      data: {
+        configProperties: {
+          HBASE: {
+            General: {
+              errors: 0,
+              properties: {
+                existing: {
+                  fileName: "hbase-site.xml",
+                  final: "false",
+                  isEditable: true,
+                  propertyAttributes: { type: "string" },
+                  propertyDisplayname: "Existing property",
+                  propertyName: "existing.property",
+                  propertyValue: "local-edited",
+                  previousValue: "local-default",
+                  serviceName: "HBASE",
+                  type: "hbase-site",
+                  value: "local-edited",
+                },
+              },
+            },
+          },
+        },
+        configs: stackConfigurations,
+        stackLevelConfigs: { configurations: [] },
+        themes: themedServicesResponse(["HBASE"]),
+      },
+    };
+
+    renderStep("clusterCreation", steps);
+
+    expect((await screen.findByTestId("config-default")).textContent)
+      .toContain("provider-required");
+    await waitFor(() => expect(mocks.dispatch.mock.calls.some(([action]) =>
+      action.payload?.data?.managedDependencyClientConfig?.["hdfs-site"]?.[
+        "existing.property"
+      ] === "provider-required")).toBe(false));
+    await waitFor(() => expect(mocks.dispatch.mock.calls.some(([action]) =>
+      action.payload?.data?.managedDependencyClientConfig?.["hbase-site"]?.[
+        "existing.property"
+      ] === "provider-required")).toBe(true));
+    const mergedProperty = mocks.dispatch.mock.calls
+      .map(([action]) => action.payload?.data?.configProperties)
+      .filter(Boolean)
+      .flatMap((properties) => Object.values(properties as TestConfigProperties))
+      .flatMap((service) => Object.values(service))
+      .flatMap((category) => Object.values(category.properties || {}))
+      .find((property) => property.propertyName === "existing.property"
+        && property.value === "provider-required");
+    expect(mergedProperty).toMatchObject({
+      isEditable: false,
+      isManagedDependency: true,
+    });
+  });
+
+  it("restores ordinary config metadata when a recovered provider choice is local", async () => {
+    const steps = createWizardSteps() as any;
+    steps.SERVICES.data.services = { HBASE: { selected: true } };
+    steps.SERVICES.data.managedDependencies = { HDFS: { mode: "local" } };
+    steps.CONFIGURATION = {
+      data: {
+        configProperties: {
+          HBASE: {
+            General: {
+              errors: 0,
+              properties: {
+                existing: {
+                  _managedDependencyBase: {
+                    isEditable: { present: true, value: true },
+                    recommendedValue: { present: true, value: "local-default" },
+                    value: { present: true, value: "local-edited" },
+                  },
+                  fileName: "hbase-site.xml",
+                  final: "false",
+                  isEditable: false,
+                  isManagedDependency: true,
+                  propertyAttributes: { type: "string" },
+                  propertyDisplayname: "Existing property",
+                  propertyName: "existing.property",
+                  propertyValue: "local-default",
+                  previousValue: "local-default",
+                  recommendedValue: "provider-required",
+                  serviceName: "HBASE",
+                  type: "hbase-site",
+                  value: "provider-required",
+                },
+              },
+            },
+          },
+        },
+        configs: stackConfigurations,
+        stackLevelConfigs: { configurations: [] },
+        themes: themedServicesResponse(["HBASE"]),
+      },
+    };
+
+    renderStep("clusterCreation", steps);
+
+    expect((await screen.findByTestId("config-default")).textContent)
+      .toContain("local-edited");
+    const restoredProperty = await waitFor(() => {
+      const property = mocks.dispatch.mock.calls
+        .map(([action]) => action.payload?.data?.configProperties)
+        .filter(Boolean)
+        .flatMap((properties) => Object.values(properties as TestConfigProperties))
+        .flatMap((service) => Object.values(service))
+        .flatMap((category) => Object.values(category.properties || {}))
+        .find((candidate) => candidate.propertyName === "existing.property"
+          && candidate.value === "local-edited");
+      expect(property).toBeTruthy();
+      return property;
+    });
+    expect(restoredProperty).toMatchObject({
+      isEditable: true,
+      recommendedValue: "local-default",
+    });
+    expect(restoredProperty).not.toHaveProperty("_managedDependencyBase");
+    expect(restoredProperty).not.toHaveProperty("isManagedDependency");
+  });
+
   it("treats a successful empty Theme collection as non-retryable fallback", async () => {
     mocks.getStackThemes.mockReset();
     mocks.getStackThemes.mockResolvedValueOnce({ items: [] });

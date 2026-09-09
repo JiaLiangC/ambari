@@ -90,7 +90,6 @@ function Step6({ wizardName = "clusterCreation" }: Step6Props) {
     "addServiceSteps.SERVICES.data.addServiceFlow",
     {},
   );
-
   const enableNext = () => {
     setNextEnabled(true);
   };

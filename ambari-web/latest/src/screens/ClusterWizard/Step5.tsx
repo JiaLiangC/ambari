@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-import { useContext,  useState } from "react";
+import { useContext, useRef, useState } from "react";
 import AssignMasters from "../../components/AssignMasters";
 import WizardFooter from "../../components/StepWizard/WizardFooter";
 import { ActionTypes } from "./clusterStore/types";
@@ -31,6 +31,14 @@ import {
   nextAddServiceStep,
   previousAddServiceStep,
 } from "../Services/AddServiceWizard/addServiceNavigation";
+import { AppContext } from "../../store/context";
+import {
+  buildManagedDependencyAdvisorPlan,
+  ManagedDependencyAdvisorReviewRequiredError,
+  managedDependencyAdvisorInputKey,
+  type RunWithStackAdvisorRequest,
+} from "./managedDependencyAdvisor";
+import type { ManagedDependencySelections } from "./managedDependencySelection";
 
 function Step5({ wizardName = "clusterCreation" }) {
   const { Context } = useContext(ContextWrapper);
@@ -38,6 +46,8 @@ function Step5({ wizardName = "clusterCreation" }) {
     state,
     dispatch,
     flushStateToDb,
+    withStateCheckpoint,
+    draftId,
     installedHosts,
     installedServices,
     stepWizardUtilities: {
@@ -47,6 +57,7 @@ function Step5({ wizardName = "clusterCreation" }) {
       jumpToStep,
     },
   } = useContext(Context) as any;
+  const { runtimeKey } = useContext(AppContext);
   const [canProcced, setCanProceed] = useState(wizardName === "addService");
   const [hasValidationIssues, setHasValidationIssues] = useState(false);
   const [showValidationIssuesModal, setShowValidationIssuesModal] =
@@ -56,6 +67,76 @@ function Step5({ wizardName = "clusterCreation" }) {
     `${wizardName}Steps.SERVICES.data.services`,
     {}
   );
+  const servicesStepData = get(
+    state,
+    `${wizardName}Steps.SERVICES.data`,
+    {},
+  );
+  const managedDependencies = get(
+    servicesStepData,
+    "managedDependencies",
+    {},
+  ) as ManagedDependencySelections;
+  const hasFreshHBaseSelection = Boolean(
+    servicesData.HBASE?.selected && !servicesData.HBASE?.installed,
+  );
+  const hasManagedDependencies = hasFreshHBaseSelection
+    && Object.values(managedDependencies).some((choice) => choice?.mode === "managed");
+  const advisorInputKey = managedDependencyAdvisorInputKey({
+    hosts: wizardName === "addService"
+      ? installedHosts
+      : get(
+          state,
+          `${wizardName}Steps.${wizardSteps[3].name}.data.hosts`,
+          [],
+        ).filter((host: any) => host.bootStatus === BootStatus.REGISTERED)
+          .map((host: any) => host.name),
+    selections: managedDependencies,
+    services: Object.keys(servicesData).filter(
+      (service) => servicesData[service].selected,
+    ),
+    stack: get(
+      state,
+      `${wizardName}Steps.VERSION.data.selectedVersion.stack_name`,
+      "",
+    ),
+    version: get(
+      state,
+      `${wizardName}Steps.VERSION.data.selectedVersion.stack_version`,
+      "",
+    ),
+  });
+  const advisorScopeKey = JSON.stringify([
+    "cluster-create-advisor",
+    runtimeKey,
+    draftId || "missing-draft",
+    advisorInputKey,
+  ]);
+  const advisorScopeKeyRef = useRef(advisorScopeKey);
+  advisorScopeKeyRef.current = advisorScopeKey;
+  const runWithAdvisorRequest: RunWithStackAdvisorRequest | undefined =
+    wizardName === "clusterCreation" && hasManagedDependencies
+      ? async (request) => {
+          const capturedScope = advisorScopeKey;
+          if (!draftId || !withStateCheckpoint) {
+            throw new ManagedDependencyAdvisorReviewRequiredError();
+          }
+          return withStateCheckpoint(async (revision) => {
+            if (advisorScopeKeyRef.current !== capturedScope) {
+              throw new ManagedDependencyAdvisorReviewRequiredError();
+            }
+            const plan = buildManagedDependencyAdvisorPlan(
+              { scope: "DRAFT", draft_id: draftId, expected_revision: revision },
+              managedDependencies,
+            );
+            if (!plan) throw new ManagedDependencyAdvisorReviewRequiredError();
+            return request({
+              isCurrent: () => advisorScopeKeyRef.current === capturedScope,
+              properties: { managed_dependency_plan: plan },
+            });
+          });
+        }
+      : undefined;
   
   const step1Data = get(state, `${wizardName}Steps.VERSION.data`, {});
   const services = Object.keys(servicesData).filter((service) => {
@@ -104,6 +185,7 @@ function Step5({ wizardName = "clusterCreation" }) {
         </Card>
       ) : (
         <AssignMasters
+          key={advisorScopeKey}
           STACK={step1Data?.selectedVersion?.stack_name}
           VERSION={step1Data?.selectedVersion?.stack_version}
           hostsList={hostsList}
@@ -111,7 +193,10 @@ function Step5({ wizardName = "clusterCreation" }) {
           installedServices={installedServices}
           setCanProceed={setCanProceed}
           parentState={state}
+          advisorInputKey={advisorInputKey}
           setHasValidationIssues={setHasValidationIssues}
+          runWithAdvisorRequest={runWithAdvisorRequest}
+          onReviewManagedDependencies={() => jumpToStep(3)}
           dispatch={(data: any) => {
             dispatch({
               type: ActionTypes.STORE_INFORMATION,

@@ -51,6 +51,7 @@ import { mapreduce2_properties } from "../../../data/configs/services/mapreduce2
 import { tez_properties } from "../../../data/configs/services/tez_properties";
 import { zookeeper_properties } from "../../../data/configs/services/zookeeper_properties";
 import { ActionTypes } from "../clusterStore/types";
+import { clearResolvedReentryMarkers } from "../../../Utils/scopedWorkflow";
 import { ContextWrapper } from "..";
 import {
   addTabNames,
@@ -94,6 +95,11 @@ import {
   ThemeLoadNotice,
 } from "../../CommonConfigs/themeLoadUtils";
 import { getCategoryClientErrors } from "./categoryValidation";
+import ManagedDependencySettings from "../ManagedDependencySettings";
+import {
+  buildManagedDependencyClientConfig,
+  mergeManagedDependencyConfigProperties,
+} from "../managedDependencyConfig";
 
 type PropTypes = {
   wizardName?: string;
@@ -108,6 +114,7 @@ const createConfigurationStepPayload = (
   preInstallChecksWereRun: boolean,
   selectedTab: string,
   selectedServicesByTab: Record<string, string>,
+  managedDependencyClientConfig: Record<string, Record<string, string>>,
 ) => ({
   step,
   data: {
@@ -115,6 +122,7 @@ const createConfigurationStepPayload = (
     themes,
     configs,
     stackLevelConfigs,
+    managedDependencyClientConfig,
     preInstallChecksWereRun,
     navigation: {
       selectedTab,
@@ -204,6 +212,16 @@ const preserveEditedConfigValues = (
         ].forEach((field) => {
           if (field in current) property[field] = cloneDeep(current[field]);
         });
+        if (current.isManagedDependency) {
+          [
+            "_managedDependencyBase",
+            "isManagedDependency",
+            "isEditable",
+            "recommendedValue",
+          ].forEach((field) => {
+            if (field in current) property[field] = cloneDeep(current[field]);
+          });
+        }
       });
     });
   });
@@ -230,6 +248,14 @@ export default function Step7({ wizardName = "clusterCreation" }: PropTypes) {
     state,
     "addServiceSteps.SERVICES.data.addServiceFlow",
     {},
+  );
+  const managedDependencies = get(
+    state,
+    `${wizardName}Steps.SERVICES.data.managedDependencies`,
+    {},
+  );
+  const managedDependencyClientConfig = buildManagedDependencyClientConfig(
+    managedDependencies,
   );
   const storedConfigProperties =
     getStepData("CONFIGURATION", "configProperties") || {};
@@ -287,6 +313,14 @@ export default function Step7({ wizardName = "clusterCreation" }: PropTypes) {
   useEffect(() => {
     configPropertiesRef.current = configProperties;
   }, [configProperties]);
+
+  useEffect(() => {
+    setConfigProperties((current: ConfigPropertiesType) =>
+      mergeManagedDependencyConfigProperties(
+        current,
+        managedDependencyClientConfig,
+      ));
+  }, [configProperties, JSON.stringify(managedDependencyClientConfig)]);
 
   useEffect(() => () => {
     themeRequestId.current += 1;
@@ -355,6 +389,7 @@ export default function Step7({ wizardName = "clusterCreation" }: PropTypes) {
         preInstallChecksWereRun,
         selectedTab,
         selectedServicesByTab,
+        managedDependencyClientConfig,
       ),
     });
   }, [
@@ -365,6 +400,7 @@ export default function Step7({ wizardName = "clusterCreation" }: PropTypes) {
     preInstallChecksWereRun,
     selectedTab,
     selectedServicesByTab,
+    JSON.stringify(managedDependencyClientConfig),
   ]);
 
   const initialServiceComponents = get(
@@ -2512,7 +2548,7 @@ export default function Step7({ wizardName = "clusterCreation" }: PropTypes) {
   const continueAfterConfiguration = async () => {
     dispatch({
       type: ActionTypes.STORE_INFORMATION,
-      payload: createConfigurationStepPayload(
+      payload: clearResolvedReentryMarkers(createConfigurationStepPayload(
         currentStep.name,
         configProperties,
         themes,
@@ -2521,7 +2557,8 @@ export default function Step7({ wizardName = "clusterCreation" }: PropTypes) {
         preInstallChecksWereRun,
         selectedTab,
         selectedServicesByTab,
-      ),
+        managedDependencyClientConfig,
+      )),
     });
     if (wizardName === "addService") {
       const nextStep = nextAddServiceStep(4, addServiceFlow);
@@ -2537,6 +2574,12 @@ export default function Step7({ wizardName = "clusterCreation" }: PropTypes) {
     setPreInstallChecksWereRun(true);
     setShowSkippedChecksWarning(false);
     setShowPreInstallChecks(true);
+  };
+
+  const returnToProviderSelection = async () => {
+    const servicesStep = wizardName === "addService" ? 1 : 4;
+    await Promise.resolve(flushStateToDb("jump", servicesStep));
+    jumpToStep(servicesStep);
   };
 
   const handleNext = async () => {
@@ -2644,6 +2687,11 @@ export default function Step7({ wizardName = "clusterCreation" }: PropTypes) {
           </Button>
         </BootstrapModal.Footer>
       </BootstrapModal>
+      <ManagedDependencySettings
+        onReturn={() => void returnToProviderSelection()}
+        selections={managedDependencies}
+        view="configuration"
+      />
       <div>
         {themeLoadNotice && (
           <Alert
