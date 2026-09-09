@@ -32,10 +32,12 @@ import java.util.TreeMap;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.TypedQuery;
 
 import org.apache.ambari.server.controller.dependencies.ManagedDependencyIntegrationException;
 import org.apache.ambari.server.controller.dependencies.ManagedDependencyServiceKey;
 import org.apache.ambari.server.controller.dependencies.ManagedDependencySnapshot;
+import org.apache.ambari.server.controller.dependencies.ManagedDependencyType;
 import org.apache.ambari.server.orm.RequiresSession;
 import org.apache.ambari.server.orm.entities.ClusterServiceEntity;
 import org.apache.ambari.server.orm.entities.ClusterServiceEntityPK;
@@ -138,6 +140,16 @@ public class ServiceDependencyDAO {
   @RequiresSession
   public ServiceDependencyFenceEntity findFence(String bindingId) {
     return entityManagerProvider.get().find(ServiceDependencyFenceEntity.class, bindingId);
+  }
+
+  @RequiresSession
+  public List<ServiceDependencyFenceEntity> findFencesByConsumer(long clusterId,
+      String serviceName) {
+    return entityManagerProvider.get().createNamedQuery(
+        "ServiceDependencyFenceEntity.findByConsumer", ServiceDependencyFenceEntity.class)
+        .setParameter("clusterId", clusterId)
+        .setParameter("serviceName", serviceName)
+        .getResultList();
   }
 
   @RequiresSession
@@ -275,47 +287,385 @@ public class ServiceDependencyDAO {
   public void create(ServiceDependencyBindingEntity binding,
       ServiceDependencySnapshotEntity snapshot, ServiceDependencyOperationEntity operation,
       CreationGuard guard) {
-    create(binding, snapshot, operation, null, guard);
+    createBatchInternal(List.of(new CreationItem(binding, snapshot, operation, null, guard)));
   }
 
   @Transactional
   public void create(ServiceDependencyBindingEntity binding,
       ServiceDependencySnapshotEntity snapshot, ServiceDependencyOperationEntity operation,
       ServiceDependencyHostResultEntity initialCommand, CreationGuard guard) {
-    Objects.requireNonNull(guard, "guard");
+    createBatchInternal(List.of(new CreationItem(binding, snapshot, operation, initialCommand, guard)));
+  }
+
+  /**
+   * Publishes one complete managed HBase dependency plan in one transaction.
+   * The bounded input is either entirely new or an exact replay of all of its
+   * original CREATE operations. Binding and operation locks follow canonical
+   * binding UUID order; the result retains the caller's item order.
+   */
+  @Transactional
+  public CreationBatchResult createBatch(List<CreationItem> items) {
+    return createBatchInternal(items);
+  }
+
+  private CreationBatchResult createBatchInternal(List<CreationItem> items) {
+    List<CreationItem> input = validateCreationItems(items);
+    List<CreationItem> lockOrder = input.stream()
+        .sorted(Comparator.comparing(item -> item.binding().getBindingId()))
+        .toList();
     EntityManager entityManager = entityManagerProvider.get();
-    ManagedDependencyServiceKey consumer = new ManagedDependencyServiceKey(
-        binding.getConsumerClusterId(), binding.getConsumerServiceName());
-    ManagedDependencyServiceKey provider = new ManagedDependencyServiceKey(
-        binding.getProviderClusterId(), binding.getProviderServiceName());
-    if (SERVICE_KEY_ORDER.compare(consumer, provider) <= 0) {
-      lockService(entityManager, consumer);
-      lockService(entityManager, provider);
-    } else {
-      lockService(entityManager, provider);
-      lockService(entityManager, consumer);
+    CreationGuard guard = coalesceGuards(input);
+
+    Set<ManagedDependencyServiceKey> serviceKeys = new java.util.TreeSet<>(SERVICE_KEY_ORDER);
+    for (CreationItem item : lockOrder) {
+      serviceKeys.add(serviceKey(item.binding().getConsumerClusterId(),
+          item.binding().getConsumerServiceName()));
+      serviceKeys.add(serviceKey(item.binding().getProviderClusterId(),
+          item.binding().getProviderServiceName()));
+    }
+    for (ManagedDependencyServiceKey serviceKey : serviceKeys) {
+      lockService(entityManager, serviceKey);
+    }
+
+    List<ExistingCreation> existing = new java.util.ArrayList<>();
+    boolean anyExisting = false;
+    for (CreationItem item : lockOrder) {
+      ExistingCreation materialized = findExistingCreation(entityManager, item);
+      existing.add(materialized);
+      anyExisting |= materialized != null;
+    }
+    if (anyExisting) {
+      if (existing.stream().anyMatch(java.util.Objects::isNull)) {
+        throw new StaleApprovalException(
+            "A dependency plan replay is missing one of its original CREATE operations");
+      }
+      List<CreationResult> replay = new java.util.ArrayList<>();
+      for (int i = 0; i < lockOrder.size(); i++) {
+        CreationItem item = lockOrder.get(i);
+        ExistingCreation materialized = existing.get(i);
+        validateExactReplay(item, materialized);
+        replay.add(new CreationResult(materialized.binding(), materialized.snapshot(),
+            materialized.operation(), materialized.initialCommand(), false));
+      }
+      return new CreationBatchResult(inInputOrder(input, replay));
     }
 
     lockAndValidateDraft(entityManager, guard.draft());
     lockAndValidateRepositories(entityManager, guard.repositories());
     lockAndValidateServiceVersions(entityManager, guard.services());
 
-    if (entityManager.find(ServiceDependencyFenceEntity.class, binding.getBindingId(),
-        LockModeType.PESSIMISTIC_WRITE) != null) {
-      throw new IllegalStateException("A detached binding UUID cannot be reused");
-    }
-    entityManager.persist(binding);
-    entityManager.persist(snapshot);
-    entityManager.persist(operation);
-    if (initialCommand != null) {
-      requireCurrentCommandOwner(binding, operation, initialCommand);
-      if (!isProviderCommand(initialCommand.getCheckKind())) {
-        throw new IllegalArgumentException("The initial dependency command must target its provider");
+    for (CreationItem item : lockOrder) {
+      if (entityManager.find(ServiceDependencyFenceEntity.class, item.binding().getBindingId(),
+          LockModeType.PESSIMISTIC_WRITE) != null) {
+        throw new StaleApprovalException("A detached binding UUID cannot be reused");
       }
-      binding.setActionHostId(initialCommand.getHostId());
-      entityManager.persist(initialCommand);
+    }
+    List<CreationResult> created = new java.util.ArrayList<>();
+    for (CreationItem item : lockOrder) {
+      ServiceDependencyBindingEntity binding = item.binding();
+      ServiceDependencyOperationEntity operation = item.operation();
+      entityManager.persist(binding);
+      entityManager.persist(item.snapshot());
+      entityManager.persist(operation);
+      ServiceDependencyHostResultEntity initialCommand = item.initialCommand();
+      if (initialCommand != null) {
+        binding.setActionHostId(initialCommand.getHostId());
+        entityManager.persist(initialCommand);
+      }
+      created.add(new CreationResult(binding, item.snapshot(), operation, initialCommand, true));
     }
     entityManager.flush();
+    return new CreationBatchResult(inInputOrder(input, created));
+  }
+
+  private List<CreationResult> inInputOrder(List<CreationItem> input,
+      List<CreationResult> canonicalResults) {
+    Map<String, CreationResult> byBindingId = new java.util.HashMap<>();
+    for (CreationResult result : canonicalResults) {
+      byBindingId.put(result.binding().getBindingId(), result);
+    }
+    return input.stream().map(item -> byBindingId.get(item.binding().getBindingId())).toList();
+  }
+
+  private List<CreationItem> validateCreationItems(List<CreationItem> items) {
+    if (items == null || items.isEmpty() || items.size() > 2) {
+      throw new IllegalArgumentException("A dependency plan must contain one or two items");
+    }
+    Set<String> bindingIds = new java.util.HashSet<>();
+    Set<String> operationIds = new java.util.HashSet<>();
+    Set<ManagedDependencyType> dependencyTypes =
+        java.util.EnumSet.noneOf(ManagedDependencyType.class);
+    ManagedDependencyServiceKey consumerKey = null;
+    List<CreationItem> input = List.copyOf(items);
+    for (CreationItem item : input) {
+      Objects.requireNonNull(item, "creation item");
+      ServiceDependencyBindingEntity binding = Objects.requireNonNull(item.binding(), "binding");
+      ServiceDependencyOperationEntity operation = Objects.requireNonNull(item.operation(), "operation");
+      Objects.requireNonNull(item.snapshot(), "snapshot");
+      Objects.requireNonNull(item.guard(), "guard");
+      if (binding.getBindingId() == null || !bindingIds.add(binding.getBindingId())) {
+        throw new IllegalArgumentException("Creation items must have unique binding UUIDs");
+      }
+      if (operation.getOperationId() == null || !operationIds.add(operation.getOperationId())) {
+        throw new IllegalArgumentException("Creation items must have unique operation UUIDs");
+      }
+      if (binding.getConsumerClusterId() == null || binding.getProviderClusterId() == null
+          || binding.getConsumerServiceName() == null || binding.getProviderServiceName() == null
+          || binding.getDependencyType() == null) {
+        throw new IllegalArgumentException("Creation items must identify both parent services");
+      }
+      if (binding.getConsumerClusterId() <= 0 || binding.getProviderClusterId() <= 0
+          || !"HBASE".equals(binding.getConsumerServiceName())) {
+        throw new IllegalArgumentException(
+            "A dependency plan must target one positive-ID HBASE consumer");
+      }
+      ManagedDependencyServiceKey currentConsumer = serviceKey(
+          binding.getConsumerClusterId(), binding.getConsumerServiceName());
+      if (consumerKey == null) {
+        consumerKey = currentConsumer;
+      } else if (!consumerKey.equals(currentConsumer)) {
+        throw new IllegalArgumentException(
+            "All dependency plan items must target the same HBASE consumer");
+      }
+      ManagedDependencyType dependencyType;
+      try {
+        dependencyType = ManagedDependencyType.valueOf(binding.getDependencyType());
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException("A dependency plan contains an unsupported provider type", e);
+      }
+      if (!dependencyTypes.add(dependencyType)
+          || !dependencyType.getProviderServiceName().equals(binding.getProviderServiceName())) {
+        throw new IllegalArgumentException(
+            "Dependency plan provider types must be unique and match their service names");
+      }
+      validateImmutableCreateItem(item);
+    }
+    return input;
+  }
+
+  private void validateImmutableCreateItem(CreationItem item) {
+    ServiceDependencyBindingEntity binding = item.binding();
+    ServiceDependencySnapshotEntity snapshot = item.snapshot();
+    ServiceDependencyOperationEntity operation = item.operation();
+    if (binding.getBindingId().isBlank() || operation.getOperationId().isBlank()
+        || binding.getActiveOperationId() == null || binding.getActiveOperationId().isBlank()
+        || !Objects.equals(binding.getBindingId(), snapshot.getBindingId())
+        || binding.getOperationEpoch() == null || binding.getOperationEpoch() <= 0
+        || binding.getDesiredSnapshotVersion() == null || binding.getDesiredSnapshotVersion() <= 0
+        || !Objects.equals(binding.getDesiredSnapshotVersion(), snapshot.getSnapshotVersion())
+        || !Objects.equals(binding.getBindingId(), operation.getBindingId())
+        || !"CREATE".equals(operation.getOperationKind())
+        || !Objects.equals(binding.getOperationEpoch(), operation.getOperationEpoch())
+        || !Objects.equals(binding.getDesiredSnapshotVersion(), operation.getTargetSnapshotVersion())
+        || !Objects.equals(binding.getActiveOperationId(), operation.getOperationId())
+        || snapshot.getSnapshotVersion() == null || snapshot.getSnapshotVersion() <= 0
+        || snapshot.getSchemaVersion() == null
+        || (snapshot.getSchemaVersion() != ManagedDependencySnapshot.LEGACY_INSECURE_SCHEMA_VERSION
+            && snapshot.getSchemaVersion() != ManagedDependencySnapshot.CURRENT_SCHEMA_VERSION)
+        || operation.getRequestHash() == null || operation.getRequestHash().isBlank()) {
+      throw new IllegalArgumentException(
+          "The dependency CREATE entities do not form one immutable plan item");
+    }
+    if (item.initialCommand() != null) {
+      validateProviderIntent(binding, operation, item.initialCommand());
+    }
+  }
+
+  private CreationGuard coalesceGuards(List<CreationItem> input) {
+    DraftGuard draft = null;
+    boolean draftSeen = false;
+    Map<Long, RepositoryGuard> repositories = new TreeMap<>();
+    Map<ManagedDependencyServiceKey, ServiceVersionGuard> services =
+        new java.util.TreeMap<>(SERVICE_KEY_ORDER);
+    for (CreationItem item : input) {
+      CreationGuard itemGuard = item.guard();
+      if (!draftSeen) {
+        draft = itemGuard.draft();
+        draftSeen = true;
+      } else if (!Objects.equals(draft, itemGuard.draft())) {
+        throw new StaleApprovalException("Dependency plan items use different draft references");
+      }
+      for (RepositoryGuard repository : itemGuard.repositories()) {
+        RepositoryGuard prior = repositories.putIfAbsent(repository.rowId(), repository);
+        if (prior != null && !prior.equals(repository)) {
+          throw new StaleApprovalException("Dependency plan items use conflicting repository guards");
+        }
+      }
+      for (ServiceVersionGuard service : itemGuard.services()) {
+        ManagedDependencyServiceKey key = serviceKey(service.clusterId(), service.serviceName());
+        ServiceVersionGuard prior = services.putIfAbsent(key, service);
+        if (prior != null && !prior.equals(service)) {
+          throw new StaleApprovalException("Dependency plan items use conflicting service guards");
+        }
+      }
+    }
+    return new CreationGuard(draft, List.copyOf(repositories.values()),
+        List.copyOf(services.values()));
+  }
+
+  private ExistingCreation findExistingCreation(EntityManager entityManager, CreationItem item) {
+    ServiceDependencyBindingEntity binding = entityManager.find(
+        ServiceDependencyBindingEntity.class, item.binding().getBindingId(),
+        LockModeType.PESSIMISTIC_WRITE);
+    ServiceDependencyOperationEntity operation = entityManager.find(
+        ServiceDependencyOperationEntity.class, item.operation().getOperationId(),
+        LockModeType.PESSIMISTIC_WRITE);
+    if (operation == null && binding == null) {
+      binding = findBindingByConsumerAndType(entityManager, item.binding());
+      if (binding == null) {
+        return null;
+      }
+    }
+    if (operation == null || binding == null) {
+      throw new StaleApprovalException("A dependency plan replay is only partially materialized");
+    }
+    if (!Objects.equals(binding.getBindingId(), operation.getBindingId())
+        || !"CREATE".equals(operation.getOperationKind())
+        || operation.getOperationEpoch() == null || operation.getOperationEpoch() <= 0
+        || operation.getTargetSnapshotVersion() == null || operation.getTargetSnapshotVersion() <= 0
+        || operation.getRequestHash() == null || operation.getRequestHash().isBlank()) {
+      throw new StaleApprovalException("The operation UUID is not the original dependency CREATE");
+    }
+    ServiceDependencySnapshotEntity snapshot = entityManager.find(
+        ServiceDependencySnapshotEntity.class,
+        new ServiceDependencySnapshotEntityPK(binding.getBindingId(),
+            operation.getTargetSnapshotVersion()), LockModeType.PESSIMISTIC_READ);
+    if (snapshot == null) {
+      throw new StaleApprovalException("A materialized dependency plan is missing its snapshot");
+    }
+    ServiceDependencyHostResultEntity initialCommand = findOriginalCommand(entityManager, item,
+        binding);
+    return new ExistingCreation(binding, snapshot, operation, initialCommand);
+  }
+
+  private ServiceDependencyBindingEntity findBindingByConsumerAndType(EntityManager entityManager,
+      ServiceDependencyBindingEntity expected) {
+    TypedQuery<ServiceDependencyBindingEntity> query = entityManager.createNamedQuery(
+        "ServiceDependencyBindingEntity.findByConsumerAndType", ServiceDependencyBindingEntity.class);
+    List<ServiceDependencyBindingEntity> rows = query
+        .setParameter("clusterId", expected.getConsumerClusterId())
+        .setParameter("serviceName", expected.getConsumerServiceName())
+        .setParameter("dependencyType", expected.getDependencyType())
+        .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+        .setMaxResults(1).getResultList();
+    return rows.isEmpty() ? null : rows.get(0);
+  }
+
+  private ServiceDependencyHostResultEntity findOriginalCommand(EntityManager entityManager,
+      CreationItem item, ServiceDependencyBindingEntity binding) {
+    ServiceDependencyHostResultEntity requested = item.initialCommand();
+    if (requested != null && (requested.getCheckKind() == null
+        || !isProviderCommand(requested.getCheckKind())
+        || !Objects.equals(requested.getDependencyType(), binding.getDependencyType()))) {
+      throw new StaleApprovalException("The replay initial command is not a provider intent");
+    }
+    List<ServiceDependencyHostResultEntity> providerCommands = entityManager.createQuery(
+        "SELECT result FROM ServiceDependencyHostResultEntity result "
+            + "WHERE result.bindingId=:bindingId AND result.operationId=:operationId",
+        ServiceDependencyHostResultEntity.class)
+        .setParameter("bindingId", binding.getBindingId())
+        .setParameter("operationId", item.operation().getOperationId())
+        .getResultList().stream().filter(command -> isProviderCommand(command.getCheckKind()))
+        .toList();
+    if (requested == null) {
+      if (!providerCommands.isEmpty()) {
+        throw new StaleApprovalException("The replay omitted its original provider intent");
+      }
+      return null;
+    }
+    ServiceDependencyHostResultEntity existing = entityManager.find(
+        ServiceDependencyHostResultEntity.class, commandId(requested), LockModeType.PESSIMISTIC_READ);
+    if (existing == null) {
+      throw new StaleApprovalException("The original provider intent is missing from the replay");
+    }
+    return existing;
+  }
+
+  private void validateExactReplay(CreationItem item, ExistingCreation existing) {
+    if (!sameImmutableBinding(item.binding(), existing.binding())
+        || !sameImmutableSnapshot(item.snapshot(), existing.snapshot())
+        || !sameImmutableOperation(item.operation(), existing.operation())
+        || !sameImmutableCommand(item.initialCommand(), existing.initialCommand())) {
+      throw new StaleApprovalException("The dependency plan replay does not match its original CREATE");
+    }
+  }
+
+  private void validateProviderIntent(ServiceDependencyBindingEntity binding,
+      ServiceDependencyOperationEntity operation, ServiceDependencyHostResultEntity command) {
+    if (command.getBindingId() == null || command.getOperationId() == null
+        || command.getSnapshotVersion() == null || command.getSnapshotVersion() <= 0
+        || command.getOperationEpoch() == null || command.getOperationEpoch() <= 0
+        || command.getHostId() == null || command.getHostId() <= 0
+        || command.getDependencyType() == null
+        || !Objects.equals(command.getDependencyType(), binding.getDependencyType())
+        || command.getCheckKind() == null || command.getCommandRequestHash() == null
+        || command.getCommandRequestHash().isBlank() || command.getCommandJson() == null
+        || command.getCommandJson().isBlank() || command.getRequiredPackageHash() == null
+        || command.getRequiredPackageHash().isBlank() || !isProviderCommand(command.getCheckKind())) {
+      throw new IllegalArgumentException("The initial dependency command is not a provider intent");
+    }
+    requireCurrentCommandOwner(binding, operation, command);
+  }
+
+  private boolean sameImmutableBinding(ServiceDependencyBindingEntity expected,
+      ServiceDependencyBindingEntity actual) {
+    return Objects.equals(expected.getBindingId(), actual.getBindingId())
+        && Objects.equals(expected.getConsumerClusterId(), actual.getConsumerClusterId())
+        && Objects.equals(expected.getConsumerServiceName(), actual.getConsumerServiceName())
+        && Objects.equals(expected.getProviderClusterId(), actual.getProviderClusterId())
+        && Objects.equals(expected.getProviderServiceName(), actual.getProviderServiceName())
+        && Objects.equals(expected.getDependencyType(), actual.getDependencyType())
+        && Objects.equals(expected.getNamespaceRoot(), actual.getNamespaceRoot())
+        && Objects.equals(expected.getNamespaceWal(), actual.getNamespaceWal())
+        && Objects.equals(expected.getNamespaceZnode(), actual.getNamespaceZnode());
+  }
+
+  private boolean sameImmutableSnapshot(ServiceDependencySnapshotEntity expected,
+      ServiceDependencySnapshotEntity actual) {
+    return Objects.equals(expected.getBindingId(), actual.getBindingId())
+        && Objects.equals(expected.getSnapshotVersion(), actual.getSnapshotVersion())
+        && Objects.equals(expected.getSchemaVersion(), actual.getSchemaVersion())
+        && Objects.equals(expected.getConsumerFingerprint(), actual.getConsumerFingerprint())
+        && Objects.equals(expected.getProviderFingerprint(), actual.getProviderFingerprint())
+        && Objects.equals(expected.getProviderDisplayName(), actual.getProviderDisplayName())
+        && Objects.equals(expected.getConsumerServiceVersion(), actual.getConsumerServiceVersion())
+        && Objects.equals(expected.getSnapshotFingerprint(), actual.getSnapshotFingerprint())
+        && Objects.equals(expected.getClientFeaturesHash(), actual.getClientFeaturesHash())
+        && Objects.equals(expected.getSecurityPolicyHash(), actual.getSecurityPolicyHash())
+        && Objects.equals(expected.getSnapshotJson(), actual.getSnapshotJson())
+        && Objects.equals(expected.getCreatedByUserId(), actual.getCreatedByUserId());
+  }
+
+  private boolean sameImmutableOperation(ServiceDependencyOperationEntity expected,
+      ServiceDependencyOperationEntity actual) {
+    return Objects.equals(expected.getOperationId(), actual.getOperationId())
+        && Objects.equals(expected.getBindingId(), actual.getBindingId())
+        && Objects.equals(expected.getOperationKind(), actual.getOperationKind())
+        && Objects.equals(expected.getOperationEpoch(), actual.getOperationEpoch())
+        && Objects.equals(expected.getTargetSnapshotVersion(), actual.getTargetSnapshotVersion())
+        && Objects.equals(expected.getRequestHash(), actual.getRequestHash());
+  }
+
+  private boolean sameImmutableCommand(ServiceDependencyHostResultEntity expected,
+      ServiceDependencyHostResultEntity actual) {
+    if (expected == null || actual == null) {
+      return expected == actual;
+    }
+    return Objects.equals(expected.getBindingId(), actual.getBindingId())
+        && Objects.equals(expected.getSnapshotVersion(), actual.getSnapshotVersion())
+        && Objects.equals(expected.getOperationEpoch(), actual.getOperationEpoch())
+        && Objects.equals(expected.getHostId(), actual.getHostId())
+        && Objects.equals(expected.getDependencyType(), actual.getDependencyType())
+        && Objects.equals(expected.getCheckKind(), actual.getCheckKind())
+        && Objects.equals(expected.getOperationId(), actual.getOperationId())
+        && Objects.equals(expected.getComponentName(), actual.getComponentName())
+        && Objects.equals(expected.getCommandRequestHash(), actual.getCommandRequestHash())
+        && Objects.equals(expected.getCommandJson(), actual.getCommandJson())
+        && Objects.equals(expected.getRequiredPackageHash(), actual.getRequiredPackageHash());
+  }
+
+  private ManagedDependencyServiceKey serviceKey(long clusterId, String serviceName) {
+    return new ManagedDependencyServiceKey(clusterId, serviceName);
   }
 
   /** Starts a new consumer retry epoch while retaining all prior command evidence. */
@@ -1115,6 +1465,36 @@ public class ServiceDependencyDAO {
     if (entityManager.find(ClusterServiceEntity.class, id, LockModeType.PESSIMISTIC_WRITE) == null) {
       throw new StaleApprovalException("A referenced cluster service no longer exists");
     }
+  }
+
+  public record CreationItem(ServiceDependencyBindingEntity binding,
+      ServiceDependencySnapshotEntity snapshot, ServiceDependencyOperationEntity operation,
+      ServiceDependencyHostResultEntity initialCommand, CreationGuard guard) {
+    public CreationItem {
+      Objects.requireNonNull(binding, "binding");
+      Objects.requireNonNull(snapshot, "snapshot");
+      Objects.requireNonNull(operation, "operation");
+      Objects.requireNonNull(guard, "guard");
+    }
+  }
+
+  public record CreationResult(ServiceDependencyBindingEntity binding,
+      ServiceDependencySnapshotEntity snapshot, ServiceDependencyOperationEntity operation,
+      ServiceDependencyHostResultEntity initialCommand, boolean created) {
+  }
+
+  public record CreationBatchResult(List<CreationResult> items) {
+    public CreationBatchResult {
+      if (items == null || items.isEmpty() || items.size() > 2) {
+        throw new IllegalArgumentException("A dependency plan result must contain one or two items");
+      }
+      items = List.copyOf(items);
+    }
+  }
+
+  private record ExistingCreation(ServiceDependencyBindingEntity binding,
+      ServiceDependencySnapshotEntity snapshot, ServiceDependencyOperationEntity operation,
+      ServiceDependencyHostResultEntity initialCommand) {
   }
 
   public record CreationGuard(DraftGuard draft, List<RepositoryGuard> repositories,

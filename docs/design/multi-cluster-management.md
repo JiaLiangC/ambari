@@ -482,8 +482,13 @@ the same JIRA key, includes its focused regression source and records outstandin
 validation. Compilation and focused execution remain deferred until all source is
 integrated, as explicitly requested; publication does not establish test success.
 
+Atomic one/two-binding DAO creation and immutable CREATE replay have passed source
+review. Secure descriptor resolution now calculates the complete approved provider
+selection against the owned workflow revision and selected plus installed services.
+Their focused regression sources are included; execution remains deferred.
+
 The remaining work covers lifecycle and credential gates, complete dependency-plan
-creation, advisor integration, deployment recovery, and integration evidence.
+API/advisor integration, deployment recovery, and integration evidence.
 No pull request, merge or deployment to existing live environments is authorized.
 Isolated local deployment and focused validation are authorized after source
 integration, using the deploy project's documented prebuilt images and reusable

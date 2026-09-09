@@ -19,6 +19,8 @@ package org.apache.ambari.server.orm.dao;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -30,7 +32,9 @@ import java.util.List;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.TypedQuery;
 
+import org.apache.ambari.server.controller.dependencies.ManagedDependencySnapshot;
 import org.apache.ambari.server.orm.dao.ServiceDependencyDAO.CreationGuard;
 import org.apache.ambari.server.orm.dao.ServiceDependencyDAO.DraftGuard;
 import org.apache.ambari.server.orm.dao.ServiceDependencyDAO.RepositoryGuard;
@@ -68,12 +72,33 @@ class ServiceDependencyDAOTest {
     binding.setConsumerServiceName("HBASE");
     binding.setProviderClusterId(23L);
     binding.setProviderServiceName("HDFS");
+    binding.setDependencyType("HDFS");
+    binding.setOperationEpoch(1L);
+    binding.setDesiredSnapshotVersion(1L);
+    binding.setActiveOperationId("create-operation");
     snapshot = new ServiceDependencySnapshotEntity();
+    snapshot.setBindingId(binding.getBindingId());
+    snapshot.setSnapshotVersion(1L);
+    snapshot.setSchemaVersion(ManagedDependencySnapshot.CURRENT_SCHEMA_VERSION);
     snapshot.setConsumerServiceVersion("3.3.0");
     operation = new ServiceDependencyOperationEntity();
+    operation.setOperationId("create-operation");
+    operation.setBindingId(binding.getBindingId());
+    operation.setOperationKind("CREATE");
+    operation.setOperationEpoch(1L);
+    operation.setTargetSnapshotVersion(1L);
+    operation.setRequestHash("request-hash");
 
     when(entityManager.find(eq(ClusterServiceEntity.class), any(ClusterServiceEntityPK.class),
         eq(LockModeType.PESSIMISTIC_WRITE))).thenReturn(new ClusterServiceEntity());
+    TypedQuery<ServiceDependencyBindingEntity> existingBindingQuery = mock(TypedQuery.class);
+    when(entityManager.createNamedQuery(
+        "ServiceDependencyBindingEntity.findByConsumerAndType", ServiceDependencyBindingEntity.class))
+        .thenReturn(existingBindingQuery);
+    when(existingBindingQuery.setParameter(anyString(), any())).thenReturn(existingBindingQuery);
+    when(existingBindingQuery.setLockMode(any(LockModeType.class))).thenReturn(existingBindingQuery);
+    when(existingBindingQuery.setMaxResults(anyInt())).thenReturn(existingBindingQuery);
+    when(existingBindingQuery.getResultList()).thenReturn(List.of());
   }
 
   @Test

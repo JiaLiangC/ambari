@@ -20,6 +20,7 @@ package org.apache.ambari.server.orm.dao;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -42,6 +43,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 
 import org.apache.ambari.server.H2DatabaseCleaner;
 import org.apache.ambari.server.Role;
@@ -75,8 +79,12 @@ import org.apache.ambari.server.events.publishers.TaskEventPublisher;
 import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
 import org.apache.ambari.server.orm.OrmTestHelper;
-import org.apache.ambari.server.orm.dao.ServiceDependencyDAO.CreationGuard;
+import org.apache.ambari.server.orm.dao.ScopedWorkflowStateDAO;
 import org.apache.ambari.server.orm.dao.ServiceDependencyDAO.CommandCompletion;
+import org.apache.ambari.server.orm.dao.ServiceDependencyDAO.CreationBatchResult;
+import org.apache.ambari.server.orm.dao.ServiceDependencyDAO.CreationGuard;
+import org.apache.ambari.server.orm.dao.ServiceDependencyDAO.CreationItem;
+import org.apache.ambari.server.orm.dao.ServiceDependencyDAO.DraftGuard;
 import org.apache.ambari.server.orm.dao.ServiceDependencyDAO.LifecycleTransition;
 import org.apache.ambari.server.orm.dao.ServiceDependencyDAO.RepositoryGuard;
 import org.apache.ambari.server.orm.dao.ServiceDependencyDAO.ServiceVersionGuard;
@@ -87,6 +95,7 @@ import org.apache.ambari.server.orm.entities.ServiceDependencyHostResultEntity;
 import org.apache.ambari.server.orm.entities.ServiceDependencyHostResultEntityPK;
 import org.apache.ambari.server.orm.entities.ServiceDependencyOperationEntity;
 import org.apache.ambari.server.orm.entities.ServiceDependencySnapshotEntity;
+import org.apache.ambari.server.orm.entities.ScopedWorkflowStateEntity;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.Config;
@@ -183,6 +192,142 @@ public class ServiceDependencyDAOIntegrationTest {
 
     assertTrue(providerCluster.getServices().containsKey("HDFS"));
     assertTrue(consumerCluster.getServices().containsKey("HBASE"));
+  }
+
+  @Test
+  public void testCreateBatchPersistsReversedProviderPairAndInitialIntentsAtomically() {
+    providerCluster.addService("ZOOKEEPER", repository);
+    UUID hdfsBindingId = UUID.fromString("00000000-0000-4000-8000-000000000201");
+    UUID hdfsOperationId = UUID.fromString("00000000-0000-4000-8000-000000000202");
+    UUID zooKeeperBindingId = UUID.fromString("00000000-0000-4000-8000-000000000203");
+    UUID zooKeeperOperationId = UUID.fromString("00000000-0000-4000-8000-000000000204");
+    CreationGuard guard = batchGuard();
+
+    CreationItem hdfs = creationItem(hdfsBindingId, hdfsOperationId,
+        ManagedDependencyType.HDFS, 901L, guard);
+    CreationItem zooKeeper = creationItem(zooKeeperBindingId, zooKeeperOperationId,
+        ManagedDependencyType.ZOOKEEPER, 902L, guard);
+    CreationBatchResult result = dependencyDAO.createBatch(List.of(zooKeeper, hdfs));
+
+    assertEquals(2, result.items().size());
+    assertTrue(result.items().stream().allMatch(ServiceDependencyDAO.CreationResult::created));
+    assertEquals(2, dependencyDAO.findAllBindings().size());
+    assertNotNull(dependencyDAO.findBinding(hdfsBindingId.toString()));
+    assertNotNull(dependencyDAO.findBinding(zooKeeperBindingId.toString()));
+    assertEquals(1, dependencyDAO.findOperations(hdfsBindingId.toString()).size());
+    assertEquals(1, dependencyDAO.findOperations(zooKeeperBindingId.toString()).size());
+    assertEquals(2, dependencyDAO.findOutstandingCommands().size());
+  }
+
+  @Test
+  public void testStaleSecondBatchGuardLeavesNoRowsOrProviderIntents() {
+    providerCluster.addService("ZOOKEEPER", repository);
+    UUID hdfsBindingId = UUID.fromString("00000000-0000-4000-8000-000000000211");
+    UUID hdfsOperationId = UUID.fromString("00000000-0000-4000-8000-000000000212");
+    UUID zooKeeperBindingId = UUID.fromString("00000000-0000-4000-8000-000000000213");
+    UUID zooKeeperOperationId = UUID.fromString("00000000-0000-4000-8000-000000000214");
+
+    CreationItem hdfs = creationItem(hdfsBindingId, hdfsOperationId,
+        ManagedDependencyType.HDFS, 911L, batchGuard());
+    CreationItem zooKeeper = creationItem(zooKeeperBindingId, zooKeeperOperationId,
+        ManagedDependencyType.ZOOKEEPER, 912L, staleRepositoryGuard());
+
+    assertThrows(ServiceDependencyDAO.StaleApprovalException.class,
+        () -> dependencyDAO.createBatch(List.of(hdfs, zooKeeper)));
+    assertTrue(dependencyDAO.findAllBindings().isEmpty());
+    assertTrue(dependencyDAO.findOperations(hdfsBindingId.toString()).isEmpty());
+    assertTrue(dependencyDAO.findOperations(zooKeeperBindingId.toString()).isEmpty());
+    assertTrue(dependencyDAO.findOutstandingCommands().isEmpty());
+  }
+
+  @Test
+  public void testExactBatchReplayUsesOriginalTargetsAfterMutableUpdates() {
+    providerCluster.addService("ZOOKEEPER", repository);
+    String draftKey = "replay-draft:7";
+    injector.getInstance(ScopedWorkflowStateDAO.class).updateWithLock(draftKey, draft -> {
+      draft.setOwnerUserId(7);
+      draft.setCreatedClusterId(consumerCluster.getClusterId());
+      draft.setWorkflow("CLUSTER_CREATE");
+      draft.setPhase("REVIEW");
+      draft.setPayload("{}");
+      return draft;
+    });
+    CreationGuard guard = batchGuard(new DraftGuard(draftKey, 7, 0L,
+        consumerCluster.getClusterId()));
+    UUID hdfsBindingId = UUID.fromString("00000000-0000-4000-8000-000000000221");
+    UUID hdfsOperationId = UUID.fromString("00000000-0000-4000-8000-000000000222");
+    UUID zooKeeperBindingId = UUID.fromString("00000000-0000-4000-8000-000000000223");
+    UUID zooKeeperOperationId = UUID.fromString("00000000-0000-4000-8000-000000000224");
+    CreationItem hdfs = creationItem(hdfsBindingId, hdfsOperationId,
+        ManagedDependencyType.HDFS, 921L, guard);
+    CreationItem zooKeeper = creationItem(zooKeeperBindingId, zooKeeperOperationId,
+        ManagedDependencyType.ZOOKEEPER, 922L, guard);
+    dependencyDAO.createBatch(List.of(hdfs, zooKeeper));
+
+    String replayedRepositoryVersion = injector.getInstance(ReplayMutation.class).update(
+        hdfsBindingId.toString(), zooKeeperBindingId.toString(), draftKey, repository.getId());
+
+    CreationBatchResult replay = dependencyDAO.createBatch(List.of(
+        creationItem(hdfsBindingId, hdfsOperationId, ManagedDependencyType.HDFS, 921L, guard),
+        creationItem(zooKeeperBindingId, zooKeeperOperationId,
+            ManagedDependencyType.ZOOKEEPER, 922L, guard)));
+
+    assertEquals(2, replay.items().size());
+    assertTrue(replay.items().stream().noneMatch(ServiceDependencyDAO.CreationResult::created));
+    ServiceDependencyBindingEntity current = dependencyDAO.findBinding(hdfsBindingId.toString());
+    assertEquals("READY", current.getState());
+    assertEquals(Long.valueOf(2L), current.getDesiredSnapshotVersion());
+    assertEquals(hash('9'), current.getProviderFingerprint());
+    ServiceDependencyBindingEntity currentZooKeeper =
+        dependencyDAO.findBinding(zooKeeperBindingId.toString());
+    assertEquals("READY", currentZooKeeper.getState());
+    assertEquals(Long.valueOf(2L), currentZooKeeper.getDesiredSnapshotVersion());
+    assertEquals(hash('9'), currentZooKeeper.getProviderFingerprint());
+    assertEquals(Long.valueOf(1L), replay.items().get(0).snapshot().getSnapshotVersion());
+    assertEquals(Long.valueOf(1L), replay.items().get(1).snapshot().getSnapshotVersion());
+    assertEquals(2, dependencyDAO.findAllBindings().size());
+    assertEquals(1, dependencyDAO.findOperations(hdfsBindingId.toString()).size());
+    assertEquals(2L, injector.getInstance(ScopedWorkflowStateDAO.class)
+        .findByKey(draftKey).getRevision().longValue());
+    assertEquals("2.0.6-replayed", replayedRepositoryVersion);
+  }
+
+  @Test
+  public void testPartialAndMismatchedBatchReplayCannotCreateOrRewritePeers() {
+    providerCluster.addService("ZOOKEEPER", repository);
+    UUID hdfsBindingId = UUID.fromString("00000000-0000-4000-8000-000000000231");
+    UUID hdfsOperationId = UUID.fromString("00000000-0000-4000-8000-000000000232");
+    UUID zooKeeperBindingId = UUID.fromString("00000000-0000-4000-8000-000000000233");
+    UUID zooKeeperOperationId = UUID.fromString("00000000-0000-4000-8000-000000000234");
+    CreationGuard guard = batchGuard();
+    dependencyDAO.createBatch(List.of(
+        creationItem(hdfsBindingId, hdfsOperationId, ManagedDependencyType.HDFS, 931L, guard),
+        creationItem(zooKeeperBindingId, zooKeeperOperationId,
+            ManagedDependencyType.ZOOKEEPER, 932L, guard)));
+
+    UUID missingBindingId = UUID.fromString("00000000-0000-4000-8000-000000000235");
+    UUID missingOperationId = UUID.fromString("00000000-0000-4000-8000-000000000236");
+    assertThrows(ServiceDependencyDAO.StaleApprovalException.class,
+        () -> dependencyDAO.createBatch(List.of(
+            creationItem(hdfsBindingId, hdfsOperationId, ManagedDependencyType.HDFS, 931L, guard),
+            creationItem(missingBindingId, missingOperationId,
+                ManagedDependencyType.ZOOKEEPER, 932L, guard))));
+    assertEquals(2, dependencyDAO.findAllBindings().size());
+    assertEquals(2, dependencyDAO.findOutstandingCommands().size());
+
+    ServiceDependencySnapshotEntity mismatch = snapshot(zooKeeperBindingId,
+        ManagedDependencyType.ZOOKEEPER);
+    mismatch.setSnapshotFingerprint(hash('0'));
+    assertThrows(ServiceDependencyDAO.StaleApprovalException.class,
+        () -> dependencyDAO.createBatch(List.of(
+            creationItem(hdfsBindingId, hdfsOperationId, ManagedDependencyType.HDFS, 931L, guard),
+            new CreationItem(binding(zooKeeperBindingId, zooKeeperOperationId,
+                ManagedDependencyType.ZOOKEEPER), mismatch,
+                operation(zooKeeperBindingId, zooKeeperOperationId),
+                providerIntent(zooKeeperBindingId, zooKeeperOperationId, 932L,
+                    ManagedDependencyType.ZOOKEEPER), guard))));
+    assertEquals(2, dependencyDAO.findAllBindings().size());
+    assertEquals("PROVISIONING", dependencyDAO.findBinding(zooKeeperBindingId.toString()).getState());
   }
 
   @Test
@@ -986,6 +1131,46 @@ public class ServiceDependencyDAOIntegrationTest {
     }
   }
 
+  private CreationGuard batchGuard() {
+    return batchGuard(null, new RepositoryGuard(repository.getId(), repository.getVersion(), true));
+  }
+
+  private CreationGuard staleRepositoryGuard() {
+    return batchGuard(null, new RepositoryGuard(99991L, "stale-repository", true));
+  }
+
+  private CreationGuard batchGuard(DraftGuard draft, RepositoryGuard... repositories) {
+    return new CreationGuard(draft, List.of(repositories), List.of(
+        serviceGuard(consumerCluster, "HBASE"), serviceGuard(providerCluster, "HDFS"),
+        serviceGuard(providerCluster, "ZOOKEEPER")));
+  }
+
+  private CreationItem creationItem(UUID bindingId, UUID operationId,
+      ManagedDependencyType type, long hostId, CreationGuard guard) {
+    return new CreationItem(binding(bindingId, operationId, type),
+        snapshot(bindingId, type), operation(bindingId, operationId),
+        providerIntent(bindingId, operationId, hostId, type), guard);
+  }
+
+  private ServiceDependencyHostResultEntity providerIntent(UUID bindingId, UUID operationId,
+      long hostId, ManagedDependencyType type) {
+    ServiceDependencyHostResultEntity entity = new ServiceDependencyHostResultEntity();
+    entity.setBindingId(bindingId.toString());
+    entity.setSnapshotVersion(1L);
+    entity.setHostId(hostId);
+    entity.setDependencyType(type.name());
+    entity.setCheckKind("PREPARE_BINDING_JOURNAL");
+    entity.setOperationEpoch(1L);
+    entity.setOperationId(operationId.toString());
+    entity.setComponentName(type.getProviderServiceName());
+    entity.setCommandRequestHash(hash(type == ManagedDependencyType.HDFS ? 'h' : 'z'));
+    entity.setCommandJson("{\"provider\":\"" + type.name() + "\",\"host\":" + hostId + "}");
+    entity.setRequiredPackageHash(hash('q'));
+    entity.setState("INTENT");
+    entity.setCheckTimestamp(System.currentTimeMillis());
+    return entity;
+  }
+
   private void publishBinding(UUID bindingId, UUID operationId) {
     CreationGuard guard = new CreationGuard(null,
         List.of(new RepositoryGuard(repository.getId(), repository.getVersion(), true)),
@@ -1018,13 +1203,18 @@ public class ServiceDependencyDAOIntegrationTest {
   }
 
   private ServiceDependencyBindingEntity binding(UUID bindingId, UUID operationId) {
+    return binding(bindingId, operationId, ManagedDependencyType.HDFS);
+  }
+
+  private ServiceDependencyBindingEntity binding(UUID bindingId, UUID operationId,
+      ManagedDependencyType type) {
     ServiceDependencyBindingEntity entity = new ServiceDependencyBindingEntity();
     entity.setBindingId(bindingId.toString());
     entity.setConsumerClusterId(consumerCluster.getClusterId());
     entity.setConsumerServiceName("HBASE");
     entity.setProviderClusterId(providerCluster.getClusterId());
-    entity.setProviderServiceName("HDFS");
-    entity.setDependencyType("HDFS");
+    entity.setProviderServiceName(type.getProviderServiceName());
+    entity.setDependencyType(type.name());
     entity.setState("PROVISIONING");
     entity.setProvisioningPhase("PROVIDER_PREPARING");
     entity.setRowVersion(0L);
@@ -1032,8 +1222,12 @@ public class ServiceDependencyDAOIntegrationTest {
     entity.setDesiredSnapshotVersion(1L);
     entity.setSnapshotApproval("APPROVED");
     entity.setProviderFingerprint(hash('b'));
-    entity.setNamespaceRoot("hdfs://provider/apps/ambari-managed/hbase/" + bindingId + "/root");
-    entity.setNamespaceWal("hdfs://provider/apps/ambari-managed/hbase/" + bindingId + "/wal");
+    ManagedDependencyNamespace namespace = type == ManagedDependencyType.HDFS
+        ? ManagedDependencyNamespace.hdfs(bindingId, "hdfs://provider")
+        : ManagedDependencyNamespace.zooKeeper(bindingId);
+    entity.setNamespaceRoot(namespace.rootUri().isEmpty() ? null : namespace.rootUri());
+    entity.setNamespaceWal(namespace.walUri().isEmpty() ? null : namespace.walUri());
+    entity.setNamespaceZnode(namespace.znode().isEmpty() ? null : namespace.znode());
     entity.setActiveOperationId(operationId.toString());
     entity.setFailureRetryable(false);
     entity.setCreatedByUserId(1);
@@ -1042,6 +1236,10 @@ public class ServiceDependencyDAOIntegrationTest {
   }
 
   private ServiceDependencySnapshotEntity snapshot(UUID bindingId) {
+    return snapshot(bindingId, ManagedDependencyType.HDFS);
+  }
+
+  private ServiceDependencySnapshotEntity snapshot(UUID bindingId, ManagedDependencyType type) {
     ServiceDependencySnapshotEntity entity = new ServiceDependencySnapshotEntity();
     entity.setBindingId(bindingId.toString());
     entity.setSnapshotVersion(1L);
@@ -1058,11 +1256,14 @@ public class ServiceDependencyDAOIntegrationTest {
         Set.of("STANDARD_RPC_CLIENT"), repository.getId(), List.of());
     ManagedDependencyIdentity identity = new ManagedDependencyIdentity(
         "hbase_mc_cb", Set.of(), false, "hbase_mc_cb", true, "0700", false);
+    ManagedDependencyNamespace namespace = type == ManagedDependencyType.HDFS
+        ? ManagedDependencyNamespace.hdfs(bindingId, "hdfs://provider")
+        : ManagedDependencyNamespace.zooKeeper(bindingId);
     ManagedDependencySnapshot value = new ManagedDependencySnapshot(
         ManagedDependencySnapshot.CURRENT_SCHEMA_VERSION, bindingId, 1L,
-        ManagedDependencyType.HDFS,
-        new ManagedDependencyServiceKey(providerCluster.getClusterId(), "HDFS"),
-        ManagedDependencyNamespace.hdfs(bindingId, "hdfs://provider"),
+        type,
+        new ManagedDependencyServiceKey(providerCluster.getClusterId(), type.getProviderServiceName()),
+        namespace,
         version.compatibility(), ManagedDependencySecurityMode.INSECURE, identity,
         new java.util.TreeMap<>(Map.of("fs.defaultFS", "hdfs://provider")),
         new java.util.TreeMap<>(), new java.util.TreeMap<>(), hash('a'), hash('b'), hash('c'),
@@ -1090,6 +1291,44 @@ public class ServiceDependencyDAOIntegrationTest {
 
   private String hash(char digit) {
     return "sha256:" + String.valueOf(digit).repeat(64);
+  }
+
+  public static class ReplayMutation {
+    private final EntityManager entityManager;
+
+    @Inject
+    ReplayMutation(EntityManager entityManager) {
+      this.entityManager = entityManager;
+    }
+
+    @Transactional
+    String update(String hdfsBindingId, String zooKeeperBindingId, String draftKey,
+        long repositoryId) {
+      ServiceDependencyBindingEntity hdfs = entityManager.find(
+          ServiceDependencyBindingEntity.class, hdfsBindingId, LockModeType.PESSIMISTIC_WRITE);
+      hdfs.setState("READY");
+      hdfs.setProvisioningPhase("READY");
+      hdfs.setDesiredSnapshotVersion(2L);
+      hdfs.setProviderFingerprint("sha256:" + "9".repeat(64));
+      hdfs.setAppliedSnapshotVersion(2L);
+
+      ServiceDependencyBindingEntity zooKeeper = entityManager.find(
+          ServiceDependencyBindingEntity.class, zooKeeperBindingId, LockModeType.PESSIMISTIC_WRITE);
+      zooKeeper.setState("READY");
+      zooKeeper.setProvisioningPhase("READY");
+      zooKeeper.setDesiredSnapshotVersion(2L);
+      zooKeeper.setProviderFingerprint("sha256:" + "9".repeat(64));
+      zooKeeper.setAppliedSnapshotVersion(2L);
+
+      ScopedWorkflowStateEntity draft = entityManager.find(
+          ScopedWorkflowStateEntity.class, draftKey, LockModeType.PESSIMISTIC_WRITE);
+      draft.setRevision(2L);
+      RepositoryVersionEntity repository = entityManager.find(
+          RepositoryVersionEntity.class, repositoryId, LockModeType.PESSIMISTIC_WRITE);
+      repository.setVersion("2.0.6-replayed");
+      entityManager.flush();
+      return repository.getVersion();
+    }
   }
 
   static class LivePlanReadBarrier {
