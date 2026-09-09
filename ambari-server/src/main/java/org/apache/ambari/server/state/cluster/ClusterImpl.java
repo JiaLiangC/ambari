@@ -86,6 +86,7 @@ import org.apache.ambari.server.events.publishers.STOMPUpdatePublisher;
 import org.apache.ambari.server.logging.LockFactory;
 import org.apache.ambari.server.metadata.RoleCommandOrder;
 import org.apache.ambari.server.metadata.RoleCommandOrderProvider;
+import org.apache.ambari.server.orm.AmbariJpaLocalTxnInterceptor;
 import org.apache.ambari.server.orm.RequiresSession;
 import org.apache.ambari.server.orm.cache.HostConfigMapping;
 import org.apache.ambari.server.orm.dao.AlertDefinitionDAO;
@@ -1357,31 +1358,27 @@ public class ClusterImpl implements Cluster {
   @Override
   @Transactional
   public void deleteAllServices() throws AmbariException {
-    clusterGlobalLock.writeLock().lock();
-    try {
-      LOG.info("Deleting all services for cluster" + ", clusterName="
+    lockForTransactionalDeletion();
+    LOG.info("Deleting all services for cluster" + ", clusterName="
         + getClusterName());
-      for (Service service : services.values()) {
-        if (!service.canBeRemoved()) {
-          throw new AmbariException(
-              "Found non removable service when trying to"
-                  + " all services from cluster" + ", clusterName="
-                  + getClusterName() + ", serviceName=" + service.getName());
-        }
+    for (Service service : services.values()) {
+      if (!service.canBeRemoved()) {
+        throw new AmbariException(
+            "Found non removable service when trying to"
+                + " all services from cluster" + ", clusterName="
+                + getClusterName() + ", serviceName=" + service.getName());
       }
-
-      managedDependencyLifecyclePolicy.validateServiceDeletion(this, services.keySet());
-
-      DeleteHostComponentStatusMetaData deleteMetaData = new DeleteHostComponentStatusMetaData();
-      for (Service service : services.values()) {
-        deleteService(service, deleteMetaData);
-        STOMPComponentsDeleteHandler.processDeleteByMetaDataException(deleteMetaData);
-      }
-      STOMPComponentsDeleteHandler.processDeleteCluster(getClusterId());
-      services.clear();
-    } finally {
-      clusterGlobalLock.writeLock().unlock();
     }
+
+    managedDependencyLifecyclePolicy.validateServiceDeletion(this, services.keySet());
+
+    DeleteHostComponentStatusMetaData deleteMetaData = new DeleteHostComponentStatusMetaData();
+    for (Service service : services.values()) {
+      deleteService(service, deleteMetaData);
+      STOMPComponentsDeleteHandler.processDeleteByMetaDataException(deleteMetaData);
+    }
+    STOMPComponentsDeleteHandler.processDeleteCluster(getClusterId());
+    services.clear();
   }
 
   @Override
@@ -1415,7 +1412,9 @@ public class ClusterImpl implements Cluster {
       }
       managedDependencyLifecyclePolicy.validateServiceDeletion(this, Set.of(serviceName));
       deleteService(service, deleteMetaData);
-      services.remove(serviceName);
+      if (deleteMetaData.getAmbariException() == null) {
+        services.remove(serviceName);
+      }
 
     } finally {
       clusterGlobalLock.writeLock().unlock();
@@ -1473,19 +1472,26 @@ public class ClusterImpl implements Cluster {
   @Override
   @Transactional
   public void delete() throws AmbariException {
-    clusterGlobalLock.writeLock().lock();
-    try {
-      refresh();
-      deleteAllServices();
-      deleteAllClusterConfigs();
-      resetHostVersions();
+    lockForTransactionalDeletion();
+    refresh();
+    deleteAllServices();
+    deleteAllClusterConfigs();
+    resetHostVersions();
 
-      refresh(); // update one-to-many clusterServiceEntities
-      removeEntities();
-      allConfigs.clear();
-    } finally {
-      clusterGlobalLock.writeLock().unlock();
+    refresh(); // update one-to-many clusterServiceEntities
+    removeEntities();
+    allConfigs.clear();
+  }
+
+  private void lockForTransactionalDeletion() {
+    // A manually begun JPA transaction bypasses the local transaction
+    // interceptor. Reject it rather than acquiring a lock that would be
+    // released lexically before the caller's transaction commits.
+    if (!AmbariJpaLocalTxnInterceptor.isTransactionActive()) {
+      throw new IllegalStateException("Cluster deletion must execute through the transaction interceptor");
     }
+    AmbariJpaLocalTxnInterceptor.holdLockUntilTransactionCompletion(
+        clusterGlobalLock.writeLock());
   }
 
   @Transactional

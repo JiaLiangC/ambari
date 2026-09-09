@@ -38,6 +38,66 @@ export type RunWithStackAdvisorRequest = <T>(
   request: (prepared: PreparedStackAdvisorRequest) => Promise<T>,
 ) => Promise<T>;
 
+type StateCheckpoint = <T>(
+  request: (revision: number) => Promise<T>,
+) => Promise<T>;
+
+type ManagedDependencyAdvisorRunnerOptions = {
+  clusterId?: number;
+  draftId?: string;
+  managedDependencies: ManagedDependencySelections;
+  scopeKey: string;
+  scopeKeyRef: { current: string };
+  withStateCheckpoint?: StateCheckpoint;
+  /**
+   * Materialized INIT rows are workflow state, not proof of an active binding.
+   * Keep this compatibility input until the live SERVICE contract is released;
+   * it must not select SERVICE on its own.
+   */
+  workflowMaterializedServices?: string[];
+};
+
+export function createManagedDependencyAdvisorRunner({
+  clusterId,
+  draftId,
+  managedDependencies,
+  scopeKey,
+  scopeKeyRef,
+  withStateCheckpoint,
+}: ManagedDependencyAdvisorRunnerOptions): RunWithStackAdvisorRequest {
+  return async <T>(request: (prepared: PreparedStackAdvisorRequest) => Promise<T>) => {
+    const capturedScope = scopeKey;
+    if (!withStateCheckpoint) {
+      throw new ManagedDependencyAdvisorReviewRequiredError();
+    }
+    if (draftId === undefined
+      && (!Number.isInteger(clusterId) || (clusterId as number) <= 0)) {
+      throw new ManagedDependencyAdvisorReviewRequiredError();
+    }
+    return withStateCheckpoint(async (revision) => {
+      if (scopeKeyRef.current !== capturedScope) {
+        throw new ManagedDependencyAdvisorReviewRequiredError();
+      }
+      const consumer = draftId !== undefined
+        ? { scope: "DRAFT" as const, draft_id: draftId, expected_revision: revision }
+        : {
+            scope: "SERVICE_PLAN" as const,
+            cluster_id: clusterId as number,
+            expected_revision: revision,
+          };
+      const plan = buildManagedDependencyAdvisorPlan(
+        consumer,
+        managedDependencies,
+      );
+      if (!plan) throw new ManagedDependencyAdvisorReviewRequiredError();
+      return request({
+        isCurrent: () => scopeKeyRef.current === capturedScope,
+        properties: { managed_dependency_plan: plan },
+      });
+    });
+  };
+}
+
 export function managedDependencyAdvisorInputKey({
   hosts,
   selections,

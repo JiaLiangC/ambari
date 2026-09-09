@@ -42,6 +42,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.RoleCommand;
@@ -883,6 +886,8 @@ public class ServiceResourceProviderTest {
     expect(cluster.getService("Service101")).andReturn(secondService).anyTimes();
     expect(firstService.getServiceComponents()).andReturn(new HashMap<>()).anyTimes();
     expect(secondService.getServiceComponents()).andReturn(new HashMap<>()).anyTimes();
+    expect(firstService.canBeRemoved()).andReturn(true).anyTimes();
+    expect(secondService.canBeRemoved()).andReturn(true).anyTimes();
     expect(firstService.getCluster()).andReturn(cluster).anyTimes();
     expect(secondService.getCluster()).andReturn(cluster).anyTimes();
     expect(firstService.getName()).andReturn("Service100").anyTimes();
@@ -918,6 +923,71 @@ public class ServiceResourceProviderTest {
     verify(managementController, clusters, cluster, firstService, secondService, lifecyclePolicy);
   }
 
+  @Test
+  public void testDeleteResourcesRevalidatesRemovabilityAfterWriteLockWait() throws Exception {
+    AmbariManagementController managementController = createMock(AmbariManagementController.class);
+    Clusters clusters = createNiceMock(Clusters.class);
+    Cluster cluster = createNiceMock(Cluster.class);
+    Service service = createNiceMock(Service.class);
+    ServiceComponent component = createNiceMock(ServiceComponent.class);
+    ServiceComponentHost host = createNiceMock(ServiceComponentHost.class);
+    AtomicBoolean removable = new AtomicBoolean(true);
+
+    expect(managementController.getClusters()).andReturn(clusters).anyTimes();
+    expect(clusters.getCluster("Cluster100")).andReturn(cluster).anyTimes();
+    expect(cluster.getClusterId()).andReturn(2L).anyTimes();
+    expect(cluster.getResourceId()).andReturn(12L).anyTimes();
+    expect(cluster.getService("Service100")).andReturn(service).anyTimes();
+    expect(service.getServiceComponents()).andReturn(
+        Map.of("Component100", component));
+    expect(component.getServiceComponentHosts()).andReturn(Map.of("host100", host));
+    expect(host.canBeRemoved()).andAnswer(() -> removable.get());
+    expect(service.getCluster()).andReturn(cluster);
+    expect(service.getName()).andReturn("Service100");
+    expect(service.canBeRemoved()).andAnswer(() -> removable.get());
+    CountDownLatch writeLockRequested = new CountDownLatch(1);
+    CountDownLatch stateChanged = new CountDownLatch(1);
+    cluster.executeUnderWriteLock(anyObject(Runnable.class));
+    expectLastCall().andAnswer(() -> {
+      writeLockRequested.countDown();
+      if (!stateChanged.await(30, TimeUnit.SECONDS)) {
+        throw new AssertionError("Timed out waiting for the removability change");
+      }
+      ((Runnable) EasyMock.getCurrentArguments()[0]).run();
+      return null;
+    });
+
+    replay(managementController, clusters, cluster, service, component, host);
+    SecurityContextHolder.getContext().setAuthentication(TestAuthenticationFactory.createAdministrator());
+    ServiceResourceProvider provider = getServiceProvider(managementController);
+
+    Set<ServiceRequest> requests = Set.of(
+        new ServiceRequest("Cluster100", "Service100", null, null));
+    Thread stateChanger = new Thread(() -> {
+      try {
+        if (!writeLockRequested.await(30, TimeUnit.SECONDS)) {
+          throw new AssertionError("The write lock was not requested");
+        }
+        removable.set(false);
+        stateChanged.countDown();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    });
+    stateChanger.start();
+    try {
+      provider.deleteServices(requests);
+      Assert.fail("A service that became non-removable while waiting for the lock must be rejected");
+    } catch (AmbariException expected) {
+      Assert.assertTrue(expected.getMessage().contains("non-removable"));
+    } finally {
+      stateChanged.countDown();
+      stateChanger.join(TimeUnit.SECONDS.toMillis(30));
+    }
+
+    verify(managementController, clusters, cluster, service, component, host);
+  }
+
   private void testDeleteResources(Authentication authentication) throws Exception{
     AmbariManagementController managementController = createMock(AmbariManagementController.class);
     Clusters clusters = createNiceMock(Clusters.class);
@@ -934,6 +1004,7 @@ public class ServiceResourceProviderTest {
     expect(service.getDesiredState()).andReturn(State.INSTALLED).anyTimes();
     expect(service.getName()).andReturn(serviceName).anyTimes();
     expect(service.getServiceComponents()).andReturn(new HashMap<>());
+    expect(service.canBeRemoved()).andReturn(true);
     expect(service.getCluster()).andReturn(cluster);
     cluster.executeUnderWriteLock(anyObject(Runnable.class));
     expectLastCall().andAnswer(() -> {
@@ -987,6 +1058,7 @@ public class ServiceResourceProviderTest {
     expect(service.getDesiredState()).andReturn(State.STARTED).anyTimes();
     expect(service.getName()).andReturn(serviceName).anyTimes();
     expect(service.getServiceComponents()).andReturn(new HashMap<>());
+    expect(service.canBeRemoved()).andReturn(true);
     expect(service.getCluster()).andReturn(cluster);
     cluster.executeUnderWriteLock(anyObject(Runnable.class));
     expectLastCall().andAnswer(() -> {
@@ -1136,6 +1208,7 @@ public class ServiceResourceProviderTest {
     expect(service.getDesiredState()).andReturn(State.STARTED).anyTimes();  // Service is in a non-removable state
     expect(service.getName()).andReturn(serviceName).anyTimes();
     expect(service.getServiceComponents()).andReturn(scMap).anyTimes();
+    expect(service.canBeRemoved()).andReturn(true).anyTimes();
     expect(component1.Component.getDesiredState()).andReturn(component1.DesiredState).anyTimes();
     expect(component2.Component.getDesiredState()).andReturn(component2.DesiredState).anyTimes();
     expect(component3.Component.getDesiredState()).andReturn(component3.DesiredState).anyTimes();

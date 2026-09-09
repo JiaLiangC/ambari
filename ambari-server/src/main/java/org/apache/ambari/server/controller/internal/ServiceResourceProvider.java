@@ -31,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import org.apache.ambari.server.AmbariException;
@@ -1024,25 +1025,28 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
 
     Map<Cluster, Set<String>> servicesByCluster = removable.stream()
         .collect(Collectors.groupingBy(serviceClusters::get, LinkedHashMap::new,
-            Collectors.mapping(serviceNames::get, Collectors.toSet())));
+            Collectors.mapping(serviceNames::get, Collectors.toCollection(TreeSet::new))));
     List<Cluster> orderedClusters = servicesByCluster.keySet().stream()
         .sorted(Comparator.comparingLong(Cluster::getClusterId))
         .toList();
 
     try {
       executeUnderWriteLocks(orderedClusters, 0, () -> {
+        resolveAndValidateServiceRemovability(orderedClusters, servicesByCluster);
         for (Cluster cluster : orderedClusters) {
           managedDependencyLifecyclePolicy.validateServiceDeletion(cluster,
               servicesByCluster.get(cluster));
         }
 
         DeleteHostComponentStatusMetaData deleteMetaData = new DeleteHostComponentStatusMetaData();
-        for (Service service : removable) {
-          try {
-            serviceClusters.get(service).deleteService(serviceNames.get(service), deleteMetaData);
-            STOMPComponentsDeleteHandler.processDeleteByMetaDataException(deleteMetaData);
-          } catch (AmbariException e) {
-            throw new ServiceDeletionFailure(e);
+        for (Cluster cluster : orderedClusters) {
+          for (String serviceName : servicesByCluster.get(cluster)) {
+            try {
+              cluster.deleteService(serviceName, deleteMetaData);
+              STOMPComponentsDeleteHandler.processDeleteByMetaDataException(deleteMetaData);
+            } catch (AmbariException e) {
+              throw new ServiceDeletionFailure(e);
+            }
           }
         }
         try {
@@ -1056,6 +1060,24 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
     }
 
     return null;
+  }
+
+  private void resolveAndValidateServiceRemovability(List<Cluster> orderedClusters,
+      Map<Cluster, Set<String>> servicesByCluster) {
+    try {
+      for (Cluster cluster : orderedClusters) {
+        for (String serviceName : servicesByCluster.get(cluster)) {
+          Service currentService = cluster.getService(serviceName);
+          if (!currentService.canBeRemoved()) {
+            throw new AmbariException(
+                "Cannot remove service " + serviceName
+                    + " because one or more components are in a non-removable state.");
+          }
+        }
+      }
+    } catch (AmbariException e) {
+      throw new ServiceDeletionFailure(e);
+    }
   }
 
   /**

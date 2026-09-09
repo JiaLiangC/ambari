@@ -218,19 +218,16 @@ public class ServiceDependencyDAOIntegrationTest {
     CountDownLatch releaseDeletion = new CountDownLatch(1);
     CountDownLatch publicationStarted = new CountDownLatch(1);
     ExecutorService executor = Executors.newFixedThreadPool(2);
+    DeletionTransactionBarrier deletionBarrier =
+        injector.getInstance(DeletionTransactionBarrier.class);
     try {
       Future<?> deletion = executor.submit(() -> {
-        // Keep the enclosing lock after @Transactional deleteAllServices returns so the
-        // publication cannot enter during the transaction/lock handoff.
-        providerCluster.executeUnderWriteLock(() -> {
-          deletionEntered.countDown();
-          try {
-            providerCluster.deleteAllServices();
-          } catch (Exception e) {
-            throw new AssertionError("The unreferenced provider cluster should be removable", e);
-          }
-          await(releaseDeletion);
-        });
+        try {
+          deletionBarrier.deleteAllServicesAndWait(
+              providerCluster, deletionEntered, releaseDeletion);
+        } catch (Exception e) {
+          throw new AssertionError("The unreferenced provider cluster should be removable", e);
+        }
         return null;
       });
       assertTrue(deletionEntered.await(30, TimeUnit.SECONDS));
@@ -1116,6 +1113,18 @@ public class ServiceDependencyDAOIntegrationTest {
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw new AssertionError("Interrupted while holding the live-plan read transaction", e);
+      }
+    }
+  }
+
+  public static class DeletionTransactionBarrier {
+    @Transactional
+    public void deleteAllServicesAndWait(Cluster cluster,
+        CountDownLatch entered, CountDownLatch release) throws Exception {
+      cluster.deleteAllServices();
+      entered.countDown();
+      if (!release.await(30, TimeUnit.SECONDS)) {
+        throw new AssertionError("Timed out while holding the deletion transaction");
       }
     }
   }

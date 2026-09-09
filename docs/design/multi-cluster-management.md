@@ -250,6 +250,25 @@ caller-derived paths or configuration. Preview provisions nothing. Provider iden
 is immutable within a binding; replacement requires an explicit new binding and
 namespace after safe detachment of the old one.
 
+Secure HDFS and ZooKeeper selection produces one consumer mapping for the complete
+selected binding set. The approved integration design extends existing preview
+and creation routes with a bounded one/two-item plan while retaining legacy
+single-item requests. All items keep their own stable binding and operation IDs.
+The server authorizes every parent and validates every fingerprint before a single
+DAO transaction persists all bindings, snapshots, operations and provider intents.
+Only then may independent provider scheduling start. Exact all-item replay returns
+existing operations; partial or mismatched prior creation conflicts without
+silently creating a missing peer. This integration remains subject to source and
+runtime acceptance; it does not introduce a new group lifecycle or tenant record.
+
+Provider discovery must also use the authoritative security producer so supported
+secure providers remain selectable. Discovery creates no reservation or approval;
+final preview recalculates the whole selected plan. Missing plan inputs are distinct
+from unsupported policy, version or realm combinations. The browser cannot waive
+security-proof failures. A new binding type on a genuinely fresh INIT service is
+classified separately from an already managed type; an installed local service
+still requires an explicitly supported data-migration flow.
+
 Adding HBase to an existing cluster uses an owned ADD_SERVICE workflow and exact
 saved revision for SERVICE_PLAN discovery and preview before HBASE exists. Once
 the same workflow creates fresh INIT HBASE, it switches to live preview and
@@ -282,7 +301,11 @@ and authorized HBase task profile; public summaries expose fingerprints.
 An old secure snapshot without typed proof requires a new preview and approval.
 
 Prospective Kerberos calculation uses a detached raw composite descriptor and
-the authoritative current-plus-planned service set. Ordinary cluster-scoped
+the authoritative current-plus-planned service set. SERVICE_PLAN resolution carries
+and rechecks the exact owned workflow revision, including other services selected
+in the same workflow. Live SERVICE uses the actual materialized topology. Provider
+stock-template provenance comes from stack metadata rather than the effective
+custom template being checked. Ordinary cluster-scoped
 descriptor and credential calculations use an approved persisted live plan.
 The latter reconstructs one consumer identity from its complete HDFS/ZooKeeper
 binding set and compares the final generated mapping profile with the approved
@@ -361,6 +384,23 @@ about to change. Existing identical definitions are reused; conflicting shared
 settings require explicit resolution. Existing global repository administration
 retains its own authorized editing flow.
 
+## Deletion concurrency boundary
+
+Collection deletion acquires every requested cluster write lock in numeric order,
+re-resolves current service objects by name and validates all removability and
+active dependency references before removing the first target. Binding publication
+uses the corresponding canonical parent read locks through its transaction commit.
+Transactional cluster deletion retains its runtime cluster lock in the existing
+local transaction interceptor until commit or rollback, including nested calls.
+Manually begun transactions bypassing that interceptor are rejected for these
+transactional cluster deletion methods. Normal direct service deletion retains
+its lexical lock through the existing service deletion transaction.
+
+This source boundary does not establish recovery from an arbitrary database commit
+failure after existing in-memory component mutations. Final validation must verify
+actual lock release, commit/rollback behavior and supported failure recovery;
+written concurrency fixtures are not executed evidence.
+
 ## Metrics isolation and compatibility
 
 Datasource authorization alone does not constrain the series returned by a
@@ -403,8 +443,8 @@ are deferred until all source implementation is integrated. Interim Astra PASS
 or REWORK concerns code/contracts and permits further implementation only;
 execution remains pending. The final combined gate compiles and executes the
 focused/integration/runtime checks, with targeted correction and rerun for
-failures. Completion statements alone are not evidence. At most three Sol workers execute concurrently and one
-writer owns each shared file. Full logs remain outside tracked source.
+failures. Completion statements alone are not evidence. The user later selected Luna with xhigh reasoning for execution. At most three
+workers execute concurrently and one writer owns each shared file. Full logs remain outside tracked source.
 
 Final local validation uses the deploy project's documented prebuilt images and
 build caches where available. Run necessary focused regressions and isolated
@@ -426,23 +466,25 @@ locally. Broader suites remain for future submission CI, which has not run here.
 | Existing single-cluster installation migrates safely | Schema and legacy route regression tests | Pending |
 | Desktop/mobile recovery and dependency navigation work | Browser captures and action/network assertions | Pending |
 
-## Reviewable topic commit plan
+## Submission and validation plan
 
-No issue key for this feature is assigned; keep implementation uncommitted.
-Do not reuse the baseline issue key. Once the user supplies a suitable new JIRA
-key, prepare coherent independently buildable commits with focused tests:
+The feature is tracked by [AMBARI-26654](https://issues.apache.org/jira/browse/AMBARI-26654).
+At the user's explicit request, four source-reference commits were published to
+[the contributor reference branch](https://github.com/JiaLiangC/ambari/tree/AMBARI-26654-multicluster-reference)
+at `8bf556b6ce94b350b3c3b12e15a7882d07bd19f7`. That fixed reference predates later
+integration corrections and has not been compiled or tested.
 
-1. Server membership, authorization and provisioning isolation.
-2. Frontend route/context, creation and recovery foundations.
-3. Unified cluster/service navigation and deployment actions.
-4. Managed service dependency persistence, API and lifecycle safety.
-5. Provider provisioning and HBase stack/client integration.
-6. Dependency management UI and recovery interactions.
-7. Integration evidence and migration/parity documentation.
+The user subsequently requested prompt batch submission of completed work,
+superseding the earlier topic-splitting plan for continuation changes. Reviewed
+source batches accumulate on `AMBARI-26654-multicluster` in an isolated continuation
+worktree. Unfinished source remains in the pinned writer worktree. Each batch uses
+the same JIRA key, includes its focused regression source and records outstanding
+validation. Compilation and focused execution remain deferred until all source is
+integrated, as explicitly requested; publication does not establish test success.
 
-Adjust these boundaries to actual dependencies; contract changes and required
-consumers stay together when separation would break compilation. External
-issue creation, branch publishing, pull requests and deployment to existing live
-environments are not authorized. Isolated local deployment and focused validation
-are authorized after source integration, using the deploy project's documented
-prebuilt images and reusable build outputs.
+The remaining work covers lifecycle and credential gates, complete dependency-plan
+creation, advisor integration, deployment recovery, and integration evidence.
+No pull request, merge or deployment to existing live environments is authorized.
+Isolated local deployment and focused validation are authorized after source
+integration, using the deploy project's documented prebuilt images and reusable
+build outputs.

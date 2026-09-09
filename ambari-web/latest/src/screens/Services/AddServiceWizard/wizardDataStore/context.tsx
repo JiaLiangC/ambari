@@ -47,6 +47,7 @@ import {
   containsReentryMarker,
   WorkflowQueueInvalidatedError,
   workflowErrorMessage,
+  WorkflowMutationQueue,
 } from "../../../../Utils/scopedWorkflow";
 import { translate } from "../../../../Utils/Utility";
 import { consumeWorkflowReturnPath } from "../../../../Utils/workflowReturnPath";
@@ -60,6 +61,9 @@ interface AddServiceContextProps {
     step: string,
     data: Record<string, unknown>,
   ) => Promise<number>;
+  withStateCheckpoint?: <T>(
+    request: (revision: number) => Promise<T>,
+  ) => Promise<T>;
   getWorkflowRevision?: () => number;
   installedHosts: string[];
   serviceContextLoading: boolean;
@@ -72,6 +76,7 @@ export const AddServiceContext = createContext<AddServiceContextProps>({
   dispatch: () => undefined,
   flushStateToDb: () => undefined,
   storeStepDataAndFlush: async () => 0,
+  withStateCheckpoint: async (request) => request(0),
   getWorkflowRevision: () => 0,
   installedHosts: [],
   serviceContextLoading: false,
@@ -146,6 +151,7 @@ export const AddServiceProvider: React.FC<{
   const stateRef = useRef<State>(initialState);
   const currStepDataRef = useRef<Record<string, any>>({});
   const scopeGeneration = useRef(0);
+  const workflowQueueRef = useRef(new WorkflowMutationQueue());
   const persistenceRef = useRef<typeof persistence>(null);
   const explicitlyPersistedStateRef = useRef<State | null>(null);
   const hasCurrentHydration = isHydrated && hydratedPersistence === persistence;
@@ -155,17 +161,23 @@ export const AddServiceProvider: React.FC<{
     reducerDispatch(action);
   };
 
-  const queuePersistence = useCallback(async (operation: () => Promise<any>) => {
+  const queuePersistence = useCallback((operation: () => Promise<any>) => {
     if (!persistence) {
       return Promise.reject(new Error(String(translate("workflow.persistence.explicitCluster"))));
     }
     const generation = scopeGeneration.current;
-    try {
+    const queueGeneration = workflowQueueRef.current.currentGeneration;
+    const queued = workflowQueueRef.current.enqueue(async () => {
       await operation();
-      if (generation !== scopeGeneration.current || persistenceRef.current !== persistence) {
+      if (generation !== scopeGeneration.current
+        || persistenceRef.current !== persistence
+        || !workflowQueueRef.current.isCurrent(queueGeneration)) {
         throw new WorkflowQueueInvalidatedError("Add Service persistence scope changed.");
       }
-    } catch (error) {
+    });
+    void queued.catch((error) => {
+      if (error instanceof WorkflowQueueInvalidatedError
+        || !workflowQueueRef.current.isCurrent(queueGeneration)) return;
       if (generation === scopeGeneration.current && persistenceRef.current === persistence) {
         isDataPersisted.current = false;
         setErrorGeneration(generation);
@@ -174,9 +186,17 @@ export const AddServiceProvider: React.FC<{
           translate("workflow.persistence.addServiceSaveFailed"),
         ));
       }
-      throw error;
-    }
+    });
+    return queued;
   }, [persistence]);
+
+  useEffect(() => {
+    workflowQueueRef.current.activate();
+    return () => {
+      isDataPersisted.current = false;
+      workflowQueueRef.current.deactivate();
+    };
+  }, []);
 
   const setClusterName = () => {
     dispatch({
@@ -355,6 +375,10 @@ export const AddServiceProvider: React.FC<{
     generation: number,
     persistenceSnapshot: typeof persistence,
   ) {
+    const queueGeneration = await workflowQueueRef.current.reset();
+    if (!workflowQueueRef.current.isCurrent(queueGeneration)
+      || generation !== scopeGeneration.current
+      || persistenceRef.current !== persistenceSnapshot) return;
     setInitializationError(null);
     setErrorGeneration(-1);
     setIsHydrated(false);
@@ -519,6 +543,45 @@ export const AddServiceProvider: React.FC<{
     return persistence?.currentRevision || 0;
   }
 
+  async function withStateCheckpoint<T>(
+    request: (revision: number) => Promise<T>,
+  ): Promise<T> {
+    const stateSnapshot = stateRef.current;
+    const stepSnapshot = currStepDataRef.current;
+    explicitlyPersistedStateRef.current = stateSnapshot;
+    const generation = scopeGeneration.current;
+    const queueGeneration = workflowQueueRef.current.currentGeneration;
+    const queued = workflowQueueRef.current.enqueue(async () => {
+      await flushCurrentData(stateSnapshot, stepSnapshot);
+      if (generation !== scopeGeneration.current
+        || persistenceRef.current !== persistence
+        || !workflowQueueRef.current.isCurrent(queueGeneration)) {
+        throw new WorkflowQueueInvalidatedError("Add Service persistence scope changed.");
+      }
+      const revision = persistence?.currentRevision || 0;
+      try {
+        return { ok: true as const, value: await request(revision) };
+      } catch (error) {
+        return { ok: false as const, error };
+      }
+    });
+    void queued.catch((error) => {
+      if (error instanceof WorkflowQueueInvalidatedError
+        || !workflowQueueRef.current.isCurrent(queueGeneration)) return;
+      if (generation === scopeGeneration.current && persistenceRef.current === persistence) {
+        isDataPersisted.current = false;
+        setErrorGeneration(generation);
+        setInitializationError(workflowErrorMessage(
+          error,
+          translate("workflow.persistence.addServiceSaveFailed"),
+        ));
+      }
+    });
+    const outcome = await queued;
+    if (!outcome.ok) throw outcome.error;
+    return outcome.value;
+  }
+
   async function flushOnCancel() {
     const generation = scopeGeneration.current;
     isCancelled.current = true;
@@ -631,6 +694,7 @@ export const AddServiceProvider: React.FC<{
         stepWizardUtilities,
         flushStateToDb,
         storeStepDataAndFlush,
+        withStateCheckpoint,
         getWorkflowRevision: () => persistence?.currentRevision || 0,
         installedHosts,
         serviceContextLoading,

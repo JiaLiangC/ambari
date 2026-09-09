@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest";
 import type { ManagedDependencyPreview } from "../../api/serviceDependenciesApi";
 import {
   buildManagedDependencyAdvisorPlan,
+  createManagedDependencyAdvisorRunner,
   ManagedDependencyAdvisorReviewRequiredError,
   managedDependencyAdvisorInputKey,
 } from "./managedDependencyAdvisor";
@@ -119,6 +120,30 @@ describe("managed dependency Stack Advisor plan", () => {
       { scope: "SERVICE", cluster_id: 7 },
       { HDFS: { mode: "local" }, ZOOKEEPER: { mode: "local" } },
     )).toBeUndefined();
+  });
+
+  it("keeps Add Service advice on SERVICE_PLAN after an owned INIT row is observed", async () => {
+    const hdfs = preview("HDFS");
+    const withStateCheckpoint = vi.fn(async (
+      request: (revision: number) => Promise<any>,
+    ) => request(17));
+    const scopeKeyRef = { current: "cluster-a:add-service" };
+    const runner = createManagedDependencyAdvisorRunner({
+      clusterId: 27,
+      managedDependencies: { HDFS: { mode: "managed", preview: hdfs } },
+      scopeKey: scopeKeyRef.current,
+      scopeKeyRef,
+      withStateCheckpoint,
+      workflowMaterializedServices: ["HBASE"],
+    });
+
+    const prepared = await runner(async (request) => request);
+
+    expect(prepared.properties.managed_dependency_plan?.consumer).toEqual({
+      scope: "SERVICE_PLAN",
+      cluster_id: 27,
+      expected_revision: 17,
+    });
   });
 
   it("keys the advice inputs deterministically and changes on semantic replacement", () => {

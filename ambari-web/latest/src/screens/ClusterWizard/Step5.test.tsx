@@ -17,12 +17,15 @@
  */
 
 import { createContext } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ContextWrapper } from ".";
+import { AppContext } from "../../store/context";
 
 const mocks = vi.hoisted(() => ({
   assignMastersProps: null as any,
+  assignMastersAddableProps: null as any,
+  wizardFooterProps: null as any,
   flushStateToDb: vi.fn(),
   handleNextImperitive: vi.fn(),
 }));
@@ -38,12 +41,16 @@ vi.mock("../../components/AssignMasters", () => ({
   },
 }));
 vi.mock("../../components/AssignMastersAddable", () => ({
-  default: () => null,
+  default: (props: any) => {
+    mocks.assignMastersAddableProps = props;
+    return null;
+  },
 }));
 vi.mock("../../components/StepWizard/WizardFooter", () => ({
-  default: ({ onNext }: { onNext: () => void }) => (
-    <button onClick={onNext}>NEXT</button>
-  ),
+  default: (props: any) => {
+    mocks.wizardFooterProps = props;
+    return <button onClick={props.onNext}>NEXT</button>;
+  },
 }));
 
 import Step5 from "./Step5";
@@ -51,6 +58,8 @@ import Step5 from "./Step5";
 describe("Assign Masters validation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.assignMastersAddableProps = null;
+    mocks.wizardFooterProps = null;
     mocks.flushStateToDb.mockResolvedValue(undefined);
   });
 
@@ -198,6 +207,151 @@ describe("Assign Masters validation", () => {
       },
     });
     expect(prepared.isCurrent()).toBe(true);
+  });
+
+  it("uses the owned Add Service revision for SERVICE_PLAN advice", async () => {
+    const withStateCheckpoint = vi.fn(async (
+      request: (revision: number) => Promise<any>,
+    ) => request(17));
+    const managedPreview = {
+      binding_id: "11111111-1111-4111-8111-111111111111",
+      compatible: true,
+      consumer: {
+        lifecycle: "ADD_SERVICE_PLAN",
+        planned_hbase_user: "hbase_a",
+        scope: "SERVICE_PLAN",
+        service_name: "HBASE",
+      },
+      consumer_descriptor_fingerprint: "consumer-fingerprint",
+      dependency_type: "HDFS",
+      errors: [],
+      preview_schema_version: 2,
+      provider: {
+        cluster_id: 31,
+        cluster_name: "provider-a",
+        service_name: "HDFS",
+      },
+      provider_fingerprint: "provider-fingerprint",
+      snapshot_fingerprint: "snapshot-fingerprint",
+    };
+    const value = {
+      state: {
+        addServiceSteps: {
+          SERVICES: {
+            data: {
+              managedDependencies: {
+                HDFS: { mode: "managed", preview: managedPreview },
+              },
+              services: {
+                HBASE: { installed: false, selected: true },
+              },
+            },
+          },
+          VERSION: { data: { selectedVersion: {} } },
+        },
+      },
+      dispatch: vi.fn(),
+      flushStateToDb: mocks.flushStateToDb,
+      installedHosts: ["worker-a"],
+      installedServices: ["KAFKA", "HDFS"],
+      workflowMaterializedServices: ["HBASE"],
+      withStateCheckpoint,
+      stepWizardUtilities: {
+        currentStep: { canGoBack: true, name: "MASTERS" },
+        handleNextImperitive: mocks.handleNextImperitive,
+        handleBackImperitive: vi.fn(),
+        jumpToStep: vi.fn(),
+      },
+    };
+    const WizardContext = createContext(value);
+    const appContext = {
+      cluster: { cluster_id: 27, cluster_name: "cluster-a" },
+      clusterName: "cluster-a",
+      runtimeKey: JSON.stringify(["alice", "cluster", 27]),
+    };
+
+    render(
+      <AppContext.Provider value={appContext as any}>
+        <ContextWrapper.Provider value={{ Context: WizardContext }}>
+          <WizardContext.Provider value={value}>
+            <Step5 wizardName="addService" />
+          </WizardContext.Provider>
+        </ContextWrapper.Provider>
+      </AppContext.Provider>,
+    );
+
+    const prepared = await mocks.assignMastersAddableProps.runWithAdvisorRequest(
+      async (request: any) => request,
+    );
+
+    expect(withStateCheckpoint).toHaveBeenCalledOnce();
+    expect(prepared.properties.managed_dependency_plan.consumer).toEqual({
+      scope: "SERVICE_PLAN",
+      cluster_id: 27,
+      expected_revision: 17,
+    });
+    expect(prepared.properties.managed_dependency_plan.selections).toEqual([{
+      binding_id: managedPreview.binding_id,
+      dependency_type: "HDFS",
+      expected_consumer_descriptor_fingerprint: "consumer-fingerprint",
+      expected_provider_fingerprint: "provider-fingerprint",
+      expected_snapshot_fingerprint: "snapshot-fingerprint",
+      preview_schema_version: 2,
+      provider: { cluster_id: 31, service_name: "HDFS" },
+    }]);
+  });
+
+  it("keeps Add Service Next disabled until child callbacks report ready and valid", async () => {
+    const value = {
+      state: {
+        addServiceSteps: {
+          SERVICES: {
+            data: {
+              services: { RANGER: { selected: true, installed: false } },
+            },
+          },
+          MASTERS: { data: { mastersData: [] } },
+        },
+      },
+      dispatch: vi.fn(),
+      flushStateToDb: mocks.flushStateToDb,
+      installedHosts: ["host-a"],
+      installedServices: [],
+      stepWizardUtilities: {
+        currentStep: { canGoBack: true, name: "MASTERS" },
+        handleNextImperitive: mocks.handleNextImperitive,
+        handleBackImperitive: vi.fn(),
+        jumpToStep: vi.fn(),
+      },
+    };
+    const WizardContext = createContext(value);
+
+    render(
+      <ContextWrapper.Provider value={{ Context: WizardContext }}>
+        <WizardContext.Provider value={value}>
+          <Step5 wizardName="addService" />
+        </WizardContext.Provider>
+      </ContextWrapper.Provider>,
+    );
+
+    await waitFor(() => {
+      expect(mocks.assignMastersAddableProps).toBeTruthy();
+      expect(mocks.wizardFooterProps.isNextEnabled).toBe(false);
+    });
+
+    act(() => {
+      mocks.assignMastersAddableProps.onLoadStateChange({ status: "ready" });
+      mocks.assignMastersAddableProps.onAssignmentValidationChange(true, []);
+    });
+    expect(mocks.wizardFooterProps.isNextEnabled).toBe(true);
+
+    act(() => {
+      mocks.assignMastersAddableProps.onLoadStateChange({
+        status: "error",
+        error: "Advisor unavailable",
+      });
+    });
+    expect(mocks.wizardFooterProps.isNextEnabled).toBe(false);
   });
 
   it("rejects a late checkpoint after the route switches to another draft", async () => {
