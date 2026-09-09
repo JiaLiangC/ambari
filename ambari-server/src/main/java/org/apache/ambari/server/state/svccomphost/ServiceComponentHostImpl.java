@@ -940,26 +940,27 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   }
 
   @Override
-  @Transactional
   public void setVersion(String version) throws AmbariException {
-    HostComponentStateEntity stateEntity = getStateEntity();
-    if (stateEntity != null) {
-      stateEntity.setVersion(version);
-      stateEntity = hostComponentStateDAO.merge(stateEntity);
+    executeUnderClusterWriteLock(() -> {
+      HostComponentStateEntity stateEntity = getStateEntity();
+      if (stateEntity != null) {
+        stateEntity.setVersion(version);
+        hostComponentStateDAO.merge(stateEntity);
 
-      ServiceComponentHostRequest serviceComponentHostRequest = new ServiceComponentHostRequest(
-          serviceComponent.getClusterName(), serviceComponent.getServiceName(),
-          serviceComponent.getName(), hostName, getDesiredState().name());
+        ServiceComponentHostRequest serviceComponentHostRequest = new ServiceComponentHostRequest(
+            serviceComponent.getClusterName(), serviceComponent.getServiceName(),
+            serviceComponent.getName(), hostName, getDesiredState().name());
 
-      TopologyUpdateEvent updateEvent = controller.get().getAddedComponentsTopologyEvent(
-          Collections.singleton(serviceComponentHostRequest));
+        TopologyUpdateEvent updateEvent = controller.get().getAddedComponentsTopologyEvent(
+            Collections.singleton(serviceComponentHostRequest));
 
-      m_topologyHolder.get().updateData(updateEvent);
-    } else {
-      LOG.warn("Setting a member on an entity object that may have been "
-          + "previously deleted, serviceName = " + getServiceName() + ", " + "componentName = "
-          + getServiceComponentName() + ", " + "hostName = " + getHostName());
-    }
+        m_topologyHolder.get().updateData(updateEvent);
+      } else {
+        LOG.warn("Setting a member on an entity object that may have been "
+            + "previously deleted, serviceName = " + getServiceName() + ", " + "componentName = "
+            + getServiceComponentName() + ", " + "hostName = " + getHostName());
+      }
+    });
   }
 
   /**
@@ -972,17 +973,18 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
    * @param upgradeState  the upgrade state
    */
   @Override
-  @Transactional
   public void setUpgradeState(UpgradeState upgradeState) {
-    HostComponentStateEntity stateEntity = getStateEntity();
-    if (stateEntity != null) {
-      stateEntity.setUpgradeState(upgradeState);
-      stateEntity = hostComponentStateDAO.merge(stateEntity);
-    } else {
-      LOG.warn("Setting a member on an entity object that may have been "
-          + "previously deleted, serviceName = " + getServiceName() + ", " + "componentName = "
-          + getServiceComponentName() + ", " + "hostName = " + getHostName());
-    }
+    executeUnderClusterWriteLock(() -> {
+      HostComponentStateEntity stateEntity = getStateEntity();
+      if (stateEntity != null) {
+        stateEntity.setUpgradeState(upgradeState);
+        hostComponentStateDAO.merge(stateEntity);
+      } else {
+        LOG.warn("Setting a member on an entity object that may have been "
+            + "previously deleted, serviceName = " + getServiceName() + ", " + "componentName = "
+            + getServiceComponentName() + ", " + "hostName = " + getHostName());
+      }
+    });
   }
 
   @Override
@@ -1586,6 +1588,15 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
    */
   private HostComponentStateEntity getStateEntity() {
     return hostComponentStateDAO.findById(hostComponentStateId);
+  }
+
+  private void executeUnderClusterWriteLock(Runnable operation) {
+    Cluster cluster = clusters.getClusters().get(serviceComponent.getClusterName());
+    if (cluster == null) {
+      operation.run();
+    } else {
+      cluster.executeUnderWriteLock(operation);
+    }
   }
 
   /**

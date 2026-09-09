@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 
@@ -45,6 +46,12 @@ import org.apache.ambari.spi.ClusterInformation;
 import com.google.common.collect.ListMultimap;
 
 public interface Cluster {
+
+  /** Executes a read-only state operation under this cluster's canonical state lock. */
+  <T> T executeUnderReadLock(Supplier<T> operation);
+
+  /** Executes a state mutation under this cluster's canonical state lock. */
+  void executeUnderWriteLock(Runnable operation);
 
   /**
    * Get the cluster ID

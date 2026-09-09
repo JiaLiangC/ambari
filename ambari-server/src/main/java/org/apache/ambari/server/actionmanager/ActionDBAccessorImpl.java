@@ -42,6 +42,7 @@ import org.apache.ambari.server.audit.event.AuditEvent;
 import org.apache.ambari.server.audit.event.OperationStatusAuditEvent;
 import org.apache.ambari.server.audit.event.TaskStatusAuditEvent;
 import org.apache.ambari.server.configuration.Configuration;
+import org.apache.ambari.server.controller.dependencies.ManagedDependencyRuntimePlanner;
 import org.apache.ambari.server.controller.internal.CalculatedStatus;
 import org.apache.ambari.server.events.HostsRemovedEvent;
 import org.apache.ambari.server.events.RequestFinishedEvent;
@@ -127,6 +128,12 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
 
   @Inject
   Configuration configuration;
+
+  @Inject
+  ManagedDependencyRuntimePlanner managedDependencyRuntimePlanner;
+
+  @Inject
+  ActionPersistenceTransaction actionPersistenceTransaction;
 
   @Inject
   AmbariEventPublisher ambariEventPublisher;
@@ -333,9 +340,12 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
   }
 
   @Override
-  @Transactional
-  @TransactionalLock(lockArea = LockArea.HRC_STATUS_CACHE, lockType = LockType.WRITE)
   public void persistActions(Request request) throws AmbariException {
+    managedDependencyRuntimePlanner.executeWithPreparationParentLocks(request,
+        () -> actionPersistenceTransaction.persist(this, request));
+  }
+
+  void persistActionsInTransaction(Request request) throws AmbariException {
 
     RequestEntity requestEntity = request.constructNewPersistenceEntity();
 
@@ -378,6 +388,7 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
         hostRoleCommandEntities.add(hostRoleCommandEntity);
 
         hostRoleCommand.setTaskId(hostRoleCommandEntity.getTaskId());
+        managedDependencyRuntimePlanner.associatePreparationTask(hostRoleCommand);
 
         String prefix = "";
         String output = "output-" + hostRoleCommandEntity.getTaskId() + ".txt";
@@ -454,6 +465,16 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
               "request id: {}, command name: {}",
           requestEntity.getRequestId(),
           requestEntity.getCommandName());
+    }
+  }
+
+  /** Starts action publication only after managed dependency parent locks are held. */
+  @Singleton
+  public static class ActionPersistenceTransaction {
+    @Transactional
+    @TransactionalLock(lockArea = LockArea.HRC_STATUS_CACHE, lockType = LockType.WRITE)
+    public void persist(ActionDBAccessorImpl accessor, Request request) throws AmbariException {
+      accessor.persistActionsInTransaction(request);
     }
   }
 

@@ -41,6 +41,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import javax.annotation.Nullable;
@@ -63,6 +64,8 @@ import org.apache.ambari.server.agent.stomp.HostLevelParamsHolder;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
 import org.apache.ambari.server.controller.AmbariManagementController;
 import org.apache.ambari.server.controller.AmbariSessionManager;
+import org.apache.ambari.server.controller.dependencies.ManagedDependencyConfigPolicy;
+import org.apache.ambari.server.controller.dependencies.ManagedDependencyLifecyclePolicy;
 import org.apache.ambari.server.controller.ClusterResponse;
 import org.apache.ambari.server.controller.ConfigurationResponse;
 import org.apache.ambari.server.controller.MaintenanceStateHelper;
@@ -290,6 +293,12 @@ public class ClusterImpl implements Cluster {
   @Inject
   private HostLevelParamsHolder hostLevelParamsHolder;
 
+  @Inject
+  private ManagedDependencyConfigPolicy managedDependencyConfigPolicy;
+
+  @Inject
+  private ManagedDependencyLifecyclePolicy managedDependencyLifecyclePolicy;
+
   /**
    * Data access object used for looking up stacks from the database.
    */
@@ -503,13 +512,15 @@ public class ClusterImpl implements Cluster {
     LOG.debug("Adding a new Config group, clusterName = {}, groupName = {}, tag = {} with hosts {}",
       getClusterName(), configGroup.getName(), configGroup.getTag(), hostList);
 
-    if (clusterConfigGroups.containsKey(configGroup.getId())) {
-      // The loadConfigGroups will load all groups to memory
-      LOG.debug("Config group already exists, clusterName = {}, groupName = {}, groupId = {}, tag = {}",
-        getClusterName(), configGroup.getName(), configGroup.getId(), configGroup.getTag());
-    } else {
-      clusterConfigGroups.put(configGroup.getId(), configGroup);
-    }
+    executeUnderWriteLock(() -> {
+      if (clusterConfigGroups.containsKey(configGroup.getId())) {
+        // The loadConfigGroups will load all groups to memory
+        LOG.debug("Config group already exists, clusterName = {}, groupName = {}, groupId = {}, tag = {}",
+          getClusterName(), configGroup.getName(), configGroup.getId(), configGroup.getTag());
+      } else {
+        clusterConfigGroups.put(configGroup.getId(), configGroup);
+      }
+    });
   }
 
   @Override
@@ -604,18 +615,23 @@ public class ClusterImpl implements Cluster {
 
   @Override
   public void deleteConfigGroup(Long id) throws AmbariException {
-    ConfigGroup configGroup = clusterConfigGroups.get(id);
-    if (configGroup == null) {
-      throw new ConfigGroupNotFoundException(getClusterName(), id.toString());
+    clusterGlobalLock.writeLock().lock();
+    try {
+      ConfigGroup configGroup = clusterConfigGroups.get(id);
+      if (configGroup == null) {
+        throw new ConfigGroupNotFoundException(getClusterName(), id.toString());
+      }
+
+      LOG.debug("Deleting Config group, clusterName = {}, groupName = {}, groupId = {}, tag = {}",
+        getClusterName(), configGroup.getName(), configGroup.getId(), configGroup.getTag());
+
+      configGroup.delete();
+      clusterConfigGroups.remove(id);
+
+      configHelper.updateAgentConfigs(Collections.singleton(configGroup.getClusterName()));
+    } finally {
+      clusterGlobalLock.writeLock().unlock();
     }
-
-    LOG.debug("Deleting Config group, clusterName = {}, groupName = {}, groupId = {}, tag = {}",
-      getClusterName(), configGroup.getName(), configGroup.getId(), configGroup.getTag());
-
-    configGroup.delete();
-    clusterConfigGroups.remove(id);
-
-    configHelper.updateAgentConfigs(Collections.singleton(configGroup.getClusterName()));
   }
 
   public ServiceComponentHost getServiceComponentHost(String serviceName,
@@ -1049,9 +1065,11 @@ public class ClusterImpl implements Cluster {
 
   @Override
   public void setSecurityType(SecurityType securityType) {
-    ClusterEntity clusterEntity = getClusterEntity();
-    clusterEntity.setSecurityType(securityType);
-    clusterDAO.merge(clusterEntity);
+    executeUnderWriteLock(() -> {
+      ClusterEntity clusterEntity = getClusterEntity();
+      clusterEntity.setSecurityType(securityType);
+      clusterDAO.merge(clusterEntity);
+    });
   }
 
   /**
@@ -1352,6 +1370,8 @@ public class ClusterImpl implements Cluster {
         }
       }
 
+      managedDependencyLifecyclePolicy.validateServiceDeletion(this, services.keySet());
+
       DeleteHostComponentStatusMetaData deleteMetaData = new DeleteHostComponentStatusMetaData();
       for (Service service : services.values()) {
         deleteService(service, deleteMetaData);
@@ -1393,6 +1413,7 @@ public class ClusterImpl implements Cluster {
             + ", serviceName=" + service.getName()));
         return;
       }
+      managedDependencyLifecyclePolicy.validateServiceDeletion(this, Set.of(serviceName));
       deleteService(service, deleteMetaData);
       services.remove(serviceName);
 
@@ -1519,6 +1540,8 @@ public class ClusterImpl implements Cluster {
           configIterator.remove();
         }
       }
+
+      managedDependencyConfigPolicy.validateDesiredConfigs(this, configs);
 
       ServiceConfigVersionResponse serviceConfigVersionResponse = applyConfigs(
           configs, user, serviceConfigVersionNote);
@@ -3021,5 +3044,25 @@ public class ClusterImpl implements Cluster {
 
     return new ClusterInformation(getClusterName(), securityType == SecurityType.KERBEROS,
         configurations, topology, clusterServiceVersions);
+  }
+
+  @Override
+  public <T> T executeUnderReadLock(Supplier<T> operation) {
+    clusterGlobalLock.readLock().lock();
+    try {
+      return operation.get();
+    } finally {
+      clusterGlobalLock.readLock().unlock();
+    }
+  }
+
+  @Override
+  public void executeUnderWriteLock(Runnable operation) {
+    clusterGlobalLock.writeLock().lock();
+    try {
+      operation.run();
+    } finally {
+      clusterGlobalLock.writeLock().unlock();
+    }
   }
 }

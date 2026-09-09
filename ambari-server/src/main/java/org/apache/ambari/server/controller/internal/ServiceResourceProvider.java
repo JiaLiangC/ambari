@@ -21,11 +21,13 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,6 +47,7 @@ import org.apache.ambari.server.controller.MaintenanceStateHelper;
 import org.apache.ambari.server.controller.RequestStatusResponse;
 import org.apache.ambari.server.controller.ServiceRequest;
 import org.apache.ambari.server.controller.ServiceResponse;
+import org.apache.ambari.server.controller.dependencies.ManagedDependencyLifecyclePolicy;
 import org.apache.ambari.server.controller.spi.NoSuchParentResourceException;
 import org.apache.ambari.server.controller.spi.NoSuchResourceException;
 import org.apache.ambari.server.controller.spi.Predicate;
@@ -223,6 +226,9 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
 
   @Inject
   private AddServiceOrchestrator addServiceOrchestrator;
+
+  @Inject
+  private ManagedDependencyLifecyclePolicy managedDependencyLifecyclePolicy;
 
   /**
    * Used to lookup the repository when creating services.
@@ -970,6 +976,8 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
     Clusters clusters    = getManagementController().getClusters();
 
     Set<Service> removable = new HashSet<>();
+    Map<Service, Cluster> serviceClusters = new LinkedHashMap<>();
+    Map<Service, String> serviceNames = new LinkedHashMap<>();
 
     for (ServiceRequest serviceRequest : request) {
       if (StringUtils.isEmpty(serviceRequest.getClusterName()) || StringUtils.isEmpty(serviceRequest.getServiceName())) {
@@ -1009,17 +1017,73 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
         }
 
         removable.add(service);
+        serviceClusters.put(service, service.getCluster());
+        serviceNames.put(service, service.getName());
       }
     }
 
-    DeleteHostComponentStatusMetaData deleteMetaData = new DeleteHostComponentStatusMetaData();
-    for (Service service : removable) {
-      service.getCluster().deleteService(service.getName(), deleteMetaData);
-      STOMPComponentsDeleteHandler.processDeleteByMetaDataException(deleteMetaData);
+    Map<Cluster, Set<String>> servicesByCluster = removable.stream()
+        .collect(Collectors.groupingBy(serviceClusters::get, LinkedHashMap::new,
+            Collectors.mapping(serviceNames::get, Collectors.toSet())));
+    List<Cluster> orderedClusters = servicesByCluster.keySet().stream()
+        .sorted(Comparator.comparingLong(Cluster::getClusterId))
+        .toList();
+
+    try {
+      executeUnderWriteLocks(orderedClusters, 0, () -> {
+        for (Cluster cluster : orderedClusters) {
+          managedDependencyLifecyclePolicy.validateServiceDeletion(cluster,
+              servicesByCluster.get(cluster));
+        }
+
+        DeleteHostComponentStatusMetaData deleteMetaData = new DeleteHostComponentStatusMetaData();
+        for (Service service : removable) {
+          try {
+            serviceClusters.get(service).deleteService(serviceNames.get(service), deleteMetaData);
+            STOMPComponentsDeleteHandler.processDeleteByMetaDataException(deleteMetaData);
+          } catch (AmbariException e) {
+            throw new ServiceDeletionFailure(e);
+          }
+        }
+        try {
+          STOMPComponentsDeleteHandler.processDeleteByMetaData(deleteMetaData);
+        } catch (AmbariException e) {
+          throw new ServiceDeletionFailure(e);
+        }
+      });
+    } catch (ServiceDeletionFailure e) {
+      throw e.getAmbariException();
     }
-    STOMPComponentsDeleteHandler.processDeleteByMetaData(deleteMetaData);
 
     return null;
+  }
+
+  /**
+   * Holds every requested cluster's canonical write lock across dependency
+   * validation and the complete removal loop. The numeric order matches the
+   * coordinator's parent read-lock order and keeps cross-cluster operations
+   * acyclic.
+   */
+  private void executeUnderWriteLocks(List<Cluster> orderedClusters, int index, Runnable operation) {
+    if (index == orderedClusters.size()) {
+      operation.run();
+      return;
+    }
+    orderedClusters.get(index).executeUnderWriteLock(
+        () -> executeUnderWriteLocks(orderedClusters, index + 1, operation));
+  }
+
+  private static final class ServiceDeletionFailure extends RuntimeException {
+    private final AmbariException ambariException;
+
+    private ServiceDeletionFailure(AmbariException ambariException) {
+      super(ambariException);
+      this.ambariException = ambariException;
+    }
+
+    private AmbariException getAmbariException() {
+      return ambariException;
+    }
   }
 
   // calculate the service state, accounting for the state of the host components

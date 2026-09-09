@@ -52,6 +52,8 @@ import org.apache.ambari.server.controller.MaintenanceStateHelper;
 import org.apache.ambari.server.controller.RequestStatusResponse;
 import org.apache.ambari.server.controller.ServiceRequest;
 import org.apache.ambari.server.controller.ServiceResponse;
+import org.apache.ambari.server.controller.dependencies.ManagedDependencyIntegrationException;
+import org.apache.ambari.server.controller.dependencies.ManagedDependencyLifecyclePolicy;
 import org.apache.ambari.server.controller.spi.Predicate;
 import org.apache.ambari.server.controller.spi.Request;
 import org.apache.ambari.server.controller.spi.Resource;
@@ -864,6 +866,58 @@ public class ServiceResourceProviderTest {
     testDeleteResources(TestAuthenticationFactory.createServiceAdministrator());
   }
 
+  @Test
+  public void testDeleteResourcesPrevalidatesAllTargetsBeforeRemovingAnyService() throws Exception {
+    AmbariManagementController managementController = createMock(AmbariManagementController.class);
+    Clusters clusters = createNiceMock(Clusters.class);
+    Cluster cluster = createNiceMock(Cluster.class);
+    Service firstService = createNiceMock(Service.class);
+    Service secondService = createNiceMock(Service.class);
+    ManagedDependencyLifecyclePolicy lifecyclePolicy = createMock(ManagedDependencyLifecyclePolicy.class);
+
+    expect(managementController.getClusters()).andReturn(clusters).anyTimes();
+    expect(clusters.getCluster("Cluster100")).andReturn(cluster).anyTimes();
+    expect(cluster.getClusterId()).andReturn(2L).anyTimes();
+    expect(cluster.getResourceId()).andReturn(12L).anyTimes();
+    expect(cluster.getService("Service100")).andReturn(firstService).anyTimes();
+    expect(cluster.getService("Service101")).andReturn(secondService).anyTimes();
+    expect(firstService.getServiceComponents()).andReturn(new HashMap<>()).anyTimes();
+    expect(secondService.getServiceComponents()).andReturn(new HashMap<>()).anyTimes();
+    expect(firstService.getCluster()).andReturn(cluster).anyTimes();
+    expect(secondService.getCluster()).andReturn(cluster).anyTimes();
+    expect(firstService.getName()).andReturn("Service100").anyTimes();
+    expect(secondService.getName()).andReturn("Service101").anyTimes();
+    cluster.executeUnderWriteLock(anyObject(Runnable.class));
+    expectLastCall().andAnswer(() -> {
+      ((Runnable) EasyMock.getCurrentArguments()[0]).run();
+      return null;
+    });
+    lifecyclePolicy.validateServiceDeletion(eq(cluster),
+        eq(Set.of("Service100", "Service101")));
+    expectLastCall().andThrow(new ManagedDependencyIntegrationException(
+        409, "DEPENDENCY_PROVIDER_DELETE_BLOCKED", "An active dependent remains."));
+
+    replay(managementController, clusters, cluster, firstService, secondService, lifecyclePolicy);
+    SecurityContextHolder.getContext().setAuthentication(TestAuthenticationFactory.createAdministrator());
+    ServiceResourceProvider provider = getServiceProvider(managementController);
+    Field lifecyclePolicyField = ServiceResourceProvider.class
+        .getDeclaredField("managedDependencyLifecyclePolicy");
+    lifecyclePolicyField.setAccessible(true);
+    lifecyclePolicyField.set(provider, lifecyclePolicy);
+
+    Set<ServiceRequest> requests = new LinkedHashSet<>();
+    requests.add(new ServiceRequest("Cluster100", "Service100", null, null));
+    requests.add(new ServiceRequest("Cluster100", "Service101", null, null));
+    try {
+      provider.deleteServices(requests);
+      Assert.fail("Dependency prevalidation must reject the collection before deletion");
+    } catch (ManagedDependencyIntegrationException expected) {
+      Assert.assertEquals("DEPENDENCY_PROVIDER_DELETE_BLOCKED", expected.getCode());
+    }
+
+    verify(managementController, clusters, cluster, firstService, secondService, lifecyclePolicy);
+  }
+
   private void testDeleteResources(Authentication authentication) throws Exception{
     AmbariManagementController managementController = createMock(AmbariManagementController.class);
     Clusters clusters = createNiceMock(Clusters.class);
@@ -881,6 +935,11 @@ public class ServiceResourceProviderTest {
     expect(service.getName()).andReturn(serviceName).anyTimes();
     expect(service.getServiceComponents()).andReturn(new HashMap<>());
     expect(service.getCluster()).andReturn(cluster);
+    cluster.executeUnderWriteLock(anyObject(Runnable.class));
+    expectLastCall().andAnswer(() -> {
+      ((Runnable) EasyMock.getCurrentArguments()[0]).run();
+      return null;
+    });
     cluster.deleteService(eq(serviceName), anyObject(DeleteHostComponentStatusMetaData.class));
 
     // replay
@@ -929,6 +988,11 @@ public class ServiceResourceProviderTest {
     expect(service.getName()).andReturn(serviceName).anyTimes();
     expect(service.getServiceComponents()).andReturn(new HashMap<>());
     expect(service.getCluster()).andReturn(cluster);
+    cluster.executeUnderWriteLock(anyObject(Runnable.class));
+    expectLastCall().andAnswer(() -> {
+      ((Runnable) EasyMock.getCurrentArguments()[0]).run();
+      return null;
+    });
     cluster.deleteService(eq(serviceName), anyObject(DeleteHostComponentStatusMetaData.class));
 
     // replay
@@ -1097,6 +1161,11 @@ public class ServiceResourceProviderTest {
     expect(sch3.canBeRemoved()).andReturn(sch3State.isRemovableState()).anyTimes();
 
     expect(service.getCluster()).andReturn(cluster);
+    cluster.executeUnderWriteLock(anyObject(Runnable.class));
+    expectLastCall().andAnswer(() -> {
+      ((Runnable) EasyMock.getCurrentArguments()[0]).run();
+      return null;
+    });
     cluster.deleteService(eq(serviceName), anyObject(DeleteHostComponentStatusMetaData.class));
 
     // replay
@@ -1426,6 +1495,14 @@ public class ServiceResourceProviderTest {
     STOMPComponentsDeleteHandler STOMPComponentsDeleteHandler = createNiceMock(STOMPComponentsDeleteHandler.class);
     STOMPComponentsDeleteHandlerField.set(serviceResourceProvider, STOMPComponentsDeleteHandler);
     replay(STOMPComponentsDeleteHandler);
+
+    Field lifecyclePolicyField = ServiceResourceProvider.class
+        .getDeclaredField("managedDependencyLifecyclePolicy");
+    lifecyclePolicyField.setAccessible(true);
+    ManagedDependencyLifecyclePolicy lifecyclePolicy =
+        createNiceMock(ManagedDependencyLifecyclePolicy.class);
+    replay(lifecyclePolicy);
+    lifecyclePolicyField.set(serviceResourceProvider, lifecyclePolicy);
     return serviceResourceProvider;
   }
 

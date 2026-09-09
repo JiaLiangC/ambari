@@ -64,6 +64,8 @@ import org.apache.ambari.server.agent.ExecutionCommand;
 import org.apache.ambari.server.agent.ExecutionCommand.KeyNames;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
 import org.apache.ambari.server.configuration.Configuration;
+import org.apache.ambari.server.controller.dependencies.ManagedDependencyOperationDispatcher;
+import org.apache.ambari.server.controller.dependencies.ManagedDependencyRuntimePlanner;
 import org.apache.ambari.server.controller.internal.RequestOperationLevel;
 import org.apache.ambari.server.controller.internal.RequestResourceFilter;
 import org.apache.ambari.server.controller.internal.RequestResourceProvider;
@@ -98,6 +100,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.gson.Gson;
@@ -161,7 +165,8 @@ public class AmbariCustomCommandExecutionHelper {
   @Inject
   private HostRoleCommandDAO hostRoleCommandDAO;
 
-  private Map<String, Map<String, Map<String, String>>> configCredentialsForService = new HashMap<>();
+  @Inject
+  private ManagedDependencyRuntimePlanner managedDependencyRuntimePlanner;
 
   protected static final String SERVICE_CHECK_COMMAND_NAME = "SERVICE_CHECK";
   protected static final String START_COMMAND_NAME = "START";
@@ -375,12 +380,8 @@ public class AmbariCustomCommandExecutionHelper {
       execCmd.setCredentialStoreEnabled(String.valueOf(clusterService.isCredentialStoreEnabled()));
 
       // Get the map of service config type to password properties for the service
-      Map<String, Map<String, String>> configCredentials;
-      configCredentials = configCredentialsForService.get(clusterService.getName());
-      if (configCredentials == null) {
-        configCredentials = configHelper.getCredentialStoreEnabledProperties(stackId, clusterService);
-        configCredentialsForService.put(clusterService.getName(), configCredentials);
-      }
+      Map<String, Map<String, String>> configCredentials =
+          configHelper.getCredentialStoreEnabledProperties(stackId, clusterService);
 
       execCmd.setConfigurationCredentials(configCredentials);
 
@@ -466,6 +467,24 @@ public class AmbariCustomCommandExecutionHelper {
 
       commandParams.put(COMMAND_TIMEOUT, "" + commandTimeout);
 
+      boolean persistedDependencyCommand = commandParams.containsKey(
+          ManagedDependencyOperationDispatcher.COMMAND_PARAMETER);
+      boolean persistedDependencyBundle = commandParams.containsKey(
+          ManagedDependencyRuntimePlanner.BUNDLE_PARAMETER);
+      if ((persistedDependencyCommand || persistedDependencyBundle)
+          && !ManagedDependencyOperationDispatcher.isInternalDispatch()) {
+        throw new AmbariException(
+            "Managed dependency command parameters are reserved for server operations");
+      }
+      if (!persistedDependencyCommand && "HBASE".equals(serviceName)
+          && Set.of("START", "RESTART", "RECONFIGURE").contains(commandName)) {
+        String managedBundle = managedDependencyRuntimePlanner.readyPreparationBundle(
+            cluster.getClusterId(), clusters.getHost(hostName).getHostId());
+        if (managedBundle != null) {
+          commandParams.put(ManagedDependencyRuntimePlanner.BUNDLE_PARAMETER, managedBundle);
+        }
+      }
+
       Map<String, String> roleParams = execCmd.getRoleParams();
       if (roleParams == null) {
         roleParams = new TreeMap<>();
@@ -492,6 +511,13 @@ public class AmbariCustomCommandExecutionHelper {
 
       execCmd.setCommandParams(commandParams);
       execCmd.setRoleParams(roleParams);
+      String preparationBundle = commandParams.get(
+          ManagedDependencyRuntimePlanner.BUNDLE_PARAMETER);
+      if (preparationBundle != null) {
+        managedDependencyRuntimePlanner.decoratePersistedCommandConfigurations(
+            clusters.getHost(hostName).getHostId(), preparationBundle,
+            execCmd.getConfigurations(), execCmd.getConfigurationTypeOverrides());
+      }
 
       // skip anything else
       if (actionExecutionContext.isFutureCommand()) {
@@ -1052,6 +1078,16 @@ public class AmbariCustomCommandExecutionHelper {
    * @throws AmbariException if the action can not be validated
    */
   public void validateAction(ExecuteActionRequest actionRequest) throws AmbariException {
+    if (ManagedDependencyOperationDispatcher.isReservedCommand(actionRequest.getCommandName())) {
+      Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+      if (!(authentication instanceof org.apache.ambari.server.security.authorization.internal.InternalAuthenticationToken)
+          || !authentication.isAuthenticated()
+          || !ManagedDependencyOperationDispatcher.INTERNAL_AUTH_TOKEN
+              .equals(authentication.getCredentials())) {
+        throw new AmbariException(
+            "Managed dependency commands may only be issued by the persisted operation dispatcher");
+      }
+    }
 
     List<RequestResourceFilter> resourceFilters = actionRequest.getResourceFilters();
 
