@@ -40,3 +40,11 @@ not create a second cluster, service, host-ownership, or dependency authority.
 Focused tests are included under `mpack-authoring/src/test/python`. Validation
 will be run with the rest of the local improvement batch after the current
 implementation topics are complete.
+
+## Final R1 validation
+
+After the implementation batches, the authoring suite passed 13 tests, the
+instance-manager suite passed 23 tests, and Python syntax compilation passed
+for the changed authoring, instance-manager and common helper modules. The
+validator fix allowing numeric dotted package versions is included in the
+completion commit following this report.

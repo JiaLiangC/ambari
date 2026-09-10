@@ -14,6 +14,7 @@ import re
 API_VERSION = "mpack.ambari.apache.org/v2alpha1"
 KIND = "Mpack"
 IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
+VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
 class ManifestError(ValueError):
@@ -21,7 +22,7 @@ class ManifestError(ValueError):
 
 
 def _required(mapping, path):
-  value = mapping.get(path)
+  value = mapping.get(path.rsplit(".", 1)[-1])
   if not isinstance(value, str) or not value.strip():
     raise ManifestError("{} must be a non-empty string".format(path))
   return value
@@ -30,6 +31,11 @@ def _required(mapping, path):
 def _identifier(value, path):
   if not IDENTIFIER.fullmatch(value):
     raise ManifestError("{} contains an invalid identifier".format(path))
+
+
+def _version(value, path):
+  if not VERSION.fullmatch(value):
+    raise ManifestError("{} contains an invalid version".format(path))
 
 
 def _within(root, relative, path):
@@ -94,7 +100,7 @@ def validate_manifest(manifest, package_root=None):
   name = _required(metadata, "metadata.name")
   version = _required(metadata, "metadata.version")
   _identifier(name, "metadata.name")
-  _identifier(version, "metadata.version")
+  _version(version, "metadata.version")
 
   artifacts = spec.get("artifacts", [])
   if not isinstance(artifacts, list):
