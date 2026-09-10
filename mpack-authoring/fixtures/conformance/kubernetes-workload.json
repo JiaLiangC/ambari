@@ -1,0 +1,1 @@
+{"apiVersion":"mpack.ambari.apache.org/v2alpha1","kind":"Mpack","metadata":{"name":"http-echo-k8s","version":"0.1.0"},"spec":{"artifacts":[],"services":[{"name":"HTTP_ECHO","components":[{"name":"SERVER","profiles":[{"id":"k8s","adapter":"kubernetes.workload/v1","capabilities":["install","configure","start","stop","observe"]}]}]}]}}

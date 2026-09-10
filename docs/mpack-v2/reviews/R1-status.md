@@ -26,7 +26,7 @@ It distinguishes contract/tooling work from a real Ambari runtime integration.
 | Adoption, ownership, detach, delete and retained-data lifecycle | Partial | Existing package deletion guards exist; full R1 lifecycle protocol remains |
 | Upgrade, migration and durable package deployment history | Partial | Current catalog/upgrade wiring exists; full package deployment history remains |
 | Authoring compiler, YAML input and offline artifact export | Partial | JSON validation/lock/CLI exists; compiler/export pipeline and YAML input remain |
-| HTTP, OCI, Kubernetes, external DB, cross-cluster and AI repair fixtures | Not implemented | Listed in `reference-examples.md`; executable conformance fixtures remain |
+| HTTP, OCI, Kubernetes, external DB, cross-cluster and AI repair fixtures | Partial | Offline manifest fixtures now cover the first five inputs; executable runtime/e2e and AI repair loop remain |
 | RPM/DEB package and runtime acceptance | Partial | Source and Python coverage exists; RPM builder and live runtime evidence remain |
 
 Remote publication is intentionally absent from this matrix and the active plan;

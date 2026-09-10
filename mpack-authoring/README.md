@@ -17,3 +17,7 @@ does not fetch remote sources or execute package hooks.
 
 The machine-readable schema is under `schema/manifest-v2alpha1.json`, with a
 minimal offline fixture under `fixtures/minimal/manifest.json`.
+
+The conformance fixtures under `fixtures/conformance/` can be validated with
+`mpack_authoring.conformance.validate_fixture_directory`; they never contact a
+cluster or execute an adapter.

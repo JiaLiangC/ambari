@@ -18,11 +18,13 @@ from .adapters import (ExternalDatabaseAdapter, HostSystemdAdapter,
                        KubernetesWorkloadAdapter, OciContainerAdapter)
 from .executor import CommandSpec, DryRunExecutor, InjectedExecutor
 from .journal import OperationJournal
+from .conformance import validate_fixture_directory
 
 __all__ = ["BindingSnapshot", "CommandSpec", "ConfigValue", "DependencyAdapter", "DependencyRequirement",
            "Diagnostic", "ManifestError", "OperationRecord", "PackageRef", "PlanStep",
            "RuntimeContext", "SecretRef", "ServiceRef", "ExternalDatabaseAdapter",
            "HostSystemdAdapter", "KubernetesWorkloadAdapter", "OciContainerAdapter",
            "DryRunExecutor", "InjectedExecutor", "OperationJournal", "make_diagnostic",
+           "validate_fixture_directory",
            "build_lock", "load_manifest", "validate_manifest", "validate_with_diagnostics",
            "effective_config", "plan_operation", "write_lock"]
