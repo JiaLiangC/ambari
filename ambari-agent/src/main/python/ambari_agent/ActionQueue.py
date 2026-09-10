@@ -652,11 +652,11 @@ class ActionQueue(threading.Thread):
       start = 0
       if retry_able:
         start = int(time.time())
-      # Runtime adapter commands use the same status/cancellation path as
-      # legacy service commands, while retaining the established service and
-      # component identity in the supplied runtime context.
+      # Reject obsolete runtime parameters, including commands queued by an
+      # older server. Only the established service orchestrator executes tasks.
       runtime_result = self.runtime_adapter_executor.execute(command, cancel_event)
       if runtime_result is not None:
+        retry_able = False
         command_result = runtime_result
       else:
         command_result = self.customServiceOrchestrator.runCommand(
@@ -667,7 +667,11 @@ class ActionQueue(threading.Thread):
           retry=num_attempts > 1,
           cancel_event=cancel_event,
         )
-      if cancel_event.is_set() or self.stop_event.is_set():
+      structured = command_result.get("structuredOut", {})
+      mpack_outcome = structured.get("mpackOperation", {}) if isinstance(structured, dict) else {}
+      if mpack_outcome.get("state") == "UNKNOWN" or mpack_outcome.get("retryable") is False:
+        retry_able = False
+      if (cancel_event.is_set() or self.stop_event.is_set()) and mpack_outcome.get("state") not in ("UNKNOWN", "SUCCEEDED"):
         logger.info(f"Command with taskId = {taskId} canceled during execution")
         command_canceled = True
         break

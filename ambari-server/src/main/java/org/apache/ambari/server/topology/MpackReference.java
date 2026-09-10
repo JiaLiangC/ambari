@@ -44,10 +44,6 @@ public final class MpackReference {
   private static final String FIELD_REGISTRY_ID = "registry_id";
   private static final String FIELD_SERVICES = "services";
   private static final String FIELD_SERVICE_INSTANCES = "service_instances";
-  private static final String FIELD_OWNER = "owner";
-  private static final String FIELD_STATE = "lifecycle_state";
-  private static final String FIELD_GENERATION = "generation";
-  private static final String FIELD_RETENTION_UNTIL = "retention_until";
   private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.-]*");
 
   private final String instanceName;
@@ -56,20 +52,9 @@ public final class MpackReference {
   private final String version;
   private final Long registryId;
   private final Map<String, String> services;
-  private final String owner;
-  private final String lifecycleState;
-  private final long generation;
-  private final Long retentionUntil;
 
   public MpackReference(String instanceName, Long mpackId, String mpackName, String version,
       Long registryId, Map<String, String> services) {
-    this(instanceName, mpackId, mpackName, version, registryId, services,
-        null, MpackLifecycleState.REGISTERED.name(), 0L, null);
-  }
-
-  public MpackReference(String instanceName, Long mpackId, String mpackName, String version,
-      Long registryId, Map<String, String> services, String owner, String lifecycleState,
-      long generation, Long retentionUntil) {
     this.instanceName = requireIdentifier(instanceName, "mpack instance name");
     this.mpackId = mpackId;
     this.mpackName = requireIdentifier(mpackName, "mpack name");
@@ -78,17 +63,6 @@ public final class MpackReference {
     }
     this.version = version;
     this.registryId = registryId;
-    if (StringUtils.isNotBlank(owner)) {
-      this.owner = requireIdentifier(owner, "mpack owner");
-    } else {
-      this.owner = null;
-    }
-    this.lifecycleState = MpackLifecycleState.parse(lifecycleState).name();
-    if (generation < 0) {
-      throw new IllegalArgumentException("Mpack lifecycle generation cannot be negative");
-    }
-    this.generation = generation;
-    this.retentionUntil = retentionUntil;
 
     Map<String, String> serviceCopy = new LinkedHashMap<>();
     services.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
@@ -128,25 +102,9 @@ public final class MpackReference {
     return services;
   }
 
-  public String getOwner() {
-    return owner;
-  }
-
-  public String getLifecycleState() {
-    return lifecycleState;
-  }
-
-  public long getGeneration() {
-    return generation;
-  }
-
-  public Long getRetentionUntil() {
-    return retentionUntil;
-  }
-
   public MpackReference resolved(long resolvedMpackId, Long resolvedRegistryId) {
     return new MpackReference(instanceName, resolvedMpackId, mpackName, version,
-        resolvedRegistryId, services, owner, lifecycleState, generation, retentionUntil);
+        resolvedRegistryId, services);
   }
 
   public Map<String, String> toSettingMap() {
@@ -159,16 +117,6 @@ public final class MpackReference {
       values.put(FIELD_REGISTRY_ID, String.valueOf(registryId));
     }
     values.put(FIELD_SERVICES, encodeServices(services));
-    if (owner != null) {
-      values.put(FIELD_OWNER, owner);
-    }
-    if (!isDefaultLifecycle()) {
-      values.put(FIELD_STATE, lifecycleState);
-      values.put(FIELD_GENERATION, String.valueOf(generation));
-      if (retentionUntil != null) {
-        values.put(FIELD_RETENTION_UNTIL, String.valueOf(retentionUntil));
-      }
-    }
     return values;
   }
 
@@ -185,21 +133,16 @@ public final class MpackReference {
     services.forEach((name, type) -> serviceInstances.add(
         Map.of("name", name, "type", type)));
     values.put(FIELD_SERVICE_INSTANCES, serviceInstances);
-    if (owner != null) {
-      values.put(FIELD_OWNER, owner);
-    }
-    if (!isDefaultLifecycle()) {
-      values.put(FIELD_STATE, lifecycleState);
-      values.put(FIELD_GENERATION, generation);
-      if (retentionUntil != null) {
-        values.put(FIELD_RETENTION_UNTIL, retentionUntil);
-      }
-    }
     return values;
   }
 
   @SuppressWarnings("unchecked")
   public static MpackReference fromApiMap(Map<String, Object> values) {
+    for (String field : List.of("owner", "lifecycle_state", "generation", "retention_until")) {
+      if (values.containsKey(field)) {
+        throw new IllegalArgumentException("Blueprint package selection cannot set deployment lifecycle state");
+      }
+    }
     String instanceName = value(values.get(FIELD_INSTANCE_NAME));
     String mpackName = value(values.get(FIELD_MPACK_NAME));
     if (StringUtils.isBlank(mpackName)) {
@@ -230,18 +173,14 @@ public final class MpackReference {
       }
     }
     return new MpackReference(instanceName, number(values.get(FIELD_MPACK_ID)), mpackName,
-        value(values.get(FIELD_VERSION)), number(values.get(FIELD_REGISTRY_ID)), services,
-        value(values.get(FIELD_OWNER)), value(values.get(FIELD_STATE)),
-        longValue(values.get(FIELD_GENERATION), 0L), number(values.get(FIELD_RETENTION_UNTIL)));
+        value(values.get(FIELD_VERSION)), number(values.get(FIELD_REGISTRY_ID)), services);
   }
 
   public static MpackReference fromSettingMap(Map<String, String> values) {
     return new MpackReference(values.get(FIELD_INSTANCE_NAME),
         number(values.get(FIELD_MPACK_ID)), values.get(FIELD_MPACK_NAME),
         values.get(FIELD_VERSION), number(values.get(FIELD_REGISTRY_ID)),
-        decodeServices(values.get(FIELD_SERVICES)), values.get(FIELD_OWNER),
-        values.get(FIELD_STATE), longValue(values.get(FIELD_GENERATION), 0L),
-        number(values.get(FIELD_RETENTION_UNTIL)));
+        decodeServices(values.get(FIELD_SERVICES)));
   }
 
   public static List<MpackReference> fromSetting(Setting setting) {
@@ -287,50 +226,6 @@ public final class MpackReference {
     return StringUtils.isBlank(text) ? null : Long.valueOf(text);
   }
 
-  private static long longValue(Object value, long defaultValue) {
-    String text = value(value);
-    return StringUtils.isBlank(text) ? defaultValue : Long.parseLong(text);
-  }
-
-  private boolean isDefaultLifecycle() {
-    return owner == null && MpackLifecycleState.REGISTERED.name().equals(lifecycleState)
-        && generation == 0L && retentionUntil == null;
-  }
-
-  public MpackReference adopt(String newOwner) {
-    return transition(MpackLifecycleState.ADOPTED, newOwner, null);
-  }
-
-  public MpackReference detach() {
-    return transition(MpackLifecycleState.DETACHED, null, retentionUntil);
-  }
-
-  public MpackReference requestDelete(long retainUntil) {
-    if (retainUntil < 0) {
-      throw new IllegalArgumentException("Retention timestamp cannot be negative");
-    }
-    return transition(MpackLifecycleState.DELETE_PENDING, owner, retainUntil);
-  }
-
-  public MpackReference beginUpgrade(String targetVersion) {
-    if (StringUtils.isBlank(targetVersion)) {
-      throw new IllegalArgumentException("Upgrade target version is required");
-    }
-    MpackReference next = transition(MpackLifecycleState.UPGRADE_PENDING, owner, retentionUntil);
-    return new MpackReference(instanceName, mpackId, mpackName, targetVersion, registryId,
-        services, next.owner, next.lifecycleState, next.generation, next.retentionUntil);
-  }
-
-  private MpackReference transition(MpackLifecycleState next, String nextOwner,
-      Long nextRetentionUntil) {
-    MpackLifecycleState current = MpackLifecycleState.parse(lifecycleState);
-    if (!current.canTransitionTo(next)) {
-      throw new IllegalStateException("Invalid mpack lifecycle transition " + current + " -> " + next);
-    }
-    return new MpackReference(instanceName, mpackId, mpackName, version, registryId, services,
-        nextOwner, next.name(), generation + 1, nextRetentionUntil);
-  }
-
   private static String requireIdentifier(String value, String label) {
     if (StringUtils.isBlank(value) || !IDENTIFIER.matcher(value).matches()) {
       throw new IllegalArgumentException("Invalid " + label + ": " + value);
@@ -352,16 +247,11 @@ public final class MpackReference {
         && Objects.equals(mpackName, that.mpackName)
         && Objects.equals(version, that.version)
         && Objects.equals(registryId, that.registryId)
-        && Objects.equals(services, that.services)
-        && Objects.equals(owner, that.owner)
-        && Objects.equals(lifecycleState, that.lifecycleState)
-        && generation == that.generation
-        && Objects.equals(retentionUntil, that.retentionUntil);
+        && Objects.equals(services, that.services);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(instanceName, mpackId, mpackName, version, registryId, services, owner,
-        lifecycleState, generation, retentionUntil);
+    return Objects.hash(instanceName, mpackId, mpackName, version, registryId, services);
   }
 }

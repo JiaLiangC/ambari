@@ -83,6 +83,9 @@ public class BlueprintDAO {
   @Transactional
   public void refresh(BlueprintEntity blueprintEntity) {
     ensureStackIdSet(blueprintEntity);
+    if (blueprintEntity.getStack() != null && blueprintEntity.getStack().getMpackId() != null) {
+      stackDAO.lockMpackReference(blueprintEntity.getStack());
+    }
     entityManagerProvider.get().refresh(blueprintEntity);
   }
 
@@ -94,6 +97,9 @@ public class BlueprintDAO {
   @Transactional
   public void create(BlueprintEntity blueprintEntity) {
     ensureStackIdSet(blueprintEntity);
+    if (blueprintEntity.getStack() != null && blueprintEntity.getStack().getMpackId() != null) {
+      stackDAO.lockMpackReference(blueprintEntity.getStack());
+    }
     entityManagerProvider.get().persist(blueprintEntity);
   }
 
@@ -106,6 +112,9 @@ public class BlueprintDAO {
   @Transactional
   public BlueprintEntity merge(BlueprintEntity blueprintEntity) {
     ensureStackIdSet(blueprintEntity);
+    if (blueprintEntity.getStack() != null && blueprintEntity.getStack().getMpackId() != null) {
+      stackDAO.lockMpackReference(blueprintEntity.getStack());
+    }
     return entityManagerProvider.get().merge(blueprintEntity);
   }
 
@@ -117,6 +126,9 @@ public class BlueprintDAO {
   @Transactional
   public void remove(BlueprintEntity blueprintEntity) {
     ensureStackIdSet(blueprintEntity);
+    if (blueprintEntity.getStack() != null && blueprintEntity.getStack().getMpackId() != null) {
+      stackDAO.lockMpackReference(blueprintEntity.getStack());
+    }
     entityManagerProvider.get().remove(merge(blueprintEntity));
   }
 

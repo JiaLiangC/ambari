@@ -311,3 +311,13 @@ or fault-injection cluster.
 
 The automated results above are static/local evidence only. They do not replace
 any `RUNTIME_PENDING` row in the live-cluster acceptance matrix.
+
+## Mpack audit alignment (2026-09-10)
+
+The Classic catalog deletion flow is preserved. React retains the same real catalog
+API; the Server now commits reference-protected catalog deletion before recoverable
+filesystem cleanup. The disconnected React-only package runtime route/client was
+removed because its server API and service-target authorization do not exist.
+This is not a claim of generic runtime parity. Current Mpack implementation and
+verification are recorded in `docs/mpack-v2/status.md`; historical results above
+are not reclassified as acceptance of these changes.

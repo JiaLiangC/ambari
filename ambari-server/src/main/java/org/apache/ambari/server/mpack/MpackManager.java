@@ -37,8 +37,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -48,10 +51,14 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
 import jakarta.xml.bind.JAXBContext;
 import jakarta.xml.bind.JAXBException;
 import jakarta.xml.bind.Marshaller;
 
+import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.controller.MpackRequest;
 import org.apache.ambari.server.controller.MpackResponse;
 import org.apache.ambari.server.controller.spi.ResourceAlreadyExistsException;
@@ -78,6 +85,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
+import com.google.inject.Inject;
 import com.google.inject.assistedinject.Assisted;
 import com.google.inject.assistedinject.AssistedInject;
 
@@ -109,6 +117,10 @@ public class MpackManager {
   private final StackDAO stackDAO;
   private final File stackRoot;
   private final Object registrationLock = new Object();
+  @Inject
+  private Configuration configuration;
+  private static final String REGISTRATION_PENDING = ".ambari-registration-pending";
+  private static final String DELETION_PENDING = ".ambari-deletion-pending";
 
   @AssistedInject
   public MpackManager(
@@ -151,6 +163,7 @@ public class MpackManager {
         try {
           List<MpackEntity> entities = mpackDAO.findByNameVersion(mpackName, mpackVersion);
           if (entities.isEmpty()) {
+            quarantineIncompleteRegistration(versionDirectory.toPath());
             continue;
           }
           Mpack existingMpack = readMpackMetadata(versionDirectory.toPath().resolve(MPACK_METADATA));
@@ -162,11 +175,26 @@ public class MpackManager {
             continue;
           }
           MpackEntity entity = entities.get(0);
+          if (!java.util.Objects.equals(entity.getContentDigest(), existingMpack.getPackageDigest())) {
+            throw new IOException("Package digest differs from catalog authority");
+          }
           existingMpack.setResourceId(entity.getId());
           existingMpack.setMpackUri(entity.getMpackUri());
           existingMpack.setRegistryId(entity.getRegistryId());
+          // A surviving DB row means the deletion transaction did not commit.
+          Files.deleteIfExists(versionDirectory.toPath().resolve(DELETION_PENDING));
+          if (Files.exists(versionDirectory.toPath().resolve(REGISTRATION_PENDING))) {
+            StackEntity stack = stackDAO.find(mpackName, mpackVersion);
+            if (stack == null) {
+              populateStackDB(existingMpack);
+            } else if (!entity.getId().equals(stack.getMpackId())) {
+              throw new IOException("Stack identity belongs to another package");
+            }
+            ensureStackProjection(existingMpack, versionDirectory.toPath());
+            Files.delete(versionDirectory.toPath().resolve(REGISTRATION_PENDING));
+          }
           mpackMap.put(entity.getId(), existingMpack);
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException | ResourceAlreadyExistsException | RuntimeException e) {
           LOG.error("Unable to load registered mpack {}-{} from {}", mpackName, mpackVersion,
               versionDirectory, e);
         }
@@ -194,12 +222,10 @@ public class MpackManager {
     if (request == null) {
       throw new IllegalArgumentException("Mpack request must not be null");
     }
-    synchronized (registrationLock) {
-      return registerMpackLocked(request);
-    }
+    return registerMpackPrepared(request);
   }
 
-  private MpackResponse registerMpackLocked(MpackRequest request)
+  private MpackResponse registerMpackPrepared(MpackRequest request)
       throws IOException, ResourceAlreadyExistsException {
     URI metadataUri = parseMpackUri(request.getMpackUri());
     Path stagingDirectory = mpackStaging.toPath().toAbsolutePath().normalize();
@@ -227,44 +253,83 @@ public class MpackManager {
       mpack.setMpackUri(metadataUri.toString());
 
       Path finalDirectory = finalMpackDirectory(mpack);
-      assertMpackAvailable(mpack, finalDirectory);
       URI archiveUri = resolveDefinitionUri(metadataUri, mpack.getDefinition());
       Path archivePath = requestDirectory.resolve("mpack-definition.tar.gz");
       download(archiveUri, archivePath, MAX_ARCHIVE_BYTES);
+      verifyAuthoringArchive(mpack, archivePath);
       Path preparedDirectory = prepareMpack(requestDirectory, archivePath, metadataPath, mpack);
 
-      Files.createDirectories(finalDirectory.getParent());
-      moveDirectory(preparedDirectory, finalDirectory);
-      publishedDirectory = finalDirectory;
-      stackLink = createStackProjection(mpack, finalDirectory);
-
-      mpackResourceId = populateDB(mpack);
-      if (mpackResourceId == null) {
-        throw duplicateMpack(mpack);
+      // Recovery evidence travels atomically with the prepared definition.
+      // The existing mpacks row remains the only registration authority.
+      try (FileOutputStream marker = new FileOutputStream(
+          preparedDirectory.resolve(REGISTRATION_PENDING).toFile())) {
+        marker.write("registration/v1\n".getBytes(StandardCharsets.UTF_8));
+        marker.getFD().sync();
       }
-      mpack.setResourceId(mpackResourceId);
-      populateStackDB(mpack);
-      stackPersisted = true;
-      mpackMap.put(mpackResourceId, mpack);
-      return new MpackResponse(mpack);
-    } catch (IOException | IllegalArgumentException | ResourceAlreadyExistsException e) {
-      rollbackRegistration(mpackResourceId, stackPersisted, stackLink, publishedDirectory);
-      throw e;
-    } catch (RuntimeException e) {
-      rollbackRegistration(mpackResourceId, stackPersisted, stackLink, publishedDirectory);
-      throw e;
+      synchronized (registrationLock) {
+        Mpack existing = reconcileOrRequireAvailable(mpack, finalDirectory);
+        if (existing != null) {
+          return new MpackResponse(existing);
+        }
+        try {
+          Files.createDirectories(finalDirectory.getParent());
+          moveDirectory(preparedDirectory, finalDirectory);
+          publishedDirectory = finalDirectory;
+          stackLink = createStackProjection(mpack, finalDirectory);
+          mpackResourceId = populateDB(mpack);
+          if (mpackResourceId == null) {
+            throw duplicateMpack(mpack);
+          }
+          mpack.setResourceId(mpackResourceId);
+          populateStackDB(mpack);
+          stackPersisted = true;
+          Files.delete(finalDirectory.resolve(REGISTRATION_PENDING));
+          mpackMap.put(mpackResourceId, mpack);
+          return new MpackResponse(mpack);
+        } catch (IOException | ResourceAlreadyExistsException | RuntimeException error) {
+          rollbackRegistration(mpackResourceId, stackPersisted, stackLink, publishedDirectory);
+          throw error;
+        }
+      }
     } finally {
       FileUtils.deleteQuietly(requestDirectory.toFile());
     }
   }
 
-  private void assertMpackAvailable(Mpack mpack, Path finalDirectory)
-      throws ResourceAlreadyExistsException {
-    if (!mpackDAO.findByNameVersion(mpack.getName(), mpack.getVersion()).isEmpty()
-        || stackDAO.find(mpack.getName(), mpack.getVersion()) != null
+  private Mpack reconcileOrRequireAvailable(Mpack mpack, Path finalDirectory)
+      throws ResourceAlreadyExistsException, IOException {
+    List<MpackEntity> entities = mpackDAO.findByNameVersion(mpack.getName(), mpack.getVersion());
+    if (!entities.isEmpty()) {
+      MpackEntity entity = entities.get(0);
+      if (mpack.getPackageDigest() == null || !mpack.getPackageDigest().equals(entity.getContentDigest())) {
+        throw duplicateMpack(mpack);
+      }
+      Mpack existing = readMpackMetadata(finalDirectory.resolve(MPACK_METADATA));
+      if (!mpack.getPackageDigest().equals(existing.getPackageDigest())
+          || !mpack.getName().equals(existing.getName()) || !mpack.getVersion().equals(existing.getVersion())) {
+        throw new IOException("Existing definition does not match catalog authority");
+      }
+      existing.setResourceId(entity.getId());
+      existing.setMpackUri(entity.getMpackUri());
+      existing.setRegistryId(entity.getRegistryId());
+      StackEntity stack = stackDAO.find(existing.getName(), existing.getVersion());
+      if (stack == null) {
+        populateStackDB(existing);
+      } else if (!entity.getId().equals(stack.getMpackId())) {
+        throw new IOException("Stack identity belongs to another package");
+      }
+      ensureStackProjection(existing, finalDirectory);
+      Files.deleteIfExists(finalDirectory.resolve(REGISTRATION_PENDING));
+      Files.deleteIfExists(finalDirectory.resolve(DELETION_PENDING));
+      mpackMap.put(entity.getId(), existing);
+      return existing;
+    }
+    quarantineIncompleteRegistration(finalDirectory);
+    if (stackDAO.find(mpack.getName(), mpack.getVersion()) != null
         || Files.exists(finalDirectory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
       throw duplicateMpack(mpack);
     }
+    return null;
   }
 
   private ResourceAlreadyExistsException duplicateMpack(Mpack mpack) {
@@ -355,6 +420,57 @@ public class MpackManager {
       return parsed;
     } catch (JsonParseException e) {
       throw new IOException("Invalid " + MPACK_METADATA + " at " + metadataPath, e);
+    }
+  }
+
+  /** Authenticate generated executable definitions before unpacking or publishing. */
+  protected void verifyAuthoringArchive(Mpack mpack, Path archive) throws IOException {
+    if (mpack.getAuthoringFormat() == null) {
+      return; // Existing legacy packages retain their established admin trust boundary.
+    }
+    if (!"mpack.ambari.apache.org/host-service/v1".equals(mpack.getAuthoringFormat())
+        || !"HMAC-SHA256".equals(mpack.getSignatureAlgorithm())
+        || mpack.getPackageDigest() == null || !mpack.getPackageDigest().matches("[a-f0-9]{64}")
+        || mpack.getManifestDigest() == null || !mpack.getManifestDigest().matches("[a-f0-9]{64}")
+        || mpack.getDefinitionSha256() == null || !mpack.getDefinitionSha256().matches("[a-f0-9]{64}")
+        || mpack.getSignature() == null || !mpack.getSignature().matches("[a-f0-9]{64}")) {
+      throw new IOException("Unsupported or unsigned authoring package");
+    }
+    String keyFile = configuration == null ? null : configuration.getProperty("mpack.signing.key.file");
+    if (StringUtils.isBlank(keyFile)) {
+      throw new IOException("Host-service import requires mpack.signing.key.file");
+    }
+    Path keyPath = Paths.get(keyFile);
+    if (!Files.isRegularFile(keyPath, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+        || Files.size(keyPath) == 0 || Files.size(keyPath) > 4096) {
+      throw new IOException("Invalid mpack signing key file");
+    }
+    byte[] key = Files.readAllBytes(keyPath);
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      try (InputStream stream = Files.newInputStream(archive)) {
+        byte[] buffer = new byte[64 * 1024];
+        int count;
+        while ((count = stream.read(buffer)) != -1) {
+          digest.update(buffer, 0, count);
+        }
+      }
+      if (!MessageDigest.isEqual(digest.digest(), HexFormat.of().parseHex(mpack.getDefinitionSha256()))) {
+        throw new IOException("Authoring definition digest mismatch");
+      }
+      String envelope = "mpack-legacy/v1\n" + mpack.getName() + "\n" + mpack.getVersion() + "\n"
+          + mpack.getDefinitionSha256() + "\n" + mpack.getManifestDigest() + "\n"
+          + mpack.getPackageDigest() + "\n";
+      Mac mac = Mac.getInstance("HmacSHA256");
+      mac.init(new SecretKeySpec(key, "HmacSHA256"));
+      if (!MessageDigest.isEqual(mac.doFinal(envelope.getBytes(StandardCharsets.UTF_8)),
+          HexFormat.of().parseHex(mpack.getSignature()))) {
+        throw new IOException("Authoring package authentication failed");
+      }
+    } catch (GeneralSecurityException error) {
+      throw new IOException("Unable to authenticate authoring package", error);
+    } finally {
+      java.util.Arrays.fill(key, (byte) 0);
     }
   }
 
@@ -484,11 +600,12 @@ public class MpackManager {
   private Path prepareMpack(Path requestDirectory, Path archivePath, Path metadataPath, Mpack mpack)
       throws IOException {
     Path extractionDirectory = requestDirectory.resolve("definition");
-    extractTar(archivePath, extractionDirectory);
+    ExpansionBudget budget = new ExpansionBudget();
+    extractTar(archivePath, extractionDirectory, budget);
     Path packageRoot = locateArchiveRoot(extractionDirectory, mpack.getDefinition());
     Files.copy(metadataPath, packageRoot.resolve(MPACK_METADATA), StandardCopyOption.REPLACE_EXISTING);
     loadRepositoryMetadata(mpack, packageRoot);
-    createServicesDirectory(requestDirectory, packageRoot, mpack);
+    createServicesDirectory(requestDirectory, packageRoot, mpack, budget);
     Path metainfo = packageRoot.resolve("metainfo.xml");
     if (!Files.exists(metainfo, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
       generateMetainfo(metainfo.toFile(), mpack);
@@ -538,18 +655,25 @@ public class MpackManager {
    * Extracts a gzip-compressed tar archive while rejecting links, special
    * entries, traversal and excessive expansion.
    */
+  private static final class ExpansionBudget {
+    private long bytes;
+    private int entries;
+  }
+
   protected void extractTar(Path tarPath, Path destination) throws IOException {
+    extractTar(tarPath, destination, new ExpansionBudget());
+  }
+
+  private void extractTar(Path tarPath, Path destination, ExpansionBudget budget) throws IOException {
     Path normalizedDestination = destination.toAbsolutePath().normalize();
     Files.createDirectories(normalizedDestination);
-    long expandedBytes = 0;
-    int entries = 0;
 
     try (InputStream fileInput = new BufferedInputStream(new FileInputStream(tarPath.toFile()));
         GzipCompressorInputStream gzipInput = new GzipCompressorInputStream(fileInput);
         TarArchiveInputStream tarInput = new TarArchiveInputStream(gzipInput)) {
       TarArchiveEntry entry;
       while ((entry = tarInput.getNextTarEntry()) != null) {
-        if (++entries > MAX_ARCHIVE_ENTRIES) {
+        if (++budget.entries > MAX_ARCHIVE_ENTRIES) {
           throw new IOException("Archive contains too many entries");
         }
         if (entry.isSymbolicLink() || entry.isLink() || (!entry.isDirectory() && !entry.isFile())) {
@@ -576,7 +700,7 @@ public class MpackManager {
           Files.createDirectories(outputPath.getParent());
           try (OutputStream output = new BufferedOutputStream(Files.newOutputStream(outputPath,
               StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))) {
-            expandedBytes += copyLimited(tarInput, output, MAX_EXPANDED_BYTES - expandedBytes);
+            budget.bytes += copyLimited(tarInput, output, MAX_EXPANDED_BYTES - budget.bytes);
           }
         }
       }
@@ -609,7 +733,8 @@ public class MpackManager {
     throw new IllegalArgumentException("Mpack definitions must be .tar.gz or .tgz archives: " + fileName);
   }
 
-  private void createServicesDirectory(Path requestDirectory, Path packageRoot, Mpack mpack) throws IOException {
+  private void createServicesDirectory(Path requestDirectory, Path packageRoot, Mpack mpack,
+      ExpansionBudget budget) throws IOException {
     Path servicesDirectory = packageRoot.resolve(MODULES_DIRECTORY);
     Files.createDirectories(servicesDirectory);
     int moduleIndex = 0;
@@ -622,8 +747,12 @@ public class MpackManager {
       }
 
       Path moduleExtraction = requestDirectory.resolve("module-" + moduleIndex++);
-      extractTar(moduleArchive, moduleExtraction);
+      extractTar(moduleArchive, moduleExtraction, budget);
       Path extractedModuleRoot = locateArchiveRoot(moduleExtraction, module.getDefinition());
+      if (Files.exists(extractedModuleRoot.resolve("package/manifest-service.json"))
+          && mpack.getAuthoringFormat() == null) {
+        throw new IOException("Declarative host definitions require authenticated authoring metadata");
+      }
       moveDirectory(extractedModuleRoot, servicesDirectory.resolve(module.getName()));
     }
   }
@@ -687,13 +816,15 @@ public class MpackManager {
         try {
           stackDAO.removeByMpack(mpackId);
         } catch (RuntimeException e) {
-          LOG.error("Unable to roll back stack metadata for mpack {}", mpackId, e);
+          LOG.error("Unable to roll back stack metadata for mpack {}; retaining files for recovery", mpackId, e);
+          return;
         }
       }
       try {
         mpackDAO.removeById(mpackId);
       } catch (RuntimeException e) {
-        LOG.error("Unable to roll back mpack metadata for mpack {}", mpackId, e);
+        LOG.error("Unable to roll back mpack metadata for mpack {}; retaining files for recovery", mpackId, e);
+        return;
       }
       mpackMap.remove(mpackId);
     }
@@ -762,6 +893,7 @@ public class MpackManager {
     entity.setMpackVersion(mpack.getVersion());
     entity.setMpackUri(mpack.getMpackUri());
     entity.setRegistryId(mpack.getRegistryId());
+    entity.setContentDigest(mpack.getPackageDigest());
     return mpackDAO.create(entity);
   }
 
@@ -783,47 +915,70 @@ public class MpackManager {
   }
 
   /**
-   * Removes the filesystem projection for an mpack. Persistence is removed by
-   * the authorized resource-provider transaction after this method succeeds.
+   * Commit deletion under existing DB foreign keys before changing projections.
+   * A local intent marker allows restart reconciliation after a lost response;
+   * quarantined definitions are retained and are never treated as runtime data.
    */
-  public boolean removeMpack(MpackEntity mpackEntity, StackEntity stackEntity) throws IOException {
-    if (mpackEntity == null) {
+  public boolean removeMpack(MpackEntity entity, StackEntity stack) throws IOException {
+    if (entity == null) {
       return false;
     }
-    validateIdentifier(mpackEntity.getMpackName(), "mpack name");
-    validateIdentifier(mpackEntity.getMpackVersion(), "mpack version");
-    Path mpackDirectory = mpackStaging.toPath().toAbsolutePath().normalize()
-        .resolve(mpackEntity.getMpackName()).resolve(mpackEntity.getMpackVersion());
-
-    boolean stackDelete = false;
-    if (stackEntity != null) {
-      validateIdentifier(stackEntity.getStackName(), "stack name");
-      validateIdentifier(stackEntity.getStackVersion(), "stack version");
-      Path stackPath = stackRoot.toPath().toAbsolutePath().normalize()
-          .resolve(stackEntity.getStackName()).resolve(stackEntity.getStackVersion());
-      if (Files.exists(stackPath, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-        if (!Files.isSymbolicLink(stackPath)) {
-          throw new IOException("Refusing to remove non-symlink stack projection " + stackPath);
+    synchronized (registrationLock) {
+      validateIdentifier(entity.getMpackName(), "mpack name");
+      validateIdentifier(entity.getMpackVersion(), "mpack version");
+      Path directory = mpackStaging.toPath().toAbsolutePath().normalize()
+          .resolve(entity.getMpackName()).resolve(entity.getMpackVersion());
+      if (Files.isDirectory(directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+        try (FileOutputStream marker = new FileOutputStream(directory.resolve(DELETION_PENDING).toFile())) {
+          marker.write("deletion/v1\n".getBytes(StandardCharsets.UTF_8));
+          marker.getFD().sync();
         }
-        Path linkTarget = Files.readSymbolicLink(stackPath);
-        Path resolvedTarget = stackPath.getParent().resolve(linkTarget).toAbsolutePath().normalize();
-        if (!resolvedTarget.equals(mpackDirectory)) {
-          throw new IOException("Refusing to remove stack projection owned by another mpack " + stackPath);
-        }
-        Files.delete(stackPath);
       }
-      deleteDirectoryIfEmpty(stackPath.getParent());
-      stackDelete = true;
+      try {
+        mpackDAO.removeCatalog(entity.getId());
+      } catch (RuntimeException error) {
+        throw new IOException("Mpack catalog deletion failed; definitions are retained", error);
+      }
+      mpackMap.remove(entity.getId());
+      try {
+        if (Files.isDirectory(directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+          quarantineIncompleteRegistration(directory);
+        }
+      } catch (IOException error) {
+        LOG.warn("Catalog deletion committed; filesystem cleanup will resume on restart", error);
+      }
+      return stack != null;
     }
+  }
 
-    FileUtils.deleteDirectory(mpackDirectory.toFile());
-    deleteDirectoryIfEmpty(mpackDirectory.getParent());
+  private void ensureStackProjection(Mpack mpack, Path directory) throws IOException {
+    Path link = stackRoot.toPath().toAbsolutePath().normalize()
+        .resolve(mpack.getName()).resolve(mpack.getVersion());
+    if (!Files.exists(link, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+      createStackProjection(mpack, directory);
+    } else if (!Files.isSymbolicLink(link)
+        || !link.getParent().resolve(Files.readSymbolicLink(link)).normalize().equals(directory.toAbsolutePath().normalize())) {
+      throw new IOException("Stack projection is owned by another package");
+    }
+  }
 
-    String legacyArchiveName = mpackEntity.getMpackName() + "-" + mpackEntity.getMpackVersion() + ".tar.gz";
-    Path legacyArchive = mpackStaging.toPath().toAbsolutePath().normalize()
-        .resolve(MPACK_TAR_LOCATION).resolve(legacyArchiveName);
-    Files.deleteIfExists(legacyArchive);
-    mpackMap.remove(mpackEntity.getId());
-    return stackDelete;
+  private void quarantineIncompleteRegistration(Path directory) throws IOException {
+    if (!Files.isRegularFile(directory.resolve(REGISTRATION_PENDING), java.nio.file.LinkOption.NOFOLLOW_LINKS)
+        && !Files.isRegularFile(directory.resolve(DELETION_PENDING), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+      LOG.warn("Unregistered mpack directory retained for operator review: {}", directory);
+      return;
+    }
+    Path link = stackRoot.toPath().toAbsolutePath().normalize()
+        .resolve(directory.getParent().getFileName()).resolve(directory.getFileName());
+    if (Files.isSymbolicLink(link)
+        && link.getParent().resolve(Files.readSymbolicLink(link)).normalize().equals(directory.toAbsolutePath().normalize())) {
+      Files.delete(link);
+    } else if (Files.exists(link, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+      throw new IOException("Cannot recover registration with a conflicting stack projection");
+    }
+    Path quarantine = mpackStaging.toPath().resolve(MPACK_TAR_LOCATION).resolve("quarantine");
+    Files.createDirectories(quarantine);
+    moveDirectory(directory, quarantine.resolve(UUID.randomUUID().toString()));
+    LOG.warn("Incomplete registration retained in quarantine; original name can be registered again");
   }
 }

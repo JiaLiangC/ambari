@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 10009
+    },
+    "data_dir": {
+      "type": "string",
+      "x-resource": "data"
+    },
+    "credential": {
+      "type": "object",
+      "properties": {
+        "secretRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "secretRef"
+      ],
+      "additionalProperties": false,
+      "x-sensitive": true
+    }
+  },
+  "required": [
+    "port"
+  ]
+}

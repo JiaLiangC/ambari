@@ -15,170 +15,148 @@
    limitations under the License.
 --->
 
-# Working Mpack Contracts
+# Contracts and authority
 
-Status: implementation specification for the authorized work. Shared-platform
-invariants are mandatory. Names of new additive fields/interfaces are working
-choices that can be refined compatibly with tests. New contracts are implemented
-in the improvement phase unless required for the integration to function safely.
+The current executable subset is defined below. Future runtime contracts are
+requirements, not implementation claims; see [status](status.md). Keep these rules
+aligned with executable schema and actual consumers.
 
-## 1. Identity and Ownership
+## Identity and ownership
 
-| Reference | Required content | Rule |
-| --- | --- | --- |
-| ServiceRef | clusterId, serviceName | Existing authoritative service identity |
-| ComponentRef | ServiceRef, componentName, hostId where relevant | Preserve current Agent membership and host/component identity |
-| PackageRef | name, version, verified digest | Immutable published content |
-| PackageDeploymentRef | additive deployment ID, owning clusterId, ServiceRef list | Groups package metadata without replacing service primary keys |
-| NativeResourceRef | adapter kind, target binding, provider-native ID | Not a new Ambari Cluster/service identity |
-| BindingRef | existing binding UUID and applicable snapshot version | Preserve incarnation, provider identity and detach/fence history |
-| OperationRef | operation ID, expected generation, associated Ambari request/tasks | One actual execution history, not parallel competing state |
+`ServiceRef = (cluster_id, service_name)` uses existing Ambari identity, permissions,
+routes and host membership. Package name/version/content digest identifies immutable
+published content, not a service or data version. The desired repository/Stack
+relationship selects definitions for actual tasks. Blueprint package settings cannot
+select an unrelated package or assert live ownership/generation/lifecycle state.
 
-Names are presentation/routing data where the platform allows renaming. Durable
-cluster ownership uses its numeric ID. A recreated resource with the same name
-does not inherit an old binding's data or in-flight task authority.
+For host-service/v1 the server allocates `clusterservices.mpack_target_incarnation`
+once under the existing service row lock. A native target is scoped by ServiceRef,
+component, Agent host and incarnation. Service deletion/recreation produces a new
+incarnation and does not adopt old unit/data paths. This metadata is not a generated
+service ID. No PackageDeploymentRef database is needed by the current consumers.
+Same-cluster service aliases and independent multi-package composition are unsupported.
 
-New package-deployment persistence is additive. Do not migrate `clusterservices`
-keys or the shared dependency foreign keys. Same-cluster same-type independent
-services remain unsupported until separately agreed by the multi-cluster platform.
-Native replicas inside one supported service remain adapter-owned resources.
+Managed native unit/config/artifact files belong to this target; persistent directories
+are retained. Shared host users/packages/ports are declared prerequisites, not exclusive
+per-service ownership. Shared dependency provider/consumer ownership is controlled by
+the external platform, never by a manifest or local Agent receipt.
 
-## 2. Package Import and Availability
+## Authoring, offline content and trust
 
-Import input: a local package or a supported source reference, expected identity
-and digest where supplied, and the authenticated actor. Legacy V2 registration
-still resolves its manifest and definition archive through a compatibility reader.
+All source entry points use the canonical compiler, JSON Schema and semantic checks.
+Manifest digest identifies source; package digest also includes locked declared file
+content and dependency requirements. Only declared artifacts/schema/templates enter
+an export. Reject symlinks, traversal, input/output collision, credential-bearing URLs,
+unknown fields and unsupported capability requests. URL sources require SHA-256 and
+must be vendored before offline export. A dependency requirements lock is not an
+approved binding snapshot. OS repositories, runtimes and provider assets are separate.
 
-Stages: acquire -> validate contents -> resolve metadata -> stage -> publish
-availability -> reconcile durable metadata. Registration does not deploy services.
+Source ZIPs have fixed archive metadata, exact inventory and digest verification;
+optional HMAC sidecars are local tooling authentication. Deployable host exports use
+`mpack.ambari.apache.org/host-service/v1`: deterministic nested legacy module tarballs
+and metadata with definition SHA-256, manifest/package digests and HMAC-SHA256.
+The authenticated envelope is `mpack-legacy/v1`, name, version, definition digest,
+manifest digest, package digest, each separated and terminated by LF. The Server
+reads external `mpack.signing.key.file` (1..4096 bytes), verifies before import and
+persists package digest. The signing key must never be an exported input. Neither
+build nor registration performs native installation. Established legacy package
+administration keeps its existing trust boundary; generated descriptor content cannot
+silently downgrade to unsigned host-service import.
 
-Required results: package identity, supported services/profiles, validation issues,
-availability state and operation/reference identifiers. A repeated identical
-request is deterministic. Same name/version with different content is a conflict.
+## Host execution and configuration
 
-Validation covers missing files, unknown schema versions, archive containment,
-duplicate/conflicting paths, links, module references, identity mismatch and
-supported resource limits. Request-isolated staging owns its cleanup. A failure
-must not remove another active or previously published package.
+Generated XML selects one shared `ManifestService`, not package-specific lifecycle
+scripts. Executable operations are install/configure/start/stop/restart plus status/local
+service check. Native target discovery is runtime evidence with scope, time and TTL;
+static profile capability declarations are authoring constraints only. A new runtime
+must define its native identity, evidence, unsupported capabilities and recovery.
 
-## 3. Runtime Adapter
+Configuration projects closed scalar schemas into existing Ambari config types.
+Defaults/types/ranges/enums/lengths are enforced again before materialization. Templates
+allow declared scalar substitutions only. `x-resource` fields inject private data
+paths; users cannot override them. `configurationRef` and `directoryRef` are typed
+arguments, not arbitrary request argv. Host-service/v1 has no execution secret resolver
+or nested configuration support. Configuration changes require restart semantics;
+none/reload/migration effects are rejected. Secret source defaults use references,
+and unsupported execution is rejected before mutation. No secrets or raw
+native stderr should enter persisted plans, diagnostics or task output.
 
-An adapter receives a context with the authoritative Cluster/service/component
-reference, actor/policy context, package digest, resolved profile, effective config
-generation, approved dependency references, artifact handles and operation ID.
-It gets scoped credential handles rather than persisted plaintext secrets.
+Desired configuration/tags remain authoritative in Ambari. The Agent stages a complete
+local generation and atomically switches its current pointer; the receipt separately
+records published and verified running generations. A new config START restarts an
+active service. Failed/partly applied work remains observable and recoverable; there
+is no cross-host atomic config transaction. Changing software digest is not ordinary
+configuration and is rejected without a defined upgrade contract.
 
-| Operation | Input | Output / behavior |
-| --- | --- | --- |
-| describe | Target facts and profile contract version | Supported capabilities and explicit limitations |
-| validate | Desired spec plus context | Structured errors/warnings; no mutations |
-| observe | Target binding and context | Timestamped actual resources, versions, health and freshness |
-| plan | Desired spec plus observation/revisions | Ordered typed steps, effects, preconditions and recovery possibilities |
-| apply | One accepted step and operation context | Actual resource references, progress and result |
-| verify | Step result and current observations | Evidence of the required postcondition |
-| cancel | Operation context | Cancellation progress; no false terminal result |
-| recover | Persisted step/context and new observations | Resume, compensate or explicit uncertain/unsupported state |
+## Operation and recovery
 
-Plan/observe/validate cannot mutate managed software. Shell execution uses explicit
-arguments by default. Software-specific Python hooks use the same context/result
-contract and do not share mutable process-global parameters between deployments.
+Existing persisted request/stage/task is intent/audit authority. ActionDBAccessorImpl
+pins ServiceRef, package digest, target incarnation, assigned host/role, actual operation,
+service config values and tag/field hashes immediately before execution_command storage.
+Only the service's own config types enter that task. Current Agent cache-derived
+configuration and host/component assignment are checked separately from the persisted
+payload; stale values cannot reinterpret the task. Reserved `runtime_*`
+and `mpack_*` caller parameters are rejected. The old dispatcher is retired. Generated
+Script mutation requires a server execution task and assigned Agent; it cannot grant
+itself authorization or run an Agent-local business recovery loop.
 
-Effective capabilities are the intersection of package, adapter, target and
-policy. Unknown capability/version combinations fail explicitly before mutation.
-An external database profile can expose observation without install/delete.
+The local plan binds task ID, ServiceRef/native incarnation, package digest,
+configuration hash/tags, observation, expected receipt and expiry. The receipt is
+materialization evidence protected by local flock and atomic fsync/rename, not a
+parallel workflow database. Older tasks, changed intent under one task ID, stale plans
+and unowned native units fail before mutation. Pending unit hash covers publication
+crash windows. Uninstall/adoption cannot be inferred from a resource name.
 
-Adapter fencing is declared: native resource revision, durable provider-side
-idempotency, protected journal/lock, or another reviewed mechanism. An expired
-coordinator lease alone is insufficient proof that an old remote process stopped.
+States are scoped: Ambari task state remains unchanged; structured output/receipt
+records APPLYING, SUCCEEDED, FAILED or UNKNOWN. Cancellation remains the existing
+platform request; UNKNOWN means side effects cannot be disproved and automatic retry
+is disabled. Do not map a cancellation request to proven native cancellation. A late
+successful/UNKNOWN result retains that evidence. Replay of success verifies actual
+state; interrupted start may reconcile a new InvocationID. An ambiguous invocation
+requires an explicit stop/observation before restart. There is no generic recover=restart. Distinct newly created API requests remain
+distinct intents; replay protection is tied to persisted task identity, not a new
+client-supplied idempotency API. Explicit RESTART has one intent/checkpoint and
+native invocation postcondition. STOP can run despite invalid desired configuration;
+status uses a minimal probe from the verified running generation, not the next desired
+port. A changed package digest cannot gain implicit upgrade permission through STOP.
 
-## 4. Dependency Adapter and Shared Binding Protocol
+Pending native jobs and interrupted starts without surviving invocation evidence
+remain UNKNOWN; the driver cannot infer that repeating START is safe. Declared IPv4
+listeners are checked before provisioning/publication, with no claim of atomic port
+reservation. HTTP probes do not follow redirects.
 
-The multi-cluster platform owns binding UUID, service endpoints, authorization,
-durable revisions, snapshot approval, operation/fence records and lifecycle guards.
-The mpack extension owns software knowledge: required interfaces, compatible
-versions, exported client fields, preparation actions and verification probes.
+Native commands drain bounded output under deadlines and process-group cancellation;
+actual loaded/active-PID/health/inactive postconditions decide outcomes. Local receipt
+loss, foreign target or unsupported migration requires explicit investigation. Keep
+data; no generic purge is authorized or implemented by this contract.
 
-Authoring requirements have a name/slot, interface and version/capability range.
-Runtime binding targets a specific authorized provider ServiceRef. Discovery
-cannot expose unauthorized provider configuration. Snapshots export an allowlist
-of client settings and credential references, not administrative secrets.
+## Catalog consistency
 
-Named slots beyond the current shared protocol require a negotiated additive
-version. Until available, reject unsupported combinations; do not change the
-consumer-plus-type uniqueness rule or create a second binding system silently.
+Catalog DB is authority; files/Stack links are required projections. Pending markers
+only support reconciliation. Startup completes committed publication or quarantines
+uncommitted definitions. Failed DB rollback retains required files. Removal atomically
+deletes unreferenced catalog/repository/Stack rows before filesystem quarantine.
+Reference writes in Blueprint/cluster/repository/Stack DAOs and catalog removal
+share the existing package-row lock until transaction completion. Foreign keys and
+Blueprint scope validation provide the remaining guard; historical JSON references
+are checked. Deleted Stack/repository identity caches are invalidated. Catalog removal does not uninstall native software.
+Single-server filesystem ownership is the current integration boundary.
 
-Sequence: preview -> approve current snapshot -> prepare provider resources ->
-install/render consumer clients -> verify current targets -> permit start.
-Provider preparation is not consumer readiness. Changed version, config, identity
-or target coverage invalidates corresponding old evidence.
+## Shared dependency and consumer boundaries
 
-Consumer detach/uninstall preserves provider ownership and retained data. Provider
-stop/delete follows shared impact and lifecycle policy. Unsafe or unfinished
-security combinations remain unsupported; genericity does not bypass readiness.
+A BindingRef uses the shared UUID, incarnation, immutable endpoints, snapshot revision,
+authorization and lifecycle/fence evidence. `DependencyAdapter` requires an injected
+`binding/v1` client and delegates; it cannot manufacture approval, lease, readiness or
+binding identity. Missing support fails `DEPENDENCY_UNRESOLVED`. No Mpack binding DB,
+second authorization layer or host ownership map is introduced. Available reference
+APIs/types and Kyuubi breakpoints are listed in status; they must not be guessed.
 
-## 5. Configuration
+UI/CLI/AI have no execution authority. AI output follows the same source validation,
+diff/review, trusted export and authenticated server import as human output. No AI
+provider or arbitrary plugin JavaScript executes in this repository's runtime UI.
+The disconnected runtime route is removed; catalog and existing service APIs remain.
 
-Every config field declares type, constraints, default, sensitivity, mutability
-and effect: no action, reload, restart, or explicit migration. Effective values
-retain provenance and desired/applied generations. Maps/lists follow declared
-merge semantics; lists replace by default.
-
-Dependency client profiles do not overwrite unrelated local service configuration.
-Reserved snapshot/ownership fields remain server controlled. Secret references
-resolve in execution context and are redacted from packages, plans and diagnostics.
-
-Applying configuration validates and stages the result before publication.
-Observations verify the actual generation. Restoring old config is distinct from
-reversing an application data migration.
-
-## 6. Operation and Workflow
-
-Use existing owned/revisioned draft and task protocols for new deployment flows.
-An operation includes request identity, ServiceRef, package digest, effective
-config/dependency generations and exact target intent. Persist intent before
-mutation and reconcile lost responses by identity, not by resource name alone.
-
-Plan/apply validates relevant revisions again. Material drift requires replanning.
-Retries use idempotency keys and real observation. Track UNKNOWN outcomes when
-remote effects cannot yet be determined. Do not blindly replay non-idempotent work.
-
-Operation status: PENDING, RUNNING, VERIFYING, SUCCEEDED, FAILED,
-CANCEL_REQUESTED or CANCELLED, mapped to existing request/task status where possible.
-Software health/presence/running state is separate. A completed command is not
-proof that the requested software is ready.
-
-Default automation reports drift. Automatic repair is opt-in, capability-scoped
-and bounded. No implicit version upgrades or destructive state changes occur
-because a background reconciler exists.
-
-## 7. Public API, UI and CLI
-
-Preserve existing cluster paths, authorizations and consumers. Additive endpoints
-must use the established resource-provider/service architecture and versioning
-conventions. Endpoint names are finalized after inspecting available contracts,
-not invented by the frontend in advance.
-
-Required public operations: discover schema/capabilities, validate a definition,
-register/query packages, inspect a deployment plan, apply/query an operation,
-observe a deployment, and inspect supported recovery actions.
-
-UI and CLI consume the same results. UI metadata can declare labels, field groups,
-operation forms and observation views. It cannot supply authority or execute
-arbitrary plugin JavaScript in the main application implicitly.
-
-Structured diagnostics include code, severity, source path, field path, affected
-resource reference, message, retryability and actionable correction information.
-Recommended stable categories include SCHEMA_INVALID, CAPABILITY_UNSUPPORTED,
+Stable diagnostic categories include SCHEMA_INVALID, CAPABILITY_UNSUPPORTED,
 PACKAGE_CONTENT_CONFLICT, DEPENDENCY_UNRESOLVED, PLAN_STALE, TARGET_CONFLICT,
-AUTHORIZATION_DENIED and OUTCOME_UNKNOWN. Map to existing equivalent codes where
-the shared platform already defines them.
-
-## 8. Compatibility Verification
-
-Tests must cover current legacy definitions, current service identity and routes,
-two independent clusters, missing/forbidden/stale dependencies, replay after a
-lost response, consumer/provider ownership, config provenance and real adapter
-postconditions. Mark unavailable integration environments explicitly.
-
-The reference branch remains read-only. Its incomplete implementation is not
-an authorization to weaken these contracts or advertise untested runtime support.
+AUTHORIZATION_DENIED and OUTCOME_UNKNOWN. Error text must not echo input secrets.
+Unsupported features and external acceptance limits must stay visible in status.

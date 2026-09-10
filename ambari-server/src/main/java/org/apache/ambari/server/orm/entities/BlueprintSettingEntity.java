@@ -18,6 +18,9 @@
 
 package org.apache.ambari.server.orm.entities;
 
+import java.util.List;
+import java.util.Map;
+
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -28,9 +31,15 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.TableGenerator;
 import jakarta.persistence.UniqueConstraint;
+
+import org.apache.ambari.server.topology.MpackReference;
+
+import com.google.gson.Gson;
 
 /**
  * Represents a blueprint setting.
@@ -139,4 +148,34 @@ public class BlueprintSettingEntity {
   public void setSettingData(String settingData) {
     this.settingData = settingData;
   }
+  /** Keep package settings within the existing Blueprint stack foreign key. */
+  @PrePersist
+  @PreUpdate
+  void validatePackageReferenceScope() {
+    if (!MpackReference.SETTING_NAME.equals(settingName)) {
+      return;
+    }
+    if (blueprint == null || blueprint.getStack() == null) {
+      throw new IllegalArgumentException("Package references require a Blueprint stack");
+    }
+    List<Map<String, String>> references = new Gson().fromJson(settingData, List.class);
+    if (references == null) {
+      throw new IllegalArgumentException("Invalid package reference setting");
+    }
+    StackEntity stack = blueprint.getStack();
+    for (Map<String, String> value : references) {
+      for (String field : List.of("owner", "lifecycle_state", "generation", "retention_until")) {
+        if (value.containsKey(field)) {
+          throw new IllegalArgumentException("Blueprint settings cannot assert live deployment state");
+        }
+      }
+      MpackReference reference = MpackReference.fromSettingMap(value);
+      if (stack.getMpackId() == null || !stack.getMpackId().equals(reference.getMpackId())
+          || !stack.getStackName().equals(reference.getMpackName())
+          || !stack.getStackVersion().equals(reference.getVersion())) {
+        throw new IllegalArgumentException("Package references must match the Blueprint stack");
+      }
+    }
+  }
+
 }

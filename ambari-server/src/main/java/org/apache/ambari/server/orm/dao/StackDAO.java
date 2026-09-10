@@ -63,6 +63,22 @@ public class StackDAO {
     return entityManagerProvider.get().find(StackEntity.class, stackId);
   }
 
+  /** Serialize package reference creation with catalog deletion in the same transaction. */
+  @Transactional
+  public void lockMpackReference(StackEntity stack) {
+    if (stack == null || stack.getMpackId() == null) {
+      return;
+    }
+    EntityManager manager = entityManagerProvider.get();
+    org.apache.ambari.server.orm.entities.MpackEntity pack = manager.find(
+        org.apache.ambari.server.orm.entities.MpackEntity.class, stack.getMpackId(),
+        jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+    if (pack == null) {
+      throw new IllegalStateException("Package was removed before its reference could be saved");
+    }
+    manager.refresh(pack, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+  }
+
   /**
    * Gets all of the defined stacks.
    *
@@ -116,6 +132,7 @@ public class StackDAO {
   @Transactional
   public void create(StackEntity stack)
       throws AmbariException {
+    lockMpackReference(stack);
     EntityManager entityManager = entityManagerProvider.get();
     entityManager.persist(stack);
   }
@@ -140,6 +157,7 @@ public class StackDAO {
    */
   @Transactional
   public StackEntity merge(StackEntity stack) {
+    lockMpackReference(stack);
     return entityManagerProvider.get().merge(stack);
   }
 

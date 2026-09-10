@@ -18,15 +18,20 @@
 package org.apache.ambari.server.orm.dao;
 
 import java.util.List;
+import java.util.Map;
 
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.TypedQuery;
 
 import org.apache.ambari.server.orm.RequiresSession;
+import org.apache.ambari.server.orm.entities.BlueprintSettingEntity;
 import org.apache.ambari.server.orm.entities.MpackEntity;
+import org.apache.ambari.server.topology.MpackReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.gson.Gson;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 import com.google.inject.Singleton;
@@ -107,6 +112,53 @@ public class MpackDAO {
   @Transactional
   public void removeById(Long id) {
     m_entityManagerProvider.get().remove(findById(id));
+  }
+
+  /**
+   * Delete catalog rows atomically. Existing stack/repository foreign keys guard
+   * concurrent cluster, service and Blueprint references. New Blueprint package
+   * settings are constrained to their stack by BlueprintSettingEntity. Historical settings
+   * are checked here before any bulk delete; no filesystem mutation occurs here.
+   */
+  @Transactional
+  public void removeCatalog(Long id) {
+    EntityManager entityManager = m_entityManagerProvider.get();
+    MpackEntity entity = entityManager.find(MpackEntity.class, id, LockModeType.PESSIMISTIC_WRITE);
+    if (entity == null) {
+      return;
+    }
+    List<BlueprintSettingEntity> settings = entityManager.createQuery(
+        "SELECT s FROM BlueprintSettingEntity s WHERE s.settingName = :name", BlueprintSettingEntity.class)
+        .setParameter("name", MpackReference.SETTING_NAME).getResultList();
+    for (BlueprintSettingEntity setting : settings) {
+      List<Map<String, String>> references = new Gson().fromJson(setting.getSettingData(), List.class);
+      if (references == null) {
+        throw new IllegalStateException("Invalid Blueprint package references block deletion");
+      }
+      for (Map<String, String> reference : references) {
+        if (id.equals(MpackReference.fromSettingMap(reference).getMpackId())) {
+          throw new IllegalStateException("Blueprint references this mpack");
+        }
+      }
+    }
+    List<org.apache.ambari.server.orm.entities.StackEntity> stacks = entityManager.createQuery(
+        "SELECT s FROM StackEntity s WHERE s.mpackId = :id", org.apache.ambari.server.orm.entities.StackEntity.class)
+        .setParameter("id", id).getResultList();
+    List<org.apache.ambari.server.orm.entities.RepositoryVersionEntity> repositories = entityManager.createQuery(
+        "SELECT r FROM RepositoryVersionEntity r WHERE r.stack.mpackId = :id",
+        org.apache.ambari.server.orm.entities.RepositoryVersionEntity.class).setParameter("id", id).getResultList();
+    entityManager.flush();
+    entityManager.createNativeQuery("DELETE FROM repo_version WHERE stack_id IN "
+        + "(SELECT stack_id FROM stack WHERE mpack_id = ?)").setParameter(1, id).executeUpdate();
+    entityManager.createNativeQuery("DELETE FROM stack WHERE mpack_id = ?")
+        .setParameter(1, id).executeUpdate();
+    entityManager.remove(entity);
+    entityManager.flush();
+    // Native deletes bypass JPA identity maps. Do not expose removed projections.
+    stacks.forEach(entityManager::detach);
+    repositories.forEach(entityManager::detach);
+    entityManager.getEntityManagerFactory().getCache().evict(org.apache.ambari.server.orm.entities.StackEntity.class);
+    entityManager.getEntityManagerFactory().getCache().evict(org.apache.ambari.server.orm.entities.RepositoryVersionEntity.class);
   }
 
 }

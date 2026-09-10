@@ -15,113 +15,71 @@
    limitations under the License.
 --->
 
-# Reference Flows and Acceptance Scenarios
+# Reference acceptance scenarios
 
-These examples define required design/runtime evidence. They are not reports of
-tests already run. Implement executable fixtures in the improvement phase using
-the agreed contract and available isolated environments.
+Current Redis/Kyuubi walkthroughs, actual call entries and breakpoints are maintained
+once in [status](status.md). Complete authoring examples live in fixtures linked by
+[manifest-spec](manifest-spec.md). The scenarios below define acceptance requirements;
+they do not report tests already run or imply missing runtime implementations exist.
 
-## A. Host HTTP Service
+## Current host and catalog slice
 
-Author inputs: the manifest example, a small Python HTTP server, a typed port
-configuration schema, a config template and a lifecycle test fixture.
+| Scenario | Required observation | Closest local coverage |
+| --- | --- | --- |
+| Author/build HTTP or Redis | One canonical validation path; deterministic exact inventory; offline declared payload | AuthoringSafetyTest, LegacyExportTest |
+| Signed import | Actual generated modules loaded by MpackManager; digest bound in DB; wrong key/modified content rejected before publication | MpackManagerTest compiler-produced fixture |
+| Publication crash before/after DB | Uncommitted files quarantined; committed projection completed; rollback failure retains definitions | MpackManagerTest crash-window cases |
+| Delete while referenced | DB transaction fails with references and files retained; unreferenced deletion commits before filesystem cleanup | MpackDAOTest and MpackManagerTest |
+| Create/recreate service | Existing cluster/service identity retained; new native incarnation does not adopt old data/unit | MpackDAOTest, TestMpackHost |
+| Install/start/configure/stop | Declared resources, stage/publish config, active PID/application readiness, verified stop and retained data | TestMpackHost controlled native fixture |
+| Duplicate/late task | Same intent verifies without duplicate mutation; older task cannot overwrite newer evidence | TestMpackHost |
+| Lost response or Agent process restart | Reconstruct driver from persisted receipt; new native invocation can reconcile; ambiguity stays UNKNOWN | TestMpackHost; real Agent restart delivery still pending |
+| Cancellation/output pressure | Drain both pipes, capped output, bounded termination; UNKNOWN disables automatic retries | Local child-process tests and TestActionQueue |
+| Catalog UI | Existing permissions/API and delete behavior; absent runtime route not exposed | React model/route tests and production build |
 
-Flow: init template -> validate references/config -> run isolated tests -> build
-with hashes -> register -> select existing Cluster/host -> inspect plan -> apply
-through the Agent -> verify HTTP readiness. UI is generated from metadata.
+Real Redis/systemd acceptance additionally needs isolated native hosts with supported
+OS packages and service users. It must inspect real unit paths/InvocationID, occupied
+ports, process exit after successful command submission, invalid config, interrupted
+publication and data retention. Local fixtures do not meet this native evidence bar.
+Server-Agent connection loss/restart acceptance must inspect persisted actual tasks,
+metadata/config generations and late responses, not only reconstruct a local class.
 
-Plan effects: install declared runtime dependency if needed, create owned service
-resources, render configuration, start the unit and verify its endpoint. Artifact
-publication is separate from this host operation.
+## Kyuubi and shared dependency extension
 
-Failure cases: occupied port, invalid config, absent artifact, start timeout,
-lost task response and restart after server interruption. Retry observes owned
-resources and actual state; it does not register duplicate services or delete
-another deployment's files.
+Before deployment acceptance, extend/integrate the real shared platform beyond its
+available HDFS/ZOOKEEPER types. Spark/Hadoop/Hive client/config contracts must provide
+binding UUID/incarnation, immutable provider identity, approved snapshot/revision and
+ownership/lifecycle behavior. Cross-cluster permissions stay in the shared/Ambari
+platform. Scoped secret delivery is a separate prerequisite.
 
-Compatibility: deploying the same service type in Cluster B preserves Cluster A.
-A host already owned by A cannot be borrowed by B. Same-type independent services
-inside one Cluster remain outside the current identity contract.
+Test denied/missing approval, provider loss, stale snapshot, consumer recreation,
+detach/recreate, lost response and late response against that real client. Mpack may
+only store references/projections; it must not synthesize ready bindings or another
+fencing epoch. Source builds and a delegating mock prove none of these provider effects.
+Kubernetes deployment is a separate runtime extension with API-server/namespace/UID
+and rollout evidence. Upgrade requires software/config/data compatibility rules;
+there is currently no executable Kyuubi upgrade or data migration path.
 
-## B. OCI and Kubernetes Profiles
+## Future runtime and data lifecycle acceptance
 
-Reuse the HTTP service's conceptual configuration, health and capability model.
-An OCI profile supplies an immutable image and engine binding. A Kubernetes
-profile supplies a supported release/resource definition and authorized namespace.
-Profile-specific metadata is explicit; a host script is not assumed portable.
+OCI must bind an actual engine/container identity and prove immutable image, state,
+volume retention and recovery semantics. Kubernetes must bind authorized API server,
+namespace and native UID/revision, observe rollout/controller state and handle resource
+replacement. External databases require scoped connections/probes and explicitly
+unsupported mutation where appropriate. Equal method names do not establish equal
+execution or cancellation semantics across these runtimes.
 
-Ambari manages the top-level container/release resource and verifies its state.
-The runtime owns subordinate scheduling and replacement. Existing Cluster scope
-still authorizes the operation; a target profile cannot create new authority.
+Adoption must verify identity/ownership before taking control. Detach must not delete
+provider-owned resources. Uninstall retains persistent data; purge needs independent
+capability, authorization and audit. Software rollback cannot promise data rollback.
+Migration acceptance includes partial success, irreversible boundaries, backup/restore
+and manual recovery evidence. These are roadmap requirements, not current host features.
 
-Failure cases: image pull failure, unavailable engine/API, rollout timeout, stale
-resource revision, lost apply result and persistent-volume retention. Avoid a
-second mutation when the platform may already have completed the first one.
+## Human and AI authoring
 
-Acceptance distinguishes schema/adapter conformance from real engine/Kubernetes
-execution. Mark unavailable platforms explicitly; do not advertise tested support
-without actual execution evidence.
-
-## C. Stateful PostgreSQL Service
-
-Author inputs: binary/distribution profile, data resource declaration, configuration,
-secret references, health query, backup/restore and supported upgrade capabilities.
-
-Flow: validate version/data compatibility -> plan owned resources -> initialize
-only a new owned data directory -> configure -> start -> perform readiness query.
-Existing data is imported/adopted through an explicit operation, not overwritten.
-
-Upgrade distinguishes management definition, binary version and database format.
-Backup verification and migration compatibility are preconditions where required.
-Failure enters a documented recovery state; changing a version link is not
-represented as reversing every database migration.
-
-Uninstall defaults to data retention. Deleting retained data is separately
-declared, authorized and target-specific. Secret values never enter package,
-plan, task summary or test logs.
-
-## D. Existing External Database
-
-Author inputs: endpoint profile, credential references, supported health/metrics
-and optional remote maintenance operations. No host install capability is required.
-
-Flow: bind within an existing authorized management scope -> validate connectivity
-and credentials -> observe -> expose only supported actions. Removing observation
-does not delete the database or its provider infrastructure.
-
-Failure cases: expired credentials, unreachable endpoint, stale observation,
-unsupported operation and provider identity mismatch. Unknown is not healthy.
-Adoption of greater authority requires an explicit supported contract.
-
-## E. Cross-Cluster Managed Dependency
-
-Use the generic multi-cluster reference's initial HBase/HDFS/ZooKeeper integration
-as an existing software-specific example of the common binding protocol.
-
-Flow: authorized provider discovery -> preview immutable binding identity and
-snapshot -> approve -> prepare provider-local namespace -> install/render consumer
-clients -> verify every required consumer target -> allow start.
-
-Preserve the provider's lifecycle and data. Export only client configuration and
-permitted credential references. Provider updates invalidate affected snapshot
-evidence. Retry retains the same binding incarnation and correct operation epoch.
-
-The reference explicitly lacks some final security/workflow/runtime acceptance.
-Tests or capabilities in the new work must not convert those gaps into successful
-results through bypasses or trust flags.
-
-For a later generic application with `primary` and `audit` SQL requirements,
-negotiate named slots with the same binding platform. An unsupported protocol
-reports that limitation instead of replacing the existing uniqueness constraint.
-
-## F. AI Author Repair Loop
-
-The AI reads schema and capability metadata, generates the HTTP source package,
-and receives a diagnostic identifying a deliberately missing file or bad config
-field. It corrects the source, reruns validation/tests, builds and inspects a plan.
-The same public API and permissions apply to humans, CLI and AI.
-
-Required outputs are stable diagnostic codes/paths, actual test results, immutable
-artifact identity, a specific target plan, and an observable operation. Human
-terminal output stays readable; machine-readable validation is an optional CLI
-mode, unrelated to the interactive Codex session used to implement this project.
+A human or AI changes the same declarative source, sees the same diagnostics/diff,
+and uses the same review, compiler, signed export and authenticated import. Invalid
+port/config references, unsupported capabilities, secret literals and dependency gaps
+must be rejected without leaking values. No AI may grant approval, directly invoke
+native commands, bypass server RBAC or describe an irreversible migration as rollback.
+This repository does not implement an AI provider; the authoring boundary is shared.

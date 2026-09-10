@@ -124,6 +124,182 @@ public class MpackManagerTest {
     EasyMock.verify(mpackDAO, stackDAO);
   }
 
+  @Test
+  public void testRestartQuarantinesPublishedFilesWithoutDatabaseRow() throws Exception {
+    Path metadata = createRepositoryMpack();
+    expectAvailableChecks();
+    EasyMock.expect(mpackDAO.create(EasyMock.anyObject(MpackEntity.class)))
+        .andThrow(new AssertionError("simulated process interruption"));
+    EasyMock.replay(mpackDAO, stackDAO);
+    Assert.assertThrows(AssertionError.class, () -> manager.registerMpack(requestFor(metadata)));
+    Assert.assertTrue(Files.exists(staging.resolve(MPACK_NAME).resolve(MPACK_VERSION)));
+    EasyMock.reset(mpackDAO, stackDAO);
+    EasyMock.expect(mpackDAO.findByNameVersion(MPACK_NAME, MPACK_VERSION))
+        .andReturn(Collections.emptyList());
+    EasyMock.replay(mpackDAO, stackDAO);
+    MpackManager recovered = new MpackManager(staging.toFile(), stackRoot.toFile(), mpackDAO, stackDAO);
+    Assert.assertTrue(recovered.getMpackMap().isEmpty());
+    Assert.assertFalse(Files.exists(staging.resolve(MPACK_NAME).resolve(MPACK_VERSION)));
+    Assert.assertFalse(Files.exists(stackRoot.resolve(MPACK_NAME).resolve(MPACK_VERSION)));
+    try (java.util.stream.Stream<Path> entries = Files.list(staging.resolve("staging/quarantine"))) {
+      Assert.assertEquals(1, entries.count());
+    }
+    EasyMock.verify(mpackDAO, stackDAO);
+  }
+
+  @Test
+  public void testFailedCatalogDeletionRetainsFiles() throws Exception {
+    Path directory = Files.createDirectories(staging.resolve(MPACK_NAME).resolve(MPACK_VERSION));
+    Files.writeString(directory.resolve("retained.txt"), "retained definition");
+    MpackEntity entity = new MpackEntity();
+    entity.setId(60L);
+    entity.setMpackName(MPACK_NAME);
+    entity.setMpackVersion(MPACK_VERSION);
+    mpackDAO.removeCatalog(60L);
+    EasyMock.expectLastCall().andThrow(new IllegalStateException("concurrent reference"));
+    EasyMock.replay(mpackDAO, stackDAO);
+    Assert.assertThrows(IOException.class, () -> manager.removeMpack(entity, null));
+    Assert.assertTrue(Files.exists(directory.resolve("retained.txt")));
+    Assert.assertTrue(Files.exists(directory.resolve(".ambari-deletion-pending")));
+    EasyMock.verify(mpackDAO, stackDAO);
+  }
+
+  @Test
+  public void testCommittedDeletionRemovesProjectionAfterDatabaseCommit() throws Exception {
+    Path directory = Files.createDirectories(staging.resolve(MPACK_NAME).resolve(MPACK_VERSION));
+    Files.writeString(directory.resolve("retained.txt"), "retained definition");
+    MpackEntity entity = new MpackEntity();
+    entity.setId(61L);
+    entity.setMpackName(MPACK_NAME);
+    entity.setMpackVersion(MPACK_VERSION);
+    mpackDAO.removeCatalog(61L);
+    EasyMock.expectLastCall().andAnswer(() -> {
+      Assert.assertTrue(Files.exists(directory.resolve("retained.txt")));
+      return null;
+    });
+    EasyMock.replay(mpackDAO, stackDAO);
+    manager.removeMpack(entity, null);
+    Assert.assertFalse(Files.exists(directory));
+    Assert.assertTrue(Files.isDirectory(staging.resolve("staging/quarantine")));
+    EasyMock.verify(mpackDAO, stackDAO);
+  }
+
+  @Test
+  public void testRestartCompletesDatabaseBackedPublication() throws Exception {
+    Path metadata = createRepositoryMpack();
+    expectAvailableChecks();
+    EasyMock.expect(mpackDAO.create(EasyMock.anyObject(MpackEntity.class))).andReturn(51L);
+    EasyMock.expect(stackDAO.find(MPACK_NAME, MPACK_VERSION)).andReturn(null);
+    stackDAO.create(EasyMock.anyObject(StackEntity.class));
+    EasyMock.expectLastCall().andThrow(new AssertionError("simulated process interruption"));
+    EasyMock.replay(mpackDAO, stackDAO);
+    Assert.assertThrows(AssertionError.class, () -> manager.registerMpack(requestFor(metadata)));
+    EasyMock.reset(mpackDAO, stackDAO);
+    MpackEntity entity = new MpackEntity();
+    entity.setId(51L);
+    entity.setMpackName(MPACK_NAME);
+    entity.setMpackVersion(MPACK_VERSION);
+    entity.setMpackUri(metadata.toUri().toString());
+    EasyMock.expect(mpackDAO.findByNameVersion(MPACK_NAME, MPACK_VERSION))
+        .andReturn(Collections.singletonList(entity));
+    EasyMock.expect(stackDAO.find(MPACK_NAME, MPACK_VERSION)).andReturn(null).times(2);
+    stackDAO.create(EasyMock.anyObject(StackEntity.class));
+    EasyMock.expectLastCall();
+    EasyMock.replay(mpackDAO, stackDAO);
+    MpackManager recovered = new MpackManager(staging.toFile(), stackRoot.toFile(), mpackDAO, stackDAO);
+    Assert.assertEquals(MPACK_NAME, recovered.getMpackMap().get(51L).getName());
+    Assert.assertFalse(Files.exists(staging.resolve(MPACK_NAME).resolve(MPACK_VERSION)
+        .resolve(".ambari-registration-pending")));
+    EasyMock.verify(mpackDAO, stackDAO);
+  }
+
+  @Test
+  public void testRollbackFailureRetainsDatabaseBackedDefinition() throws Exception {
+    Path metadata = createRepositoryMpack();
+    expectAvailableChecks();
+    EasyMock.expect(mpackDAO.create(EasyMock.anyObject(MpackEntity.class))).andReturn(52L);
+    EasyMock.expect(stackDAO.find(MPACK_NAME, MPACK_VERSION)).andReturn(null);
+    stackDAO.create(EasyMock.anyObject(StackEntity.class));
+    EasyMock.expectLastCall().andThrow(new AmbariException("database failure"));
+    mpackDAO.removeById(52L);
+    EasyMock.expectLastCall().andThrow(new IllegalStateException("rollback unavailable"));
+    EasyMock.replay(mpackDAO, stackDAO);
+    Assert.assertThrows(IOException.class, () -> manager.registerMpack(requestFor(metadata)));
+    Assert.assertTrue(Files.exists(staging.resolve(MPACK_NAME).resolve(MPACK_VERSION).resolve("mpack.json")));
+    Assert.assertTrue(Files.isSymbolicLink(stackRoot.resolve(MPACK_NAME).resolve(MPACK_VERSION)));
+    EasyMock.verify(mpackDAO, stackDAO);
+  }
+
+  @Test
+  public void testCompilerProducedHostArchiveImportsThroughRealManager() throws Exception {
+    String fixture = System.getProperty("mpack.host.fixture");
+    org.junit.Assume.assumeNotNull(fixture);
+    Path fixtureRoot = Path.of(fixture);
+    org.apache.ambari.server.configuration.Configuration configuration =
+        EasyMock.createMock(org.apache.ambari.server.configuration.Configuration.class);
+    EasyMock.expect(configuration.getProperty("mpack.signing.key.file"))
+        .andReturn(fixtureRoot.resolve("../signing.key").normalize().toString()).times(2);
+    java.lang.reflect.Field field = MpackManager.class.getDeclaredField("configuration");
+    field.setAccessible(true);
+    field.set(manager, configuration);
+    EasyMock.expect(mpackDAO.findByNameVersion("http-authoring-example", "0.1.0"))
+        .andReturn(Collections.emptyList()).times(2);
+    EasyMock.expect(stackDAO.find("http-authoring-example", "0.1.0")).andReturn(null).times(3);
+    EasyMock.expect(mpackDAO.create(EasyMock.anyObject(MpackEntity.class))).andAnswer(() -> {
+      MpackEntity entity = (MpackEntity) EasyMock.getCurrentArguments()[0];
+      Assert.assertEquals(64, entity.getContentDigest().length());
+      return 70L;
+    });
+    stackDAO.create(EasyMock.anyObject(StackEntity.class));
+    EasyMock.expectLastCall();
+    MpackEntity registered = new MpackEntity();
+    registered.setId(70L);
+    registered.setMpackName("http-authoring-example");
+    registered.setMpackVersion("0.1.0");
+    registered.setContentDigest(new com.google.gson.Gson().fromJson(Files.readString(fixtureRoot.resolve("mpack.json")),
+        org.apache.ambari.server.state.Mpack.class).getPackageDigest());
+    EasyMock.expect(mpackDAO.findByNameVersion("http-authoring-example", "0.1.0"))
+        .andReturn(Collections.singletonList(registered));
+    StackEntity registeredStack = new StackEntity();
+    registeredStack.setMpackId(70L);
+    EasyMock.expect(stackDAO.find("http-authoring-example", "0.1.0")).andReturn(registeredStack);
+    EasyMock.replay(mpackDAO, stackDAO, configuration);
+    MpackResponse response = manager.registerMpack(requestFor(fixtureRoot.resolve("mpack.json")));
+    Assert.assertEquals(Long.valueOf(70), response.getId());
+    Path service = staging.resolve("http-authoring-example/0.1.0/services/HTTP_ECHO");
+    Assert.assertTrue(Files.isRegularFile(service.resolve("metainfo.xml")));
+    Assert.assertTrue(Files.isRegularFile(service.resolve("package/manifest-service.json")));
+    Assert.assertTrue(Files.isRegularFile(service.resolve("configuration/http.xml")));
+    MpackResponse replay = manager.registerMpack(requestFor(fixtureRoot.resolve("mpack.json")));
+    Assert.assertEquals(response.getId(), replay.getId());
+    EasyMock.verify(mpackDAO, stackDAO, configuration);
+  }
+
+  @Test
+  public void testHostArchiveTamperingAndWrongTrustKeyAreRejected() throws Exception {
+    String fixture = System.getProperty("mpack.host.fixture");
+    org.junit.Assume.assumeNotNull(fixture);
+    Path fixtureRoot = Path.of(fixture);
+    org.apache.ambari.server.state.Mpack metadata = new com.google.gson.Gson().fromJson(
+        Files.readString(fixtureRoot.resolve("mpack.json")), org.apache.ambari.server.state.Mpack.class);
+    Path wrongKey = repository.resolve("wrong.key");
+    Files.writeString(wrongKey, "deliberately-wrong-test-key");
+    org.apache.ambari.server.configuration.Configuration configuration =
+        EasyMock.createMock(org.apache.ambari.server.configuration.Configuration.class);
+    EasyMock.expect(configuration.getProperty("mpack.signing.key.file"))
+        .andReturn(wrongKey.toString()).times(2);
+    java.lang.reflect.Field field = MpackManager.class.getDeclaredField("configuration");
+    field.setAccessible(true);
+    field.set(manager, configuration);
+    EasyMock.replay(mpackDAO, stackDAO, configuration);
+    Assert.assertThrows(IOException.class,
+        () -> manager.verifyAuthoringArchive(metadata, fixtureRoot.resolve("definition.tar.gz")));
+    Path modified = repository.resolve("modified.tar.gz");
+    Files.writeString(modified, "not-the-authenticated-archive");
+    Assert.assertThrows(IOException.class, () -> manager.verifyAuthoringArchive(metadata, modified));
+    EasyMock.verify(mpackDAO, stackDAO, configuration);
+  }
+
   private void expectAvailableChecks() {
     EasyMock.expect(mpackDAO.findByNameVersion(MPACK_NAME, MPACK_VERSION))
         .andReturn(Collections.emptyList()).times(2);

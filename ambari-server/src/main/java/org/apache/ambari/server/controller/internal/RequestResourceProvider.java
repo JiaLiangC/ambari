@@ -507,7 +507,11 @@ public class RequestResourceProvider extends AbstractControllerResourceProvider 
     String keyPrefix = INPUTS_ID + "/";
     for (String key : requestInfoProperties.keySet()) {
       if (key.startsWith(keyPrefix)) {
-        params.put(key.substring(keyPrefix.length()), requestInfoProperties.get(key));
+        String parameter = key.substring(keyPrefix.length());
+        if (parameter.startsWith("runtime_") || parameter.startsWith("mpack_")) {
+          throw new IllegalArgumentException("Runtime execution parameters are reserved");
+        }
+        params.put(parameter, requestInfoProperties.get(key));
       }
     }
 

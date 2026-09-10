@@ -71,6 +71,20 @@ public class Mpack {
   @SerializedName("displayName")
   private String displayName;
 
+  private String authoringFormat;
+  private String manifestDigest;
+  private String packageDigest;
+  private String definitionSha256;
+  private String signatureAlgorithm;
+  private String signature;
+
+  public String getAuthoringFormat() { return authoringFormat; }
+  public String getManifestDigest() { return manifestDigest; }
+  public String getPackageDigest() { return packageDigest; }
+  public String getDefinitionSha256() { return definitionSha256; }
+  public String getSignatureAlgorithm() { return signatureAlgorithm; }
+  public String getSignature() { return signature; }
+
   private String mpackUri;
 
   private transient RepositoryXml repositoryXml;

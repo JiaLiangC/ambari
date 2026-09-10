@@ -231,3 +231,12 @@ describe("HA route contracts", () => {
     expect(permissionRoute.props.children.type).toBe(ServiceOperationRouteGuard);
   });
 });
+
+
+describe("management pack route boundaries", () => {
+  it("retains the catalog without exposing the unimplemented runtime API", () => {
+    const paths = routePaths(RoutesList);
+    expect(paths).toContain("mpacks");
+    expect(paths).not.toContain("mpacks/:mpackId/runtime");
+  });
+});

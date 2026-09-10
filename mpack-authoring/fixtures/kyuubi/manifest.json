@@ -1,0 +1,109 @@
+{
+  "apiVersion": "mpack.ambari.apache.org/v2alpha1",
+  "kind": "Mpack",
+  "metadata": {
+    "name": "kyuubi-authoring-example",
+    "version": "0.1.0",
+    "description": "Declarative source example; see docs/mpack-v2/status.md for runtime acceptance"
+  },
+  "spec": {
+    "artifacts": [],
+    "services": [
+      {
+        "name": "KYUUBI",
+        "configurations": [
+          {
+            "name": "kyuubi",
+            "schema": "config.schema.json",
+            "template": "config.conf.j2",
+            "changeEffect": "restart"
+          },
+          {
+            "name": "engine",
+            "schema": "config.schema.json",
+            "template": "engine.conf.j2",
+            "changeEffect": "restart"
+          }
+        ],
+        "components": [
+          {
+            "name": "KYUUBI_SERVER",
+            "category": "MASTER",
+            "role": "service",
+            "profiles": [
+              {
+                "id": "host",
+                "adapter": "host.systemd/v1",
+                "capabilities": [
+                  "install",
+                  "configure",
+                  "start",
+                  "stop",
+                  "observe",
+                  "restart"
+                ],
+                "resources": {
+                  "packages": [],
+                  "users": [
+                    {
+                      "name": "kyuubi"
+                    }
+                  ],
+                  "directories": [
+                    {
+                      "path": "data",
+                      "owner": "kyuubi",
+                      "mode": "0750",
+                      "persistent": true,
+                      "retention": "retain"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "name": "listener",
+                      "configRef": "kyuubi.port",
+                      "protocol": "tcp"
+                    }
+                  ],
+                  "command": {
+                    "program": "/opt/kyuubi/bin/kyuubi",
+                    "arguments": []
+                  },
+                  "unit": {
+                    "user": "kyuubi",
+                    "workingDirectory": "data"
+                  }
+                },
+                "health": {
+                  "kind": "tcp",
+                  "portRef": "kyuubi.port",
+                  "timeoutSeconds": 5
+                }
+              }
+            ]
+          }
+        ],
+        "requires": [
+          {
+            "slot": "spark",
+            "interface": "spark.client",
+            "versionRange": "*"
+          },
+          {
+            "slot": "hadoop",
+            "interface": "hadoop.client",
+            "versionRange": "*"
+          },
+          {
+            "slot": "hive",
+            "interface": "hive.metastore",
+            "versionRange": "*"
+          }
+        ]
+      }
+    ],
+    "compatibility": {
+      "dependencyProtocol": "binding/v1"
+    }
+  }
+}

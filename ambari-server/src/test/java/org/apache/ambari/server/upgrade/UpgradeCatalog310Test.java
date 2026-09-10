@@ -38,6 +38,22 @@ public class UpgradeCatalog310Test {
   private DBAccessor dbAccessor;
   private UpgradeCatalog310 catalog;
 
+  @Test
+  public void testHostMetadataMigrationAddsOnlyMissingNullableColumns() throws Exception {
+    expect(dbAccessor.tableHasColumn("mpacks", "content_digest")).andReturn(false);
+    dbAccessor.addColumn(eq("mpacks"), anyObject(DBAccessor.DBColumnInfo.class));
+    expectLastCall();
+    expect(dbAccessor.tableHasColumn("clusterservices", "mpack_target_incarnation")).andReturn(false);
+    dbAccessor.addColumn(eq("clusterservices"), anyObject(DBAccessor.DBColumnInfo.class));
+    expectLastCall();
+    expect(dbAccessor.tableHasColumn("mpacks", "content_digest")).andReturn(true);
+    expect(dbAccessor.tableHasColumn("clusterservices", "mpack_target_incarnation")).andReturn(true);
+    replay(dbAccessor);
+    catalog.reconcileMpackHostMetadata();
+    catalog.reconcileMpackHostMetadata();
+    verify(dbAccessor);
+  }
+
   @Before
   public void setUp() {
     EasyMockSupport mocks = new EasyMockSupport();

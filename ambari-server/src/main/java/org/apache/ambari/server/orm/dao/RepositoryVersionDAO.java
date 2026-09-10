@@ -39,6 +39,9 @@ import com.google.inject.persist.Transactional;
  */
 @Singleton
 public class RepositoryVersionDAO extends CrudDAO<RepositoryVersionEntity, Long> {
+  @com.google.inject.Inject
+  private StackDAO mpackStackDAO;
+
   /**
    * Constructor.
    */
@@ -55,7 +58,15 @@ public class RepositoryVersionDAO extends CrudDAO<RepositoryVersionEntity, Long>
   @Override
   @Transactional
   public void create(RepositoryVersionEntity entity){
+    mpackStackDAO.lockMpackReference(entity.getStack());
     super.create(entity);
+  }
+
+  @Override
+  @Transactional
+  public RepositoryVersionEntity merge(RepositoryVersionEntity entity) {
+    mpackStackDAO.lockMpackReference(entity.getStack());
+    return super.merge(entity);
   }
 
   /**

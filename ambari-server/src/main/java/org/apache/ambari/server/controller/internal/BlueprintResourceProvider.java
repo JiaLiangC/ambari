@@ -662,6 +662,10 @@ public class BlueprintResourceProvider extends AbstractControllerResourceProvide
             "Service %s is not provided by mpack %s-%s", service.getValue(),
             reference.getMpackName(), reference.getVersion());
       }
+      Preconditions.checkArgument(stackName.equals(reference.getMpackName())
+              && stackVersion.equals(reference.getVersion()),
+          "Cross-package service composition requires service-package task integration; "
+              + "only the Blueprint stack package can currently be selected");
       stackPackageFound |= stackName.equals(reference.getMpackName())
           && stackVersion.equals(reference.getVersion());
       resolved.add(reference.resolved(mpack.getResourceId(), mpack.getRegistryId()));

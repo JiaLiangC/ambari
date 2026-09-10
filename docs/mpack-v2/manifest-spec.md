@@ -15,138 +15,92 @@
    limitations under the License.
 --->
 
-# Mpack Authoring Manifest Specification
+# Manifest authoring contract
 
-This is the working new-authoring contract for the improvement phase. It is not
-the manifest accepted by unmodified legacy V2 registration. Implement a validated
-reader/compiler and compatibility projection before using it for deployment.
+The executable source of truth is
+[`manifest-v2alpha1.json`](../../mpack-authoring/schema/manifest-v2alpha1.json),
+with semantic checks in `mpack_authoring/schema.py` and `compiler.py`. Use
+`apiVersion: mpack.ambari.apache.org/v2alpha1`, `kind: Mpack`. This alpha source
+version is distinct from legacy registration format and runtime contract version.
 
-## Source and Built Forms
+## Source fields and limits
 
-YAML and JSON serialize one canonical model. The proposed source discriminator
-is `apiVersion: mpack.ambari.apache.org/v2alpha1` and `kind: Mpack`. Keep the alpha
-version until the contract is validated; do not mislabel it as the legacy package
-version or imply that the schema is already a released Ambari API.
-
-| Field | Required meaning |
+| Field | Meaning and current validation |
 | --- | --- |
-| metadata.name | Stable package identifier; not a Cluster name |
-| metadata.version | Package release version; distinct from software binary version |
-| metadata.displayName / description | Optional presentation metadata |
-| spec.compatibility | Supported Ambari, Agent SDK and adapter contracts |
-| spec.artifacts | Local or supported remote source references with platform facts |
-| spec.services | Stable service definitions projected onto current service-name identity |
-| service.components | Existing component categories plus declared management roles |
-| component.profiles | Explicit runtime adapter, artifacts, resources and capabilities |
-| service.configurations | Typed schema/template references and change effects |
-| service.requires / provides | Named interface requirements and exported capabilities |
-| service.operations | Typed custom-operation parameters and implementation references |
-| service.observability | Health, metrics, logs, alerts and generic presentation metadata |
+| metadata.name/version | Package release identity; neither a cluster nor generated service ID |
+| metadata.displayName/description | Optional presentation |
+| spec.compatibility | Declared Ambari/Agent SDK/dependency protocol requirements; declaration does not prove runtime compatibility |
+| spec.artifacts | Unique file or URL references; local file hashes/sizes locked; URL requires SHA-256, no userinfo/query/fragment |
+| spec.dependencies | Package-level requirements; no automatic binding approval/resolution |
+| spec.services | Service definitions using existing Ambari names |
+| service.components | Named category/role/cardinality and explicit profiles; client source is representable but host-service export rejects it |
+| component.profiles | Profile ID, adapter ID, declared capability subset, typed resources and optional health |
+| service.configurations | Unique config names, local schema/template files, defaults and changeEffect |
+| service.requires/provides | Named interface slots/version contracts; requires lock retains consumer service plus slot |
+| service.operations | Reserved; only an empty array accepted |
+| service.observability | Reserved; only an empty object accepted; health has its own bounded shape |
 
-Deployment intent is separate from package source. It supplies existing Cluster
-identity, authorized targets, selected profile, user configuration and explicit
-provider bindings. A source manifest cannot grant itself a target or permission.
+Resources can describe packages, users/groups, directories/retention, ports, program,
+arguments/environment, unit user/group/working directory, image/namespace/native name,
+replicas, artifact reference and external endpoint config reference. These are typed
+author inputs, not a promise that all runtime adapters exist. Static adapter capability
+sets in profiles.py are authoring constraints; deployment discovery is separate evidence.
 
-## Minimal Illustrative Source
+Arguments support strings and typed artifactRef/configRef/configurationRef/directoryRef/
+secretRef expressions. Known artifacts/config fields/directories must resolve within
+the declared scope. A configurationRef requires a template. Host export rejects secretRef;
+source authoring support is not runtime secret resolution. Health is process, TCP or
+HTTP with a bounded timeout and a required schema-constrained port reference for
+network probes. Every declared listener also requires a bounded integer port field.
+Host preflight checks IPv4 listeners; HTTP probes remain at their original endpoint.
 
-The referenced payload/schema/template files must be supplied by the template
-generator. This is a field-level example, not a claimed runnable existing package.
+Configuration schemas use JSON Schema 2020-12, local references only, and object roots.
+Defaults are validated without requiring deployment-supplied fields. Sensitive defaults
+must be SecretRef objects. Host export further restricts schemas to closed non-secret
+scalars, supported constraints, and scalar template substitutions. `x-resource` string
+fields inject an isolated managed directory; defaults/overrides/extra constraints are
+not allowed for these runtime-owned values. Runtime validation repeats the supported
+scalar constraints after applying Ambari desired values. Unsupported constraints fail
+export instead of disappearing from generated UI/runtime behavior. Host configuration
+changeEffect must be restart (the export default); none/reload/migration are rejected.
 
-```json
-{
-  "apiVersion": "mpack.ambari.apache.org/v2alpha1",
-  "kind": "Mpack",
-  "metadata": {
-    "name": "http-echo",
-    "version": "0.1.0",
-    "displayName": "HTTP Echo"
-  },
-  "spec": {
-    "compatibility": {"agentSdk": "v1"},
-    "artifacts": [
-      {"id": "echo-script", "source": {"kind": "file", "path": "payload/server.py"}}
-    ],
-    "services": [
-      {
-        "name": "HTTP_ECHO",
-        "configurations": [
-          {"name": "echo", "schema": "schemas/echo.json", "template": "templates/echo.conf.j2", "changeEffect": "restart"}
-        ],
-        "components": [
-          {
-            "name": "ECHO_SERVER",
-            "category": "MASTER",
-            "role": "service",
-            "cardinality": {"min": 1, "max": 1},
-            "profiles": [
-              {
-                "id": "linux-systemd",
-                "adapter": "host.systemd/v1",
-                "capabilities": ["install", "configure", "start", "stop", "observe"],
-                "resources": {
-                  "packages": ["python3"],
-                  "command": {
-                    "program": "python3",
-                    "arguments": [{"artifactRef": "echo-script"}, "--port", {"configRef": "echo.port"}]
-                  }
-                },
-                "health": {"kind": "http", "portRef": "echo.port", "path": "/health"}
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+## Source examples and standard onboarding
 
-Runtime profile identifiers are versioned extension contracts, not a claim that
-all these adapters are already installed. Literal arguments and typed references
-are resolved through the SDK, not evaluated as arbitrary shell expressions.
+Use complete source fixtures instead of copying another illustrative schema:
 
-## Validation Rules
+- [HTTP](../../mpack-authoring/fixtures/http/manifest.json): declared Python artifact,
+  user, private data directory, port and common host lifecycle.
+- [Redis](../../mpack-authoring/fixtures/redis/manifest.json): OS package prerequisite,
+  foreground redis-server and generated config-file argument; persistent data retained.
+- [Kyuubi](../../mpack-authoring/fixtures/kyuubi/manifest.json): two config files,
+  SecretRef shape and Spark/Hadoop/Hive requirements; source only until shared
+  dependency/secret execution contracts are integrated.
 
-- Validate schema version, types, required fields and recognized extensions.
-- Enforce unique package-local artifact, service, component and profile keys.
-- Resolve every file and reference within the package boundary; reject traversal
-  and incompatible archive/link layouts before publishing.
-- Validate existing service/component naming and cardinality rules. Reject a
-  collision with an existing service identity; do not invent aliases to bypass it.
-- Match capabilities to declared implementation and required verification.
-- Check effective configuration types, defaults, references, secret handling
-  and change effects. Unknown fields are diagnostics rather than silent drops.
-- Distinguish service JDK requirements from Ambari server JDK requirements.
-- Validate adapter/platform combinations and required runtime versions.
-- Resolve named dependency requirements only through supported shared protocol
-  versions. Two same-type slots are not supported by a one-slot protocol merely
-  because the source format can express them.
+New software under host-service/v1 changes its manifest, schema/templates and artifacts,
+then uses the existing compiler/export/import and Ambari service workflow. One profile
+per component is explicit; there is no automatic profile selection. The exporter writes
+real legacy service/config XML and one wrapper around the common Agent Script. The
+native unit name is generated from existing ServiceRef/component/host binding incarnation;
+there is no unit.name override or alias that creates a second service identity.
 
-## Built Package
+## Outputs and verification
 
-Build emits normalized metadata, resolved artifact/dependency locks, content
-digests, file inventory and provenance. Remote references are pinned for an
-executable plan. Local source artifacts are hashed during build. Sources with
-credentials are handled through credential references, not archived URL secrets.
+`compile_manifest` returns canonical source, manifest digest, package digest, artifact
+locks, consumer-scoped dependency requirements, metadata-only legacy preview and
+provenance and a file inventory captured by compilation. Package digest covers that
+inventory. Source and legacy exports compare the exact bytes to the compiled lock;
+a changed input cannot silently receive the original package identity or signature. A source ZIP uses
+fixed archive metadata and an exact file inventory; undeclared directory neighbors,
+symlinks and previous outputs are excluded. Local archives are payloads. URL artifacts
+must be vendored before offline export; OS packages/native dependencies remain external.
 
-The build must be deterministic for identical resolved inputs. Offline export
-includes the referenced artifacts and enough metadata to validate without a
-running Ambari instance. Registering a package does not execute its install hooks.
+`--legacy-export` is distinct from `--export`: it requires an external signing key
+and creates the actual legacy V2 registration layout for the host subset. The Server
+verifies the signature and content before publication. See the
+[tooling commands](../../mpack-authoring/README.md) and [trust contract](contracts.md).
+Compiler validation/build executes no scripts, dependency mutations or native commands.
 
-## Legacy Projection
-
-Legacy V1/V2 readers retain their explicit format detection. Normalize compatible
-service metadata without changing Cluster/service identity. Where runtime still
-requires XML/Python/Stack views, compile those artifacts from the canonical model
-with one declared source of truth; do not run two competing lifecycle engines.
-
-Unsupported legacy ServiceGroup or service-ID semantics produce a useful
-compatibility result. Do not silently perform a primary-key migration.
-
-## Schema Delivery
-
-Implement the machine-readable schema, fixture manifest, generator and validator
-together in the improvement worktree. Tests cover this positive example, missing
-files/references, invalid types, capability mismatch, identity collision, unknown
-schema version, malicious paths and deterministic build output. Keep all example
-field changes synchronized with contracts and tooling.
+Deployment-time authorization, host assignment, native capabilities and shared approval
+cannot be validated by source compilation alone. Source fixtures must not be described
+as successful Redis/Kyuubi deployment; current matrices and exact evidence are in
+[status](status.md).

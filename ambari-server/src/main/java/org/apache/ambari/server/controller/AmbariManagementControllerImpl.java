@@ -306,6 +306,9 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
 
 
   @Inject
+  private org.apache.ambari.server.orm.dao.ClusterServiceDAO mpackServiceDAO;
+
+  @Inject
   private RoleCommandOrderProvider roleCommandOrderProvider;
 
   @Inject
@@ -5778,6 +5781,12 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
         commandParams.put(MPACK_ID, String.valueOf(stackEntity.getMpackId()));
         commandParams.put(MPACK_NAME, stackId.getStackName());
         commandParams.put(MPACK_VERSION, stackId.getStackVersion());
+        Mpack selectedMpack = ambariMetaInfo.getMpack(stackEntity.getMpackId());
+        if (selectedMpack != null && selectedMpack.getPackageDigest() != null) {
+          commandParams.put("mpack_content_digest", selectedMpack.getPackageDigest());
+          commandParams.put("mpack_target_incarnation",
+              mpackServiceDAO.getOrCreateMpackTargetIncarnation(clusterId, serviceName));
+        }
       }
       String scriptName = null;
       String scriptCommandTimeout = "";
@@ -5835,6 +5844,10 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
       clusterLevelParams.put(MPACK_ID, String.valueOf(stackEntity.getMpackId()));
       clusterLevelParams.put(MPACK_NAME, stackId.getStackName());
       clusterLevelParams.put(MPACK_VERSION, stackId.getStackVersion());
+      Mpack selectedMpack = ambariMetaInfo.getMpack(stackEntity.getMpackId());
+      if (selectedMpack != null && selectedMpack.getPackageDigest() != null) {
+        clusterLevelParams.put("mpack_content_digest", selectedMpack.getPackageDigest());
+      }
     }
 
     clusterLevelParams.putAll(getMetadataClusterLevelConfigsParams(cluster, stackId));
@@ -5917,12 +5930,20 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
         configCredentialsForService.put(service.getName(), configCredentials);
       }
 
-      serviceLevelParams.put(serviceInfo.getName(),
-          new MetadataServiceInfo(serviceInfo.getVersion(),
+      MetadataServiceInfo metadata = new MetadataServiceInfo(serviceInfo.getVersion(),
               service.isCredentialStoreEnabled(),
               configCredentials,
               statusCommandTimeout,
-              servicePackageFolder));
+              servicePackageFolder);
+      StackEntity serviceStack = stackDAO.find(serviceStackId);
+      if (serviceStack != null && serviceStack.getMpackId() != null) {
+        Mpack selectedMpack = ambariMetaInfo.getMpack(serviceStack.getMpackId());
+        if (selectedMpack != null && selectedMpack.getPackageDigest() != null) {
+          metadata.setMpackTarget(selectedMpack.getPackageDigest(),
+              mpackServiceDAO.getOrCreateMpackTargetIncarnation(service.getClusterId(), service.getName()));
+        }
+      }
+      serviceLevelParams.put(serviceInfo.getName(), metadata);
     }
     return serviceLevelParams;
   }

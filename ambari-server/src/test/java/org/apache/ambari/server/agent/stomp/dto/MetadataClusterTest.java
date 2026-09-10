@@ -30,6 +30,23 @@ import org.junit.Test;
 public class MetadataClusterTest {
 
   @Test
+  public void shouldPublishChangedMpackTargetAndSerializeServiceScope() throws Exception {
+    MetadataServiceInfo before = new MetadataServiceInfo("v1", false, null, 1L, "package");
+    MetadataServiceInfo after = new MetadataServiceInfo("v1", false, null, 1L, "package");
+    before.setMpackTarget("digest", "first");
+    after.setMpackTarget("digest", "second");
+    SortedMap<String, MetadataServiceInfo> current = new TreeMap<>();
+    current.put("HTTP_ECHO", before);
+    MetadataCluster metadata = MetadataCluster.serviceLevelParamsMetadataCluster(null, current, true);
+    SortedMap<String, MetadataServiceInfo> updated = new TreeMap<>();
+    updated.put("HTTP_ECHO", after);
+    assertTrue(metadata.updateServiceLevelParams(updated, false));
+    com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(after);
+    assertEquals("digest", json.get("mpack_content_digest").asText());
+    assertEquals("second", json.get("mpack_target_incarnation").asText());
+  }
+
+  @Test
   public void shouldReturnFalseWhenUpdatingServiceLevelParamsWithoutNewOrRemovedServices() throws Exception {
     final SortedMap<String, MetadataServiceInfo> current = new TreeMap<>();
     current.put("service1", new MetadataServiceInfo("v1", Boolean.FALSE, null, 1L, "servicePackageFolder"));

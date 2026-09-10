@@ -15,34 +15,33 @@
    limitations under the License.
 --->
 
-# Mpack V2 Implementation Package
+# Mpack V2
 
-Current direction: the user has authorized resuming execution on the remote
-development host using an interactive Codex session, model `gpt-5.6-sol`,
-reasoning effort `xhigh`. Earlier Luna assignments and architecture-only pauses
-are historical. They must not stop the newly authorized execution.
+Mpack is intended to extend Ambari with software definitions and runtime-specific
+management while retaining existing cluster/service identity, authorization,
+configuration, Agent ownership, request/task history, and dependency authority.
+Current availability and acceptance are recorded in [status.md](status.md).
+Design descriptions are not claims of implemented or tested runtime support.
 
-The required sequence is community V2 integration, necessary compatibility
-corrections and verification, reviewed remote trunk publication, a new worktree
-from the published trunk, and then broader architecture/tooling improvements.
-Compatibility with the generic multi-cluster design is a hard constraint.
+## Read in this order
 
-## Reading Order
+1. [Architecture](architecture.md): boundaries, ownership, decisions and tradeoffs.
+2. [Contracts](contracts.md): identity, configuration, dependency and operation rules.
+3. [Manifest](manifest-spec.md): versioned authoring format and validation.
+4. [Reference acceptance](reference-examples.md): host, OCI, Kubernetes, external,
+   dependency and AI scenarios; these are acceptance requirements.
+5. [Implementation plan](implementation-plan.md): ordered work and exit criteria.
+6. [Status and provenance](status.md): current findings, executed checks and limits.
+7. [Independent review](reviews/independent-architecture-review-2026-09-10.md):
+   historical findings against c7dc663f7c, retained for traceability.
 
-1. [Execution runbook](execution-runbook.md): environment, authority, scope and checkpoints.
-2. [Decision register](architecture-decisions.md): confirmed constraints and execution defaults.
-3. [Architecture](architecture.md) and [multi-cluster alignment](multi-cluster-alignment.md).
-4. [Contracts](contracts.md), [manifest specification](manifest-spec.md), and [reference examples](reference-examples.md).
-5. [Integration plan](integration-plan.md) and [work orders](work-orders.md).
-6. [Design work plan](design-work-plan.md): remaining design refinements during execution.
-7. [Execution log](execution-log.md): distinguish prior local evidence from the current remote run.
+The user authorized documentation consolidation, implementation and verification,
+then explicitly requested committing and pushing this work to the personal fork.
+Publication is limited to origin/AMBARI-14714-mpack-v2-remote. Do not deploy to a
+live cluster or modify another worktree. Historical model,
+tmux, worker, approval, and publication instructions are not active work orders.
 
-Precedence: latest user instruction, confirmed compatibility constraints, execution
-runbook/work orders, then detailed design defaults. A historical checkpoint is
-evidence, not an active work order. Detailed extension names are working contracts
-that may be refined compatibly with tests and a recorded rationale.
-
-Plans/specifications do not imply that the referenced APIs, adapters or tools
-already exist. Record actual implementations and test results as work progresses.
-The multi-cluster reference itself is an incomplete source checkpoint; do not
-claim it is integrated into trunk or runtime-validated.
+Keep one architecture, one implementation plan, and one status ledger. Update
+these documents instead of adding per-batch completion reports. Record external
+acceptance dependencies explicitly. Do not replace an unresolved defect with a
+claim that a fixture, command exit code, or class definition proves support.

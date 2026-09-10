@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 18080
+    },
+    "data_dir": {
+      "type": "string",
+      "x-resource": "data"
+    }
+  },
+  "required": [
+    "port"
+  ]
+}

@@ -71,11 +71,21 @@ public class UpgradeCatalog310 extends AbstractUpgradeCatalog {
   @Override
   protected void executeDDLUpdates() throws AmbariException, SQLException {
     reconcileMpackCatalogSchema();
+    reconcileMpackHostMetadata();
     createDatasourceTable();
     createBoardTable();
     createBoardPayloadTable();
     createChartShareTable();
     addMonitoringSequences();
+  }
+
+  protected void reconcileMpackHostMetadata() throws SQLException {
+    if (!dbAccessor.tableHasColumn("mpacks", "content_digest")) {
+      dbAccessor.addColumn("mpacks", column("content_digest", String.class, 64, null, true));
+    }
+    if (!dbAccessor.tableHasColumn("clusterservices", "mpack_target_incarnation")) {
+      dbAccessor.addColumn("clusterservices", column("mpack_target_incarnation", String.class, 36, null, true));
+    }
   }
 
   @Override

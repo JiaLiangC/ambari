@@ -116,6 +116,23 @@ class TestActionQueue(TestCase):
     "clusterId": CLUSTER_ID,
   }
 
+  def test_unknown_mpack_outcome_disables_automatic_retry(self):
+    action_queue, initializer = self.create_action_queue()
+    action_queue.tmpdir = tempfile.gettempdir()
+    action_queue.commandStatuses.generate_report_template.side_effect = lambda command: {}
+    action_queue.customServiceOrchestrator.runCommand.return_value = {
+      "stdout": "", "stderr": "Outcome requires observation", "exitcode": 1,
+      "structuredOut": {"mpackOperation": {"state": "UNKNOWN", "retryable": False}},
+    }
+    command = copy.deepcopy(self.datanode_install_command)
+    command["commandParams"]["max_duration_for_retries"] = "60"
+    command["commandParams"]["log_output"] = "false"
+    action_queue.execute_command(command)
+    action_queue.customServiceOrchestrator.runCommand.assert_called_once()
+    report = action_queue.commandStatuses.put_command_status.call_args[0][1]
+    self.assertEqual(CommandStatus.failed, report["status"])
+    self.assertIn("UNKNOWN", report["structuredOut"])
+
   def test_server_command_removes_queued_recovery_commands(self):
     action_queue = self.create_mock_action_queue()
     recovery_command = copy.deepcopy(self.datanode_auto_start_command)
@@ -1690,3 +1707,24 @@ class TestActionQueue(TestCase):
       hide_passwords("db.password=changeit --access-token bearer-value"),
       "db.password=[PROTECTED] --access-token [PROTECTED]",
     )
+
+  def test_late_mpack_outcome_is_not_rewritten_as_proven_cancellation(self):
+    for outcome, exitcode, expected in (("UNKNOWN", 1, CommandStatus.failed),
+                                      ("SUCCEEDED", 0, CommandStatus.completed)):
+      with self.subTest(outcome=outcome):
+        action_queue, initializer = self.create_action_queue()
+        action_queue.tmpdir = tempfile.gettempdir()
+        action_queue.commandStatuses.generate_report_template.side_effect = lambda command: {}
+        def complete(*args, **kwargs):
+          kwargs["cancel_event"].set()
+          return {"stdout": "", "stderr": "", "exitcode": exitcode,
+            "structuredOut": {"mpackOperation": {"state": outcome, "retryable": False}}}
+        action_queue.customServiceOrchestrator.runCommand.side_effect = complete
+        command = copy.deepcopy(self.datanode_install_command)
+        command["commandParams"]["max_duration_for_retries"] = "60"
+        command["commandParams"]["log_output"] = "false"
+        action_queue.execute_command(command)
+        action_queue.customServiceOrchestrator.runCommand.assert_called_once()
+        report = action_queue.commandStatuses.put_command_status.call_args[0][1]
+        self.assertEqual(expected, report["status"])
+        self.assertIn(outcome, report["structuredOut"])

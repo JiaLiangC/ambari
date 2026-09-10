@@ -27,6 +27,24 @@ import org.junit.Test;
  * Test all the methods of BlueprintSettingEntity
  */
 public class BlueprintSettingEntityTest {
+  @Test
+  public void testPackageScopeIsEnforcedAtPersistenceBoundary() {
+    StackEntity stack = new StackEntity();
+    stack.setStackName("EXAMPLE");
+    stack.setStackVersion("1");
+    stack.setMpackId(5L);
+    BlueprintEntity blueprint = new BlueprintEntity();
+    blueprint.setStack(stack);
+    BlueprintSettingEntity setting = new BlueprintSettingEntity();
+    setting.setBlueprintEntity(blueprint);
+    setting.setSettingName("mpack_instances");
+    setting.setSettingData("[{\"name\":\"EXAMPLE\",\"mpack_name\":\"EXAMPLE\",\"version\":\"1\",\"mpack_id\":\"5\"}]");
+    setting.validatePackageReferenceScope();
+    setting.setSettingData("[{\"name\":\"EXAMPLE\",\"mpack_name\":\"EXAMPLE\",\"version\":\"1\",\"mpack_id\":\"6\"}]");
+    org.junit.Assert.assertThrows(IllegalArgumentException.class, setting::validatePackageReferenceScope);
+    setting.setSettingData("[{\"name\":\"EXAMPLE\",\"mpack_name\":\"EXAMPLE\",\"version\":\"1\",\"mpack_id\":\"5\",\"owner\":\"managed\"}]");
+    org.junit.Assert.assertThrows(IllegalArgumentException.class, setting::validatePackageReferenceScope);
+  }
   /**
    * Verify setSettingName()
    */

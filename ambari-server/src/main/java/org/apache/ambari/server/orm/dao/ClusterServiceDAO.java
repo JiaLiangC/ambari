@@ -21,6 +21,7 @@ package org.apache.ambari.server.orm.dao;
 import java.util.List;
 
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.NoResultException;
 import jakarta.persistence.TypedQuery;
 
@@ -43,6 +44,17 @@ public class ClusterServiceDAO {
   @RequiresSession
   public ClusterServiceEntity findByPK(ClusterServiceEntityPK clusterServiceEntityPK) {
     return entityManagerProvider.get().find(ClusterServiceEntity.class, clusterServiceEntityPK);
+  }
+
+  /** Called inside task persistence so service replacement cannot change its binding. */
+  @Transactional
+  public ClusterServiceEntity findByPKForUpdate(ClusterServiceEntityPK key) {
+    EntityManager manager = entityManagerProvider.get();
+    ClusterServiceEntity entity = manager.find(ClusterServiceEntity.class, key, LockModeType.PESSIMISTIC_WRITE);
+    if (entity != null) {
+      manager.refresh(entity);
+    }
+    return entity;
   }
 
   @RequiresSession
@@ -88,6 +100,28 @@ public class ClusterServiceDAO {
   public void removeByPK(ClusterServiceEntityPK clusterServiceEntityPK) {
     ClusterServiceEntity entity = findByPK(clusterServiceEntityPK);
     entityManagerProvider.get().remove(entity);
+  }
+
+  /** Allocate once per existing service row, under its database lock. */
+  @Transactional
+  public String getOrCreateMpackTargetIncarnation(Long clusterId, String serviceName) {
+    ClusterServiceEntityPK key = new ClusterServiceEntityPK();
+    key.setClusterId(clusterId);
+    key.setServiceName(serviceName);
+    EntityManager manager = entityManagerProvider.get();
+    ClusterServiceEntity entity = manager.find(ClusterServiceEntity.class, key, LockModeType.PESSIMISTIC_WRITE);
+    if (entity == null) {
+      throw new IllegalArgumentException("Mpack target requires an existing cluster service");
+    }
+    manager.refresh(entity);
+    if (entity.getMpackTargetIncarnation() == null) {
+      manager.createNativeQuery("UPDATE clusterservices SET mpack_target_incarnation = ? "
+          + "WHERE cluster_id = ? AND service_name = ? AND mpack_target_incarnation IS NULL")
+          .setParameter(1, java.util.UUID.randomUUID().toString())
+          .setParameter(2, clusterId).setParameter(3, serviceName).executeUpdate();
+      manager.refresh(entity);
+    }
+    return entity.getMpackTargetIncarnation();
   }
 
 }

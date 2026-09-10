@@ -1162,6 +1162,18 @@ public class RequestResourceProviderTest {
     requestInfoProperties.remove(RequestResourceProvider.ACTION_ID);
     request = PropertyHelper.getCreateRequest(propertySet, requestInfoProperties);
 
+    for (String reserved : new String[]{"runtime_profile", "runtime_context", "runtime_plan",
+        "runtime_operation", "runtime_operation_id", "runtime_idempotency_key",
+        "mpack_content_digest", "mpack_target_incarnation", "mpack_task_binding"}) {
+      requestInfoProperties.put("parameters/" + reserved, "untrusted");
+      try {
+        provider.createResources(PropertyHelper.getCreateRequest(propertySet, requestInfoProperties));
+        Assert.fail("Reserved runtime parameter was accepted");
+      } catch (IllegalArgumentException expected) {
+        Assert.assertEquals("Runtime execution parameters are reserved", expected.getMessage());
+      }
+      requestInfoProperties.remove("parameters/" + reserved);
+    }
     provider.createResources(request);
     Assert.assertTrue(actionRequest.hasCaptured());
     ExecuteActionRequest capturedRequest = actionRequest.getValue();

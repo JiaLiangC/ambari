@@ -45,6 +45,7 @@ CREATE TABLE registries(
  CONSTRAINT UQ_registry_name UNIQUE (registry_name));
 
 CREATE TABLE mpacks(
+  content_digest VARCHAR(64),
  id BIGINT NOT NULL,
  mpack_name VARCHAR(255) NOT NULL,
  mpack_version VARCHAR(255) NOT NULL,
@@ -178,6 +179,7 @@ CREATE TABLE serviceconfigmapping (
   CONSTRAINT FK_scvm_scv FOREIGN KEY (service_config_id) REFERENCES serviceconfig(service_config_id));
 
 CREATE TABLE clusterservices (
+  mpack_target_incarnation VARCHAR(36),
   service_name VARCHAR(255) NOT NULL,
   cluster_id BIGINT NOT NULL,
   service_enabled INTEGER NOT NULL,

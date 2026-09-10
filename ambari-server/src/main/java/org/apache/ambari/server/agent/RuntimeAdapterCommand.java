@@ -22,11 +22,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Shared server-side command contract for V2 runtime adapters.
+ * Retired alpha command constants retained for compatibility guards.
  *
- * <p>The command remains an ordinary Ambari execution command.  This helper
- * only adds namespaced parameters; dispatch, scheduling, authorization and
- * cluster/service ownership remain the existing Ambari responsibilities.</p>
+ * <p>No server producer may activate this protocol. Authorization and task
+ * execution remain with the established Ambari service workflow.</p>
  */
 public final class RuntimeAdapterCommand {
   public static final String PROFILE = "runtime_profile";
@@ -40,40 +39,18 @@ public final class RuntimeAdapterCommand {
   }
 
   /**
-   * Add a runtime operation to an existing command parameter map.
-   *
-   * @param commandParams mutable command parameters
-   * @param profile versioned runtime profile, for example host.systemd/v1
-   * @param operation adapter operation
-   * @param context serialized JSON context containing the authoritative
-   *                clusterId/serviceName/componentName references
+   * The parameter-driven alpha protocol is retired. Keep the source signature
+   * so callers fail before scheduling instead of silently executing a legacy task.
    */
   public static void add(Map<String, String> commandParams, String profile,
       String operation, String context) {
-    if (commandParams == null) {
-      throw new IllegalArgumentException("commandParams must not be null");
-    }
-    requireText(profile, "profile");
-    requireText(operation, "operation");
-    requireText(context, "context");
-    commandParams.put(PROFILE, profile);
-    commandParams.put(OPERATION, operation);
-    commandParams.put(CONTEXT, context);
+    throw new UnsupportedOperationException("Parameter-driven runtime execution is unsupported");
   }
 
-  /**
-   * Create an isolated parameter map for callers building a new command.
-   */
   public static Map<String, String> create(String profile, String operation,
       String context) {
     Map<String, String> result = new HashMap<>();
     add(result, profile, operation, context);
     return result;
-  }
-
-  private static void requireText(String value, String name) {
-    if (value == null || value.trim().isEmpty()) {
-      throw new IllegalArgumentException(name + " must not be empty");
-    }
   }
 }

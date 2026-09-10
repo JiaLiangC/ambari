@@ -93,6 +93,18 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
   ClusterDAO clusterDAO;
 
   @Inject
+  org.apache.ambari.server.orm.dao.ClusterServiceDAO mpackServiceDAO;
+
+  @Inject
+  org.apache.ambari.server.orm.dao.MpackDAO mpackDAO;
+
+  @Inject
+  com.google.inject.Provider<org.apache.ambari.server.api.services.AmbariMetaInfo> mpackMetaInfo;
+
+  @Inject
+  com.google.inject.Provider<org.apache.ambari.server.state.ConfigHelper> mpackConfigHelper;
+
+  @Inject
   HostDAO hostDAO;
 
   @Inject
@@ -332,6 +344,75 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
     return count.intValue();
   }
 
+  /** Pin host identity and config at the existing task persistence boundary. */
+  void pinMpackTask(ExecutionCommand command, Long clusterId) throws AmbariException {
+    if (clusterId == null || clusterId < 0 || StringUtils.isBlank(command.getServiceName())) {
+      return;
+    }
+    org.apache.ambari.server.orm.entities.ClusterServiceEntityPK key =
+        new org.apache.ambari.server.orm.entities.ClusterServiceEntityPK();
+    key.setClusterId(clusterId);
+    key.setServiceName(command.getServiceName());
+    org.apache.ambari.server.orm.entities.ClusterServiceEntity service = mpackServiceDAO.findByPKForUpdate(key);
+    if (service == null || service.getServiceDesiredStateEntity() == null) {
+      return;
+    }
+    org.apache.ambari.server.orm.entities.RepositoryVersionEntity repository =
+        service.getServiceDesiredStateEntity().getDesiredRepositoryVersion();
+    if (service.getServiceComponentDesiredStateEntities() != null) {
+      for (org.apache.ambari.server.orm.entities.ServiceComponentDesiredStateEntity component
+          : service.getServiceComponentDesiredStateEntities()) {
+        if (component.getComponentName().equals(command.getComponentName())) {
+          repository = component.getDesiredRepositoryVersion();
+        }
+      }
+    }
+    if (repository == null || repository.getStack().getMpackId() == null) {
+      return;
+    }
+    org.apache.ambari.server.orm.entities.MpackEntity pack = mpackDAO.findById(repository.getStack().getMpackId());
+    if (pack == null || pack.getContentDigest() == null) {
+      return;
+    }
+    if (!clusterId.toString().equals(command.getClusterId())) {
+      throw new AmbariException("Mpack task cluster differs from its persisted request");
+    }
+    Map<String, String> params = command.getCommandParams();
+    params.put("mpack_content_digest", pack.getContentDigest());
+    params.put("mpack_target_incarnation", mpackServiceDAO.getOrCreateMpackTargetIncarnation(clusterId, command.getServiceName()));
+    org.apache.ambari.server.state.Cluster cluster = clusters.getClusterById(clusterId);
+    Map<String, Map<String, String>> tags = mpackConfigHelper.get().getEffectiveDesiredTags(
+        cluster, command.getHostname(), cluster.getDesiredConfigs());
+    Map<String, Map<String, String>> effective = mpackConfigHelper.get().getEffectiveConfigProperties(cluster, tags);
+    org.apache.ambari.server.state.ServiceInfo info = mpackMetaInfo.get().getService(
+        repository.getStackName(), repository.getStackVersion(), command.getServiceName());
+    Map<String, Map<String, String>> selected = new java.util.TreeMap<>();
+    Map<String, Map<String, String>> hashes = new java.util.TreeMap<>();
+    Map<String, Map<String, String>> selectedTags = new java.util.TreeMap<>();
+    for (String type : info.getConfigTypeAttributes().keySet()) {
+      Map<String, String> values = new java.util.TreeMap<>(effective.getOrDefault(type, Collections.emptyMap()));
+      selected.put(type, values);
+      selectedTags.put(type, tags.getOrDefault(type, Collections.emptyMap()));
+      Map<String, String> fields = new java.util.TreeMap<>();
+      values.forEach((name, value) -> fields.put(name, org.apache.commons.codec.digest.DigestUtils.sha256Hex(value)));
+      hashes.put(type, fields);
+    }
+    Map<String, Object> binding = new java.util.TreeMap<>();
+    binding.put("clusterId", clusterId);
+    binding.put("serviceName", command.getServiceName());
+    binding.put("role", command.getRole().toString());
+    binding.put("hostName", command.getHostname());
+    binding.put("operation", command.getRoleCommand() == org.apache.ambari.server.RoleCommand.CUSTOM_COMMAND
+        ? params.get("custom_command") : command.getRoleCommand().toString());
+    binding.put("packageDigest", pack.getContentDigest());
+    binding.put("targetIncarnation", params.get("mpack_target_incarnation"));
+    binding.put("configTags", selectedTags);
+    binding.put("configurationHashes", hashes);
+    params.put("mpack_task_binding", new com.google.gson.Gson().toJson(binding));
+    command.setConfigurations(selected);
+    command.setOverrideConfigs(false);
+  }
+
   @Override
   @Transactional
   @TransactionalLock(lockArea = LockArea.HRC_STATUS_CACHE, lockType = LockType.WRITE)
@@ -414,6 +495,10 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
         hostRoleCommandEntity.setOutputLog(hostRoleCommand.getOutputLog());
         hostRoleCommandEntity.setErrorLog(hostRoleCommand.getErrorLog());
 
+        pinMpackTask(hostRoleCommand.getExecutionCommandWrapper().getExecutionCommand(), clusterId);
+        if (hostRoleCommand.getExecutionCommandWrapper().getExecutionCommand().getCommandParams().containsKey("mpack_task_binding")) {
+          hostRoleCommand.getExecutionCommandWrapper().invalidateJson();
+        }
         ExecutionCommandEntity executionCommandEntity = hostRoleCommand.constructExecutionCommandEntity();
         executionCommandEntity.setHostRoleCommand(hostRoleCommandEntity);
 

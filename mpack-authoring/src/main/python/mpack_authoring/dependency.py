@@ -1,9 +1,19 @@
 """
-Licensed to the Apache Software Foundation (ASF) under one or more contributor
-license agreements. See the NOTICE file distributed with this work for
-additional information regarding copyright ownership. The ASF licenses this
-file under the Apache License, Version 2.0 (the "License"); you may not use
-this file except in compliance with the License.
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 """
 
 from dataclasses import dataclass
@@ -57,69 +67,42 @@ class BindingSnapshot:
 
 
 class DependencyAdapter:
-  """Versioned boundary for shared-platform dependency binding."""
+  """Forward to an injected shared-platform client; never manufacture authority.
+
+  The client owns authentication, approval, persistence, incarnation, revision,
+  operation epoch and readiness. There is deliberately no default local backend.
+  Test doubles must be supplied explicitly by fixtures.
+  """
 
   protocol_version = "binding/v1"
 
-  def __init__(self, authorizer=None):
-    self.authorizer = authorizer
+  def __init__(self, client=None):
+    self.client = client
 
-  def preview(self, requirement, provider):
-    if not isinstance(requirement, DependencyRequirement):
-      raise ValueError("Invalid dependency requirement")
-    if not isinstance(provider, ServiceRef):
-      raise ValueError("Provider must use the current ServiceRef identity")
-    return {"protocol": self.protocol_version, "slot": requirement.slot,
-            "provider": {"clusterId": provider.cluster_id,
-                         "serviceName": provider.service_name},
-            "bindingId": str(uuid.uuid4()), "expectedRevision": None}
+  def _call(self, operation, *args, **kwargs):
+    if self.client is None:
+      raise RuntimeError("DEPENDENCY_UNRESOLVED: shared binding client is unavailable")
+    if getattr(self.client, "protocol_version", None) != self.protocol_version:
+      raise RuntimeError("CAPABILITY_UNSUPPORTED: shared binding protocol mismatch")
+    return getattr(self.client, operation)(*args, **kwargs)
 
-  def approve(self, preview, snapshot, authorization=None):
-    if preview.get("protocol") != self.protocol_version:
-      raise ValueError("Unsupported dependency binding protocol")
-    if not isinstance(snapshot, BindingSnapshot):
-      raise ValueError("A reviewed binding snapshot is required")
-    if preview.get("bindingId") != snapshot.binding_id:
-      raise ValueError("Binding snapshot UUID does not match the preview")
-    if preview.get("provider") != {"clusterId": snapshot.provider.cluster_id,
-                                   "serviceName": snapshot.provider.service_name}:
-      raise ValueError("Binding provider does not match the preview")
-    if self.authorizer is not None and not self.authorizer(preview, authorization):
-      raise PermissionError("AUTHORIZATION_DENIED")
-    if not snapshot.authorized and authorization is not True:
-      raise PermissionError("AUTHORIZATION_DENIED")
-    return snapshot
+  def preview(self, requirement, provider, consumer):
+    if not isinstance(requirement, DependencyRequirement) or not all(
+        isinstance(value, ServiceRef) for value in (provider, consumer)):
+      raise ValueError("Requirement and existing provider/consumer ServiceRefs are required")
+    return self._call("preview", requirement, provider, consumer)
 
-  def apply(self, snapshot, expected_revision, authorization=True):
-    """Return a fenced mutation envelope without changing provider state."""
-    if not isinstance(snapshot, BindingSnapshot) or snapshot.fenced:
-      raise ValueError("A live binding snapshot is required")
-    if not authorization:
-      raise PermissionError("AUTHORIZATION_DENIED")
-    if expected_revision is not None and expected_revision != snapshot.revision:
-      raise RuntimeError("TARGET_CONFLICT")
-    return {"protocol": self.protocol_version, "bindingId": snapshot.binding_id,
-            "incarnation": snapshot.incarnation or snapshot.binding_id,
-            "expectedRevision": snapshot.revision, "fence": snapshot.revision + 1}
+  def approve(self, preview, snapshot):
+    return self._call("approve", preview, snapshot)
+
+  def apply(self, snapshot, expected_revision):
+    return self._call("apply", snapshot, expected_revision)
 
   def observe(self, snapshot):
-    if not isinstance(snapshot, BindingSnapshot):
-      raise ValueError("A binding snapshot is required")
-    return {"bindingId": snapshot.binding_id, "revision": snapshot.revision,
-            "incarnation": snapshot.incarnation or snapshot.binding_id,
-            "state": "FENCED" if snapshot.fenced else "READY"}
+    return self._call("observe", snapshot)
 
   def detach(self, snapshot):
-    if not isinstance(snapshot, BindingSnapshot):
-      raise ValueError("A binding snapshot is required")
-    return {"bindingId": snapshot.binding_id, "revision": snapshot.revision,
-            "incarnation": snapshot.incarnation or snapshot.binding_id,
-            "state": "DETACH_REQUESTED", "fence": snapshot.revision + 1}
+    return self._call("detach", snapshot)
 
   def fence(self, snapshot, revision):
-    if not isinstance(snapshot, BindingSnapshot):
-      raise ValueError("A binding snapshot is required")
-    if revision < snapshot.revision:
-      raise RuntimeError("PLAN_STALE")
-    return {"bindingId": snapshot.binding_id, "revision": revision,
-            "state": "FENCED"}
+    return self._call("fence", snapshot, revision)

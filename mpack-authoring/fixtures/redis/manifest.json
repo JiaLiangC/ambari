@@ -1,0 +1,89 @@
+{
+  "apiVersion": "mpack.ambari.apache.org/v2alpha1",
+  "kind": "Mpack",
+  "metadata": {
+    "name": "redis-authoring-example",
+    "version": "0.1.0",
+    "description": "Declarative source example; see docs/mpack-v2/status.md for runtime acceptance"
+  },
+  "spec": {
+    "artifacts": [],
+    "services": [
+      {
+        "name": "REDIS",
+        "configurations": [
+          {
+            "name": "redis",
+            "schema": "config.schema.json",
+            "template": "config.conf.j2",
+            "changeEffect": "restart"
+          }
+        ],
+        "components": [
+          {
+            "name": "REDIS_SERVER",
+            "category": "MASTER",
+            "role": "service",
+            "profiles": [
+              {
+                "id": "host",
+                "adapter": "host.systemd/v1",
+                "capabilities": [
+                  "install",
+                  "configure",
+                  "start",
+                  "stop",
+                  "observe",
+                  "restart"
+                ],
+                "resources": {
+                  "packages": [
+                    "redis"
+                  ],
+                  "users": [
+                    {
+                      "name": "redis"
+                    }
+                  ],
+                  "directories": [
+                    {
+                      "path": "data",
+                      "owner": "redis",
+                      "mode": "0750",
+                      "persistent": true,
+                      "retention": "retain"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "name": "listener",
+                      "configRef": "redis.port",
+                      "protocol": "tcp"
+                    }
+                  ],
+                  "command": {
+                    "program": "redis-server",
+                    "arguments": [
+                      {
+                        "configurationRef": "redis"
+                      }
+                    ]
+                  },
+                  "unit": {
+                    "user": "redis",
+                    "workingDirectory": "data"
+                  }
+                },
+                "health": {
+                  "kind": "tcp",
+                  "portRef": "redis.port",
+                  "timeoutSeconds": 5
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

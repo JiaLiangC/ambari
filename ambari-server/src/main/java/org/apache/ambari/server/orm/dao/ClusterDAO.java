@@ -304,6 +304,7 @@ public class ClusterDAO {
    */
   @Transactional
   public void create(ClusterEntity clusterEntity) {
+    stackDAO.lockMpackReference(clusterEntity.getDesiredStack());
     entityManagerProvider.get().persist(clusterEntity);
   }
 
@@ -359,6 +360,7 @@ public class ClusterDAO {
    */
   @Transactional
   public ClusterEntity merge(ClusterEntity clusterEntity, boolean flush) {
+    stackDAO.lockMpackReference(clusterEntity.getDesiredStack());
     EntityManager entityManager = entityManagerProvider.get();
     clusterEntity = entityManager.merge(clusterEntity);
 

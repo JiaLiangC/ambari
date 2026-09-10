@@ -853,3 +853,16 @@ class TestCustomServiceOrchestrator(TestCase):
         {"configurations": {"site": {"password": "plain"}}}
       )
     )
+
+  def test_mpack_current_membership_cannot_be_overridden_by_task_header(self):
+    orchestrator = object.__new__(CustomServiceOrchestrator)
+    orchestrator.configuration_builder = MagicMock()
+    orchestrator.configuration_builder.get_configuration.return_value = {
+      "agentLevelParams": {"hostname": "assigned-host"}, "localComponents": [],
+      "configurations": {}, "commandParams": {},
+    }
+    command = orchestrator.generate_command({"clusterId": 1, "serviceName": "HTTP_ECHO",
+      "role": "HTTP_ECHO_SERVER", "commandParams": {"mpack_task_binding": "{}"},
+      "mpackCurrentHost": {"hostName": "forged-host", "components": ["HTTP_ECHO_SERVER"]},
+      "localComponents": ["HTTP_ECHO_SERVER"]})
+    self.assertEqual({"hostName": "assigned-host", "components": [], "configurationHashes": {}}, command["mpackCurrentHost"])

@@ -1,9 +1,19 @@
 """
-Licensed to the Apache Software Foundation (ASF) under one or more contributor
-license agreements. See the NOTICE file distributed with this work for
-additional information regarding copyright ownership. The ASF licenses this
-file under the Apache License, Version 2.0 (the "License"); you may not use
-this file except in compliance with the License.
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 """
 
 from dataclasses import dataclass
@@ -13,35 +23,3 @@ from dataclasses import dataclass
 class ServiceRef:
   cluster_id: int
   service_name: str
-
-
-@dataclass(frozen=True)
-class PackageRef:
-  name: str
-  version: str
-  digest: str
-
-
-@dataclass(frozen=True)
-class RuntimeContext:
-  service: ServiceRef
-  package: PackageRef
-  profile_id: str
-  package_capabilities: frozenset
-  adapter_capabilities: frozenset
-  target_capabilities: frozenset
-  policy_capabilities: frozenset
-
-  def effective_capabilities(self):
-    return (self.package_capabilities & self.adapter_capabilities
-            & self.target_capabilities & self.policy_capabilities)
-
-  def unsupported(self, requested):
-    return frozenset(requested) - self.effective_capabilities()
-
-  def require(self, requested):
-    unsupported = self.unsupported(requested)
-    if unsupported:
-      raise ValueError("Unsupported runtime capabilities: {}".format(
-          ", ".join(sorted(unsupported))))
-    return frozenset(requested)

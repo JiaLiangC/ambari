@@ -26,6 +26,7 @@ import shutil
 import tempfile
 import threading
 import json
+import hashlib
 from collections import defaultdict
 from configparser import NoOptionError
 
@@ -721,6 +722,18 @@ class CustomServiceOrchestrator(object):
       del command_dict["clusterHostInfo"]
 
     command = Utils.update_nested(Utils.get_mutable_copy(command_dict), command_header)
+    if command_header.get("commandParams", {}).get("mpack_task_binding"):
+      # Preserve current Agent membership separately from the persisted task.
+      # The incoming header must never supply this current-state projection.
+      binding = json.loads(command_header["commandParams"]["mpack_task_binding"])
+      hashes = {name: {key: hashlib.sha256(str(value).encode("utf-8")).hexdigest()
+        for key, value in command_dict.get("configurations", {}).get(name, {}).items()}
+        for name in binding.get("configurationHashes", {})}
+      command["mpackCurrentHost"] = {
+        "hostName": command_dict.get("agentLevelParams", {}).get("hostname"),
+        "components": list(command_dict.get("localComponents", [])),
+        "configurationHashes": hashes,
+      }
 
     # topology needs to be decompressed if and only if it originates from command header
     if "clusterHostInfo" in command_header and command_header["clusterHostInfo"]:

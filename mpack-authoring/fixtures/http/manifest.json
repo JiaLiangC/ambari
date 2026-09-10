@@ -1,0 +1,101 @@
+{
+  "apiVersion": "mpack.ambari.apache.org/v2alpha1",
+  "kind": "Mpack",
+  "metadata": {
+    "name": "http-authoring-example",
+    "version": "0.1.0",
+    "description": "Declarative source example; see docs/mpack-v2/status.md for runtime acceptance"
+  },
+  "spec": {
+    "artifacts": [
+      {
+        "id": "server",
+        "source": {
+          "kind": "file",
+          "path": "server.py"
+        }
+      }
+    ],
+    "services": [
+      {
+        "name": "HTTP_ECHO",
+        "configurations": [
+          {
+            "name": "http",
+            "schema": "config.schema.json",
+            "template": "config.conf.j2",
+            "changeEffect": "restart"
+          }
+        ],
+        "components": [
+          {
+            "name": "HTTP_ECHO_SERVER",
+            "category": "MASTER",
+            "role": "service",
+            "profiles": [
+              {
+                "id": "host",
+                "adapter": "host.systemd/v1",
+                "capabilities": [
+                  "install",
+                  "configure",
+                  "start",
+                  "stop",
+                  "observe",
+                  "restart"
+                ],
+                "resources": {
+                  "packages": [
+                    "python3"
+                  ],
+                  "users": [
+                    {
+                      "name": "http"
+                    }
+                  ],
+                  "directories": [
+                    {
+                      "path": "data",
+                      "owner": "http",
+                      "mode": "0750",
+                      "persistent": true,
+                      "retention": "retain"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "name": "listener",
+                      "configRef": "http.port",
+                      "protocol": "tcp"
+                    }
+                  ],
+                  "command": {
+                    "program": "python3",
+                    "arguments": [
+                      {
+                        "artifactRef": "server"
+                      },
+                      "--port",
+                      {
+                        "configRef": "http.port"
+                      }
+                    ]
+                  },
+                  "unit": {
+                    "user": "http",
+                    "workingDirectory": "data"
+                  }
+                },
+                "health": {
+                  "kind": "tcp",
+                  "portRef": "http.port",
+                  "timeoutSeconds": 5
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -66,6 +66,14 @@ public class ClusterServiceEntity {
   @OneToMany(mappedBy = "clusterServiceEntity")
   private Collection<ServiceComponentDesiredStateEntity> serviceComponentDesiredStateEntities;
 
+  // Native target incarnation is metadata of this existing service, not a
+  // replacement service identity. Deleting/recreating the row resets it.
+  @Column(name = "mpack_target_incarnation", length = 36, insertable = false, updatable = false)
+  private String mpackTargetIncarnation;
+
+  public String getMpackTargetIncarnation() { return mpackTargetIncarnation; }
+  public void setMpackTargetIncarnation(String value) { mpackTargetIncarnation = value; }
+
   public Long getClusterId() {
     return clusterId;
   }

@@ -19,6 +19,7 @@
 package org.apache.ambari.server.agent.stomp.dto;
 
 import java.util.Map;
+import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -35,6 +36,17 @@ public class MetadataServiceInfo {
 
   @JsonProperty("service_package_folder")
   private String servicePackageFolder;
+
+  @JsonProperty("mpack_content_digest")
+  private String mpackContentDigest;
+
+  @JsonProperty("mpack_target_incarnation")
+  private String mpackTargetIncarnation;
+
+  public void setMpackTarget(String contentDigest, String incarnation) {
+    this.mpackContentDigest = contentDigest;
+    this.mpackTargetIncarnation = incarnation;
+  }
 
   public MetadataServiceInfo(String version, Boolean credentialStoreEnabled,
                              Map<String, Map<String, String>> credentialStoreEnabledProperties,
@@ -93,6 +105,9 @@ public class MetadataServiceInfo {
 
     MetadataServiceInfo that = (MetadataServiceInfo) o;
 
+    if (!Objects.equals(mpackContentDigest, that.mpackContentDigest)
+        || !Objects.equals(mpackTargetIncarnation, that.mpackTargetIncarnation)) return false;
+
     if (version != null ? !version.equals(that.version) : that.version != null) return false;
     if (credentialStoreEnabled != null ? !credentialStoreEnabled.equals(that.credentialStoreEnabled) : that.credentialStoreEnabled != null)
       return false;
@@ -110,6 +125,7 @@ public class MetadataServiceInfo {
     result = 31 * result + (credentialStoreEnabledProperties != null ? credentialStoreEnabledProperties.hashCode() : 0);
     result = 31 * result + (statusCommandsTimeout != null ? statusCommandsTimeout.hashCode() : 0);
     result = 31 * result + (servicePackageFolder != null ? servicePackageFolder.hashCode() : 0);
+    result = 31 * result + Objects.hash(mpackContentDigest, mpackTargetIncarnation);
     return result;
   }
 }

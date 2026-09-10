@@ -382,20 +382,10 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
 
       try {
         getManagementController().removeMpack(mpackEntity, stackEntity);
-        deleteStatusMetaData = modifyResources(new Command<DeleteStatusMetaData>() {
-          @Override
-          public DeleteStatusMetaData invoke() throws AmbariException {
-            if (stackEntity != null) {
-              repositoryVersionDAO.removeByStack(new StackId(
-                  stackEntity.getStackName() + "-" + stackEntity.getStackVersion()));
-              stackDAO.removeByMpack(mpackId);
-              notifyDelete(Resource.Type.Stack, predicate);
-            }
-            mpackDAO.removeById(mpackId);
-
-            return new DeleteStatusMetaData();
-          }
-        });
+        deleteStatusMetaData = new DeleteStatusMetaData();
+        if (stackEntity != null) {
+          notifyDelete(Resource.Type.Stack, predicate);
+        }
         notifyDelete(Resource.Type.Mpack, predicate);
         deleteStatusMetaData.addDeletedKey(mpackId.toString());
       } catch (IOException e) {

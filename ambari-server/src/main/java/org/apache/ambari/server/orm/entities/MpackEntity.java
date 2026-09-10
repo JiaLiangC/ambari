@@ -66,6 +66,12 @@ public class MpackEntity {
   @Column(name = "mpack_uri", nullable = false)
   private String mpackUri;
 
+  @Column(name = "content_digest", length = 64, updatable = false)
+  private String contentDigest;
+
+  public String getContentDigest() { return contentDigest; }
+  public void setContentDigest(String value) { contentDigest = value; }
+
   public Long getId() {
     return id;
   }
