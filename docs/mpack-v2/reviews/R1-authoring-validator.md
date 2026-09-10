@@ -16,6 +16,11 @@ The module also emits a deterministic offline file lock containing the
 manifest digest, sorted inventory, sizes and SHA-256 content hashes. Remote
 sources are not fetched and package hooks are never executed.
 
+The runtime module defines additive `ServiceRef`, `PackageRef` and
+`RuntimeContext` values. Effective capabilities are the intersection of package,
+adapter, target and policy declarations; unsupported requests fail explicitly.
+The context keeps numeric cluster and service-name identity as the authority.
+
 Focused tests are included under `mpack-authoring/src/test/python`. Validation
 will be run with the rest of the local improvement batch after the current
 implementation topics are complete.

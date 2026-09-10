@@ -8,5 +8,7 @@ this file except in compliance with the License.
 
 from .manifest import ManifestError, load_manifest, validate_manifest
 from .build import build_lock, write_lock
+from .runtime import PackageRef, RuntimeContext, ServiceRef
 
-__all__ = ["ManifestError", "build_lock", "load_manifest", "validate_manifest", "write_lock"]
+__all__ = ["ManifestError", "PackageRef", "RuntimeContext", "ServiceRef",
+           "build_lock", "load_manifest", "validate_manifest", "write_lock"]
