@@ -33,6 +33,7 @@ from ambari_agent.BackgroundCommandExecutionHandle import (
   BackgroundCommandExecutionHandle,
 )
 from ambari_agent.models.commands import AgentCommand, CommandStatus
+from ambari_agent.RuntimeAdapter import RuntimeAdapterExecutor
 from ambari_commons.str_utils import split_on_chunks
 
 
@@ -100,6 +101,7 @@ class ActionQueue(threading.Thread):
     self.stop_event = initializer_module.stop_event
     self.tmpdir = self.config.get("agent", "prefix")
     self.customServiceOrchestrator = initializer_module.customServiceOrchestrator
+    self.runtime_adapter_executor = RuntimeAdapterExecutor()
     self.parallel_execution = self.config.get_parallel_exec_option()
     self.recovery_command_lock = threading.RLock()
     self.active_recovery_task_ids = set()
@@ -650,15 +652,21 @@ class ActionQueue(threading.Thread):
       start = 0
       if retry_able:
         start = int(time.time())
-      # running command
-      command_result = self.customServiceOrchestrator.runCommand(
-        command,
-        in_progress_status["tmpout"],
-        in_progress_status["tmperr"],
-        override_output_files=num_attempts == 1,
-        retry=num_attempts > 1,
-        cancel_event=cancel_event,
-      )
+      # Runtime adapter commands use the same status/cancellation path as
+      # legacy service commands, while retaining the established service and
+      # component identity in the supplied runtime context.
+      runtime_result = self.runtime_adapter_executor.execute(command, cancel_event)
+      if runtime_result is not None:
+        command_result = runtime_result
+      else:
+        command_result = self.customServiceOrchestrator.runCommand(
+          command,
+          in_progress_status["tmpout"],
+          in_progress_status["tmperr"],
+          override_output_files=num_attempts == 1,
+          retry=num_attempts > 1,
+          cancel_event=cancel_event,
+        )
       if cancel_event.is_set() or self.stop_event.is_set():
         logger.info(f"Command with taskId = {taskId} canceled during execution")
         command_canceled = True

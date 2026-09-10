@@ -512,6 +512,12 @@ public class ExecutionCommand extends AgentCommand {
     String MPACK_ID = "mpack_id";
     String MPACK_NAME = "mpack_name";
     String MPACK_VERSION = "mpack_version";
+    String RUNTIME_PROFILE = RuntimeAdapterCommand.PROFILE;
+    String RUNTIME_OPERATION = RuntimeAdapterCommand.OPERATION;
+    String RUNTIME_CONTEXT = RuntimeAdapterCommand.CONTEXT;
+    String RUNTIME_PLAN = RuntimeAdapterCommand.PLAN;
+    String RUNTIME_OPERATION_ID = RuntimeAdapterCommand.OPERATION_ID;
+    String RUNTIME_IDEMPOTENCY_KEY = RuntimeAdapterCommand.IDEMPOTENCY_KEY;
     @Deprecated
     @Experimental(feature=ExperimentalFeature.PATCH_UPGRADES)
     String SERVICE_REPO_INFO = "service_repo_info";
