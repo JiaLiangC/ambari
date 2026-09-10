@@ -26,6 +26,7 @@ import java.util.Objects;
 import org.apache.ambari.server.state.stack.RepositoryXml;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 
+import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 
 /**
@@ -77,6 +78,26 @@ public class Mpack {
   private String definitionSha256;
   private String signatureAlgorithm;
   private String signature;
+  private String publisher;
+  private String packageName;
+  private String signatureKeyId;
+  private String signatureFormat;
+  private Map<String, String> compatibility;
+  private Map<String, String> softwareVersions;
+  private transient JsonObject authoringMetadata;
+  private transient Long repositoryVersionId;
+
+  public Long getRepositoryVersionId() { return repositoryVersionId; }
+  public void setRepositoryVersionId(Long value) { repositoryVersionId = value; }
+
+  public String getPublisher() { return publisher; }
+  public String getPackageName() { return packageName; }
+  public String getSignatureKeyId() { return signatureKeyId; }
+  public String getSignatureFormat() { return signatureFormat; }
+  public Map<String, String> getCompatibility() { return compatibility; }
+  public Map<String, String> getSoftwareVersions() { return softwareVersions; }
+  public JsonObject getAuthoringMetadata() { return authoringMetadata; }
+  public void setAuthoringMetadata(JsonObject value) { authoringMetadata = value; }
 
   public String getAuthoringFormat() { return authoringFormat; }
   public String getManifestDigest() { return manifestDigest; }
@@ -121,6 +142,20 @@ public class Mpack {
 
   public void setMpackId(String mpackId) {
     this.mpackId = mpackId;
+  }
+
+  /** The publisher envelope keeps installation inventory separate from legacy prerequisites. */
+  @SuppressWarnings("unchecked")
+  public java.util.Map<String, Object> getInstallationPrerequisites() {
+    if (authoringMetadata == null || !authoringMetadata.has("installationPrerequisites")) {
+      return java.util.Collections.emptyMap();
+    }
+    return new com.google.gson.Gson().fromJson(authoringMetadata.get("installationPrerequisites"), java.util.Map.class);
+  }
+
+  /** Legacy StackId strings reserve the first hyphen for the version separator. */
+  public String getStackName() {
+    return packageDigest == null ? name : "MPACK_" + org.apache.commons.codec.digest.DigestUtils.sha256Hex(name);
   }
 
   public String getName() {

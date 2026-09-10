@@ -25,6 +25,10 @@
         "description": {
           "type": "string",
           "minLength": 1
+        },
+        "publisher": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,62}$"
         }
       },
       "required": [
@@ -257,9 +261,32 @@
                             "minItems": 1,
                             "uniqueItems": true
                           },
+                          "upgradePolicy": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "fromPackageDigests": {
+                                "type": "array",
+                                "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                                "minItems": 1,
+                                "maxItems": 32,
+                                "uniqueItems": true
+                              },
+                              "configuration": {"const": "compatible"},
+                              "data": {"const": "unchanged"}
+                            },
+                            "required": ["fromPackageDigests", "configuration", "data"]
+                          },
                           "resources": {
                             "type": "object",
                             "properties": {
+                              "executableArtifacts": {
+                                "type": "array", "uniqueItems": true,
+                                "items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"}
+                              },
+                              "reloadSignal": {
+                                "enum": ["HUP", "USR1", "USR2"]
+                              },
                               "packages": {
                                 "type": "array",
                                 "items": {
@@ -509,6 +536,29 @@
                                 ],
                                 "additionalProperties": false
                               },
+                              "engine": {"enum": ["docker", "podman"]},
+                              "runAsUser": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"},
+                              "runAsUserId": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+                              "connectionRef": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"},
+                              "mounts": {
+                                "type": "array", "maxItems": 32,
+                                "items": {
+                                  "type": "object", "additionalProperties": false,
+                                  "required": ["directoryRef", "containerPath"],
+                                  "properties": {
+                                    "directoryRef": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"},
+                                    "containerPath": {"type": "string", "pattern": "^/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$", "maxLength": 256}
+                                  }
+                                }
+                              },
+                              "limits": {
+                                "type": "object", "additionalProperties": false,
+                                "properties": {
+                                  "memoryMiB": {"type": "integer", "minimum": 64, "maximum": 65536},
+                                  "cpus": {"type": "integer", "minimum": 1, "maximum": 64},
+                                  "pids": {"type": "integer", "minimum": 16, "maximum": 4096}
+                                }
+                              },
                               "image": {
                                 "type": "string",
                                 "minLength": 1
@@ -584,6 +634,10 @@
                         "additionalProperties": false
                       },
                       "minItems": 1
+                    },
+                    "softwareVersion": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$"
                     }
                   },
                   "required": [
@@ -663,7 +717,35 @@
               },
               "observability": {
                 "type": "object",
-                "maxProperties": 0
+                "additionalProperties": false,
+                "properties": {
+                  "logs": {
+                    "type": "object", "maxProperties": 64,
+                    "propertyNames": {"pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"},
+                    "additionalProperties": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,127}$"}
+                  },
+                  "metrics": {
+                    "type": "object", "maxProperties": 64,
+                    "propertyNames": {"pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"},
+                    "additionalProperties": {
+                      "type": "object", "additionalProperties": false,
+                      "required": ["portRef", "path", "fields"],
+                      "properties": {
+                        "portRef": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*[.][A-Za-z][A-Za-z0-9_.-]*$"},
+                        "protocol": {"enum": ["http", "https"]},
+                        "path": {"type": "string", "pattern": "^/[A-Za-z0-9_/-]+$", "maxLength": 256},
+                        "fields": {
+                          "type": "object", "minProperties": 1, "maxProperties": 64,
+                          "propertyNames": {"pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"},
+                          "additionalProperties": {
+                            "type": "array", "minItems": 1, "maxItems": 8,
+                            "items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"}
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             },
             "required": [

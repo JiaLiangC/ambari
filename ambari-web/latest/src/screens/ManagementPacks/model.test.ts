@@ -61,6 +61,16 @@ describe("management pack response normalization", () => {
     })).toEqual([expect.objectContaining({ id: 7, registryId: undefined })]);
   });
 
+  it("keeps publisher identity, package version and repository selection distinct", () => {
+    expect(normalizeRegisteredMpacks({ items: [{ MpackInfo: { id: 7, publisher: "team",
+      package_name: "http", mpack_name: "publisher-4-team-http", mpack_version: "2",
+      repository_version_id: 51, stack_name: "MPACK_hash", signature_algorithm: "Ed25519",
+      software_versions: { "HTTP/SERVER": "1.0" } } }] })[0]).toMatchObject({
+      publisher: "team", packageName: "http", version: "2", repositoryVersionId: 51,
+      stackName: "MPACK_hash", signatureAlgorithm: "Ed25519", softwareVersions: { "HTTP/SERVER": "1.0" },
+    });
+  });
+
   it("reads validation and recommendation resource properties", () => {
     expect(normalizeValidationResults({
       resources: [{ results: [{ level: "FATAL", message: "incompatible" }] }],

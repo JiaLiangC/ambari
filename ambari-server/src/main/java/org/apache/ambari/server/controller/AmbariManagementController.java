@@ -1039,6 +1039,8 @@ public interface AmbariManagementController {
    */
   Set<MpackResponse> getMpacks();
 
+  List<Map<String, Object>> getMpackResources(String clusterName, String after) throws AmbariException;
+
   /***
    * Fetch an mpack based on id
    * @param mpackId

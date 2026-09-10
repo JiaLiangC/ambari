@@ -118,6 +118,176 @@ class TestMpackHost(unittest.TestCase):
     deployment = self.deployment()
     return deployment.apply(deployment.plan(action))
 
+  def test_detach_and_adopt_preserve_resources_and_require_the_same_verified_stopped_target(self):
+    profile = self.descriptor["service"]["components"][0]["profiles"][0]
+    profile["capabilities"].extend(["detach", "adopt"])
+    with self.assertRaises(HostError):
+      self.apply("adopt")
+    self.apply("start")
+    self.command["taskId"] = 2
+    with self.assertRaises(HostError):
+      self.apply("detach")
+    self.apply("stop")
+    deployment = self.deployment()
+    unit_bytes = deployment.unit_path.read_bytes()
+    self.command["taskId"] = 3
+    result = self.apply("detach")
+    self.assertTrue(result["detached"])
+    self.assertTrue(self.apply("detach")["replayed"])
+    self.assertEqual(unit_bytes, deployment.unit_path.read_bytes())
+    self.command["taskId"] = 4
+    for action in ("start", "stop", "uninstall", "purge", "configure"):
+      with self.assertRaisesRegex(HostError, "Adopt the detached target"):
+        self.apply(action)
+    result = self.apply("adopt")
+    self.assertFalse(result["detached"])
+    self.assertEqual(unit_bytes, deployment.unit_path.read_bytes())
+    self.command["taskId"] = 5
+    self.assertEqual("SUCCEEDED", self.apply("start")["state"])
+
+  def test_adoption_rejects_changed_published_artifacts(self):
+    self.descriptor["service"]["components"][0]["profiles"][0]["capabilities"].extend(["detach", "adopt"])
+    self.apply("install")
+    self.command["taskId"] = 2
+    self.apply("detach")
+    deployment = self.deployment()
+    artifact = deployment.root / "releases" / deployment.package_digest / "server.py"
+    artifact.write_text("externally changed artifact")
+    self.command["taskId"] = 3
+    with self.assertRaisesRegex(HostError, "unchanged verified publication"):
+      self.apply("adopt")
+    self.assertTrue(deployment._receipt()["detached"])
+
+  def prepare_artifact_update(self):
+    self.descriptor["package"].update(name="http-example", version="1")
+    self.apply("start")
+    self.command["taskId"] = 2
+    self.apply("stop")
+    previous = self.descriptor["package"]["digest"]
+    profile = self.descriptor["service"]["components"][0]["profiles"][0]
+    profile["capabilities"].append("upgrade")
+    profile["upgradePolicy"] = {"fromPackageDigests": [previous], "configuration": "compatible", "data": "unchanged"}
+    self.descriptor["package"].update(digest="b" * 64, version="2")
+    import shutil
+    updated_payload = self.root / "updated-payload"
+    shutil.copytree(self.payload, updated_payload)
+    artifact = updated_payload / "server.py"
+    artifact.write_bytes(artifact.read_bytes() + b"\n# updated artifact fixture\n")
+    for entry in self.descriptor["files"]:
+      if entry["path"] == "server.py":
+        entry.update(size=artifact.stat().st_size, sha256=hashlib.sha256(artifact.read_bytes()).hexdigest())
+    for entry in self.descriptor["artifacts"]:
+      if entry["id"] == "server":
+        entry.update(size=artifact.stat().st_size, sha256=hashlib.sha256(artifact.read_bytes()).hexdigest())
+    self.payload = updated_payload
+    self.command["commandParams"]["mpack_content_digest"] = "b" * 64
+    self.command["taskId"] = 3
+    return previous
+
+  def test_explicit_stopped_artifact_update_preserves_data_and_tracks_release_history(self):
+    previous = self.prepare_artifact_update()
+    deployment = self.deployment()
+    data = deployment.directories["data"] / "retain"
+    data.write_text("owned persistent data")
+    with self.assertRaisesRegex(HostError, "upgrade compatibility"):
+      self.apply("start")
+    result = self.apply("upgrade")
+    self.assertEqual("SUCCEEDED", result["state"])
+    self.assertFalse(self.native.active)
+    receipt = deployment._receipt()
+    self.assertEqual(previous, receipt["lastUpgrade"]["fromDigest"])
+    self.assertEqual("b" * 64, receipt["materializedPackageDigest"])
+    self.assertEqual("1", receipt["releaseHistory"][-1]["version"])
+    self.assertEqual("owned persistent data", data.read_text())
+    self.assertEqual((self.payload / "server.py").read_bytes(), (deployment.root / "releases" / ("b" * 64) / "server.py").read_bytes())
+    self.assertTrue(self.apply("upgrade")["replayed"])
+    self.command["taskId"] = 4
+    self.apply("start")
+    self.assertTrue(self.native.active)
+
+  def test_artifact_update_rejects_incompatible_identity_layout_data_and_running_process(self):
+    previous = self.prepare_artifact_update()
+    profile = self.descriptor["service"]["components"][0]["profiles"][0]
+    for invalid in ({"fromPackageDigests": ["c" * 64], "configuration": "compatible", "data": "unchanged"},
+                    {"fromPackageDigests": [previous], "configuration": "compatible", "data": "migration"}):
+      profile["upgradePolicy"] = invalid
+      with self.assertRaises(HostError):
+        self.apply("upgrade")
+    profile["upgradePolicy"] = {"fromPackageDigests": [previous], "configuration": "compatible", "data": "unchanged"}
+    self.descriptor["package"]["name"] = "other-publisher-package"
+    with self.assertRaises(HostError):
+      self.apply("upgrade")
+    self.descriptor["package"]["name"] = "http-example"
+    original = profile["resources"]["unit"]["user"]
+    profile["resources"]["unit"]["user"] = "another-user"
+    with self.assertRaises(HostError):
+      self.apply("upgrade")
+    profile["resources"]["unit"]["user"] = original
+    self.native.active = True
+    with self.assertRaisesRegex(HostError, "Stop the installed target"):
+      self.apply("upgrade")
+    self.assertEqual(previous, self.deployment()._receipt()["materializedPackageDigest"])
+
+  def test_interrupted_artifact_publication_recovers_without_starting_or_migrating_data(self):
+    previous = self.prepare_artifact_update()
+    original = self.native.run
+    def lost(argv, cancel=None, timeout=30):
+      result = original(argv, cancel, timeout)
+      if argv[1] == "daemon-reload":
+        raise HostError("OUTCOME_UNKNOWN", "Lost artifact update response", "UNKNOWN")
+      return result
+    with patch.object(self.native, "run", lost):
+      with self.assertRaises(HostError):
+        self.apply("upgrade")
+    self.assertEqual(previous, self.deployment()._receipt()["materializedPackageDigest"])
+    self.command["taskId"] = 4
+    self.assertEqual("SUCCEEDED", self.apply("upgrade")["state"])
+    self.assertFalse(self.native.active)
+    self.assertEqual(1, self.native.mutations.count("start"))
+
+  def test_stop_preserves_interrupted_unit_ownership_without_confirming_candidate_release(self):
+    previous = self.prepare_artifact_update()
+    deployment = self.deployment()
+    old_hash = deployment._receipt()["unitHash"]
+    original = self.native.run
+    def lost(argv, cancel=None, timeout=30):
+      result = original(argv, cancel, timeout)
+      if argv[1] == "daemon-reload":
+        raise HostError("OUTCOME_UNKNOWN", "Lost publication response", "UNKNOWN")
+      return result
+    with patch.object(self.native, "run", lost):
+      with self.assertRaises(HostError):
+        self.apply("upgrade")
+    # Model a crash immediately after atomic unit replacement, before receipt acknowledgement.
+    receipt = deployment._receipt()
+    receipt["pendingUnitHash"] = receipt["unitHash"]
+    receipt["unitHash"] = old_hash
+    deployment._save(receipt)
+    self.command["taskId"] = 4
+    stopped = self.apply("stop")
+    self.assertEqual(previous, stopped["materializedPackageDigest"])
+    self.assertEqual("inactive", self.deployment().observe()["state"])
+    self.command["taskId"] = 5
+    self.assertEqual("SUCCEEDED", self.apply("upgrade")["state"])
+
+  def test_release_cleanup_preserves_recovery_history_running_release_and_user_data(self):
+    previous = self.prepare_artifact_update()
+    deployment = self.deployment()
+    release_root = deployment.root / "releases"
+    stale = release_root / ("c" * 64)
+    stale.mkdir()
+    (stale / "artifact").write_text("old immutable artifact")
+    data = deployment.directories["data"] / "keep"
+    data.write_text("persistent data")
+    linked = release_root / ("d" * 64)
+    linked.symlink_to(deployment.directories["data"], target_is_directory=True)
+    self.apply("upgrade")
+    self.assertFalse(stale.exists())
+    self.assertTrue((release_root / previous).exists())
+    self.assertTrue((release_root / ("b" * 64)).exists())
+    self.assertTrue(linked.is_symlink())
+    self.assertEqual("persistent data", data.read_text())
+
   def test_apply_replay_stop_and_late_task(self):
     self.assertEqual("SUCCEEDED", self.apply("start")["state"])
     self.assertTrue(self.apply("start")["replayed"])
@@ -129,6 +299,196 @@ class TestMpackHost(unittest.TestCase):
     with self.assertRaisesRegex(HostError, "superseded"):
       self.apply("start")
     self.assertFalse(self.native.active)
+
+  def test_java_secret_transport_decrypts_without_entering_receipt_or_plan(self):
+    fixture = os.environ.get("MPACK_SECRET_FIXTURE")
+    if not fixture:
+      self.skipTest("MPACK_SECRET_FIXTURE is required for actual Java-to-Agent encryption evidence")
+    value = json.loads(Path(fixture).read_text())
+    deployment = self.deployment()
+    incoming = value["command"]
+    binding = json.loads(incoming["commandParams"]["mpack_task_binding"])
+    deployment.task_binding["secretGenerations"] = binding["secretGenerations"]
+    deployment.command["mpackSecretMaterial"] = incoming["mpackSecretMaterial"]
+    with patch.dict(os.environ, {"AGENT_ENCRYPTION_KEY": value["encryptionKey"]}):
+      deployment._load_secrets()
+    self.assertEqual(value["expectedValue"], next(iter(deployment.secret_values.values())))
+    self.assertNotIn(value["expectedValue"], json.dumps(deployment.plan("start")))
+    self.assertNotIn(value["expectedValue"], json.dumps(deployment._receipt()))
+    deployment.command["mpackSecretMaterial"] = {key: "plaintext is forbidden" for key in binding["secretGenerations"]}
+    with self.assertRaises(HostError):
+      deployment._load_secrets()
+
+  def test_purge_requires_uninstall_retains_tombstone_and_never_follows_data_symlinks(self):
+    self.apply("start")
+    self.command["taskId"] = 2
+    with self.assertRaisesRegex(HostError, "uninstall receipt"):
+      self.apply("purge")
+    self.apply("uninstall")
+    deployment = self.deployment()
+    external = self.root / "outside-data"
+    external.mkdir()
+    (external / "keep").write_text("outside ownership boundary")
+    (deployment.directories["data"] / "external-link").symlink_to(external, target_is_directory=True)
+    self.command["taskId"] = 3
+    result = self.apply("purge")
+    self.assertTrue(result["purged"])
+    self.assertTrue((external / "keep").exists())
+    self.assertEqual({"receipt.json", "operation.lock"}, {path.name for path in deployment.root.iterdir()})
+    self.assertTrue(self.apply("purge")["replayed"])
+    self.command["taskId"] = 4
+    with self.assertRaisesRegex(HostError, "new service incarnation"):
+      self.apply("start")
+
+  def test_partial_purge_can_resume_only_the_matching_retained_directories(self):
+    self.apply("start")
+    self.command["taskId"] = 2
+    self.apply("uninstall")
+    self.command["taskId"] = 3
+    original = HostDeployment._purge_files
+    def partial(deployment):
+      import shutil
+      shutil.rmtree(deployment.directories["data"])
+      raise HostError("OUTCOME_UNKNOWN", "Interrupted purge fixture", "UNKNOWN")
+    with patch.object(HostDeployment, "_purge_files", partial):
+      with self.assertRaises(HostError):
+        self.apply("purge")
+    saved = self.deployment()._receipt()
+    self.command["taskId"] = 4
+    for action in ("stop", "uninstall", "start"):
+      with self.assertRaisesRegex(HostError, "Purge has begun"):
+        self.apply(action)
+      self.assertEqual(saved, self.deployment()._receipt())
+    with patch.object(HostDeployment, "_purge_files", original):
+      self.assertTrue(self.apply("purge")["purged"])
+
+  def test_purge_rejects_missing_retained_data_before_saving_intent(self):
+    self.apply("start")
+    self.command["taskId"] = 2
+    self.apply("uninstall")
+    deployment = self.deployment()
+    saved = deployment._receipt()
+    import shutil
+    shutil.rmtree(deployment.directories["data"])
+    self.command["taskId"] = 3
+    with self.assertRaisesRegex(HostError, "disappeared before purge"):
+      self.apply("purge")
+    self.assertEqual(saved, deployment._receipt())
+
+  def test_purge_rejects_nested_mount_before_removing_any_data(self):
+    self.apply("start")
+    self.command["taskId"] = 2
+    self.apply("uninstall")
+    self.command["taskId"] = 3
+    import io
+    original = open
+    mount = str(self.deployment().directories["data"])
+    def files(path, *args, **kwargs):
+      if str(path) == "/proc/self/mountinfo":
+        return io.BytesIO(("1 0 0:0 / " + mount + " rw - fixture fixture rw\n").encode())
+      return original(path, *args, **kwargs)
+    with patch("builtins.open", side_effect=files), self.assertRaisesRegex(HostError, "nested mount"):
+      self.apply("purge")
+    self.assertTrue(self.deployment().directories["data"].exists())
+
+  def test_reload_checks_generation_and_resolves_response_loss_without_resending(self):
+    profile = self.descriptor["service"]["components"][0]["profiles"][0]
+    profile["health"] = {"kind": "http", "portRef": "http.port", "path": "/health"}
+    with patch.object(HostDeployment, "_healthy", return_value=True):
+      self.apply("start")
+      self.command["taskId"] = 2
+      self.command["configurations"] = {"http": {"message": "new generation"}}
+      original = self.native.run
+      def lost(argv, cancel=None, timeout=30):
+        result = original(argv, cancel, timeout)
+        if argv[1] == "reload":
+          raise HostError("OUTCOME_UNKNOWN", "Response was lost", "UNKNOWN")
+        return result
+      with patch.object(self.native, "run", side_effect=lost):
+        with self.assertRaises(HostError):
+          self.apply("reload")
+      result = self.apply("reload")
+    self.assertTrue(result["recovered"])
+    self.assertEqual(1, self.native.mutations.count("reload"))
+    self.assertEqual(1, self.native.invocation)
+    self.assertEqual(result["runningConfigGeneration"], self.deployment()._receipt()["publishedConfigGeneration"])
+
+  def test_reload_without_generation_acknowledgement_is_unknown(self):
+    profile = self.descriptor["service"]["components"][0]["profiles"][0]
+    profile["health"] = {"kind": "http", "portRef": "http.port", "path": "/health"}
+    with patch.object(HostDeployment, "_healthy", return_value=True):
+      self.apply("start")
+    self.command["taskId"] = 2
+    self.command["configurations"] = {"http": {"message": "unacknowledged"}}
+    deployment = self.deployment()
+    self.command["roleCommand"] = "RELOAD"
+    deployment = self.deployment()
+    plan = deployment.plan("reload")
+    with patch.object(HostDeployment, "_healthy", return_value=False), patch("time.monotonic", side_effect=[0, 31]):
+      with self.assertRaises(HostError) as error:
+        deployment.apply(plan)
+    self.assertEqual("UNKNOWN", error.exception.state)
+    receipt = deployment._receipt()
+    self.assertNotEqual(receipt["runningConfigGeneration"], receipt["publishedConfigGeneration"])
+
+  def test_runtime_secret_files_are_private_and_removed_after_stop(self):
+    if os.geteuid() != 0:
+      self.skipTest("Root ownership fixture is required for runtime file materialization")
+    import pwd
+    deployment = self.deployment()
+    deployment.runtime_root = self.root / "runtime" / deployment.target
+    deployment.resources["unit"]["user"] = pwd.getpwuid(os.getuid()).pw_name
+    deployment._runtime_file("g-" + "a" * 64, "secret.conf", os.urandom(32))
+    target = deployment.runtime_root / ("g-" + "a" * 64) / "secret.conf"
+    self.assertEqual(0o600, target.stat().st_mode & 0o777)
+    self.assertFalse((deployment.root / "config/secret.conf").exists())
+    deployment._clear_runtime_secrets()
+    self.assertFalse(deployment.runtime_root.exists())
+
+  def test_uninstall_retains_data_and_survives_agent_reconstruction(self):
+    self.apply("start")
+    deployment = self.deployment()
+    data = deployment.root / "resources/data/persistent-data"
+    data.write_text("retained fixture data")
+    self.command["taskId"] = 2
+    self.command["configurations"] = {"http": {"port": "invalid desired configuration"}}
+    result = self.apply("uninstall")
+    self.assertEqual("not-found", result["observation"]["loadState"])
+    self.assertFalse(deployment.unit_path.exists())
+    self.assertEqual("retained fixture data", data.read_text())
+    self.assertTrue(result["retainedResources"])
+    # Reconstruct the adapter as after Agent restart and a lost response.
+    replay = self.apply("uninstall")
+    self.assertTrue(replay["replayed"])
+    self.assertEqual(result["retainedResources"], replay["retainedResources"])
+    self.assertEqual("2", replay["taskId"])
+    self.assertTrue((deployment.root / "receipt.json").exists())
+
+  def test_uninstall_recovers_after_unit_removed_but_daemon_reload_failed(self):
+    self.apply("start")
+    self.command["taskId"] = 2
+    self.command["roleCommand"] = "UNINSTALL"
+    deployment = self.deployment()
+    native = deployment._native
+    def lost_response(action):
+      native(action)
+      if action == "daemon-reload":
+        raise HostError("OUTCOME_UNKNOWN", "Fixture lost reload response", "UNKNOWN")
+    with patch.object(deployment, "_native", side_effect=lost_response):
+      with self.assertRaises(HostError):
+        deployment.apply(deployment.plan("uninstall"))
+    self.assertFalse(deployment.unit_path.exists())
+    self.assertEqual("SUCCEEDED", self.apply("uninstall")["state"])
+    self.assertFalse(self.native.active)
+
+  def test_uninstall_never_removes_foreign_unit(self):
+    self.apply("start")
+    deployment = self.deployment()
+    deployment.unit_path.write_text("foreign fixture unit")
+    self.command["taskId"] = 2
+    with self.assertRaisesRegex(HostError, "not owned"):
+      self.apply("uninstall")
+    self.assertEqual("foreign fixture unit", deployment.unit_path.read_text())
 
   def test_occupied_listener_fails_before_provision_or_publication(self):
     self.port_guard.stop()
@@ -206,7 +566,7 @@ class TestMpackHost(unittest.TestCase):
     self.assertNotEqual(first["runningConfigGeneration"], second["runningConfigGeneration"])
     self.assertEqual(second["publishedConfigGeneration"], second["runningConfigGeneration"])
     self.assertEqual(1, self.native.mutations.count("restart"))
-    self.assertIn("--port", self.deployment().unit_path.read_text())
+    self.assertIn("--config", self.deployment().unit_path.read_text())
     self.assertIn("19000", self.deployment().unit_path.read_text())
 
   def test_lost_response_recovers_by_invocation_without_second_mutation(self):

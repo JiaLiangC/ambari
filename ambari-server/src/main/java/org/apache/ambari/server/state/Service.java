@@ -150,6 +150,9 @@ public interface Service {
    */
   RepositoryVersionEntity getDesiredRepositoryVersion();
 
+  /** Select a package release only while the existing service incarnation still matches. */
+  void setDesiredRepositoryVersion(RepositoryVersionEntity repository, String expectedIncarnation);
+
   /**
    * @param desiredRepositoryVersion
    */

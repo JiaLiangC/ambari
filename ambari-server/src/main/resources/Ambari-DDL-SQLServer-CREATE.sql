@@ -38,6 +38,7 @@ CREATE TABLE registries(
  CONSTRAINT UQ_registry_name UNIQUE (registry_name));
 
 CREATE TABLE mpacks(
+  release_metadata NVARCHAR(MAX),
   content_digest VARCHAR(64),
  id BIGINT NOT NULL,
  mpack_name VARCHAR(255) NOT NULL,
@@ -47,6 +48,25 @@ CREATE TABLE mpacks(
  CONSTRAINT PK_mpacks PRIMARY KEY (id),
  CONSTRAINT uni_mpack_name_version UNIQUE(mpack_name, mpack_version),
  CONSTRAINT FK_registries FOREIGN KEY (registry_id) REFERENCES registries(id));
+
+CREATE TABLE mpack_target_resource(
+  target_key VARCHAR(64) NOT NULL,
+  cluster_id BIGINT NOT NULL,
+  service_name VARCHAR(255) NOT NULL,
+  target_incarnation VARCHAR(36) NOT NULL,
+  host_name VARCHAR(255) NOT NULL,
+  component_name VARCHAR(255) NOT NULL,
+  mpack_id BIGINT,
+  materialized_mpack_id BIGINT,
+  task_id BIGINT NOT NULL,
+  resource_state VARCHAR(32) NOT NULL,
+  task_binding NVARCHAR(MAX) NOT NULL,
+  resource_evidence NVARCHAR(MAX),
+  CONSTRAINT PK_mpack_target_resource PRIMARY KEY (target_key),
+  CONSTRAINT FK_mpack_target_package FOREIGN KEY (mpack_id) REFERENCES mpacks(id),
+  CONSTRAINT FK_mpack_target_materialized FOREIGN KEY (materialized_mpack_id) REFERENCES mpacks(id));
+CREATE INDEX idx_mpack_target_task ON mpack_target_resource(task_id);
+CREATE INDEX idx_mpack_target_service ON mpack_target_resource(cluster_id, service_name);
 
 CREATE TABLE stack(
   stack_id BIGINT NOT NULL,
@@ -1319,6 +1339,7 @@ BEGIN TRANSACTION
     SELECT 'SERVICE.ENABLE_HA', 'Enable HA' UNION ALL
     SELECT 'SERVICE.TOGGLE_ALERTS', 'Enable/disable service-level alerts' UNION ALL
     SELECT 'SERVICE.ADD_DELETE_SERVICES', 'Add/delete services' UNION ALL
+    SELECT 'SERVICE.PURGE_DATA', 'Purge retained service data' UNION ALL
     SELECT 'SERVICE.VIEW_OPERATIONAL_LOGS', 'View service operational logs' UNION ALL
     SELECT 'SERVICE.SET_SERVICE_USERS_GROUPS', 'Set service users and groups' UNION ALL
     SELECT 'SERVICE.MANAGE_AUTO_START', 'Manage service auto-start' UNION ALL
@@ -1526,6 +1547,7 @@ BEGIN TRANSACTION
     SELECT permission_id, 'SERVICE.ENABLE_HA' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'SERVICE.TOGGLE_ALERTS' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'SERVICE.ADD_DELETE_SERVICES' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
+    SELECT permission_id, 'SERVICE.PURGE_DATA' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'SERVICE.VIEW_OPERATIONAL_LOGS' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'SERVICE.SET_SERVICE_USERS_GROUPS' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'SERVICE.MANAGE_AUTO_START' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL

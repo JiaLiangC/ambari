@@ -1,0 +1,120 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: mpack.ambari.apache.org/v2alpha1
+kind: Mpack
+metadata:
+  name: multi-service-authoring-example
+  version: 0.1.0
+  description: Two HTTP services and a file-only client sharing one configuration schema; host-export example only.
+spec:
+  artifacts:
+    - id: client
+      source:
+        kind: file
+        path: client.py
+  services:
+    - name: STATIC_WEB
+      configurations:
+        - name: website
+          schema: config.schema.json
+          template: client.conf.j2
+          changeEffect: restart
+          defaults:
+            port: 18100
+      components:
+        - name: STATIC_WEB_SERVER
+          category: MASTER
+          role: service
+          profiles:
+            - id: host
+              adapter: host.systemd/v1
+              capabilities: [install, configure, start, stop, observe, restart, uninstall]
+              resources:
+                packages: [python3]
+                users:
+                  - name: mpackweb
+                directories:
+                  - path: data
+                    owner: mpackweb
+                    mode: '0750'
+                    persistent: true
+                    retention: retain
+                ports:
+                  - name: listener
+                    configRef: website.port
+                    protocol: tcp
+                command:
+                  program: python3
+                  arguments: [-m, http.server, {configRef: website.port}, --bind, 127.0.0.1, --directory, {directoryRef: data}]
+                unit:
+                  user: mpackweb
+                  workingDirectory: data
+              health:
+                kind: http
+                portRef: website.port
+                path: /
+                timeoutSeconds: 5
+        - name: STATIC_WEB_CLIENT
+          category: CLIENT
+          role: client
+          profiles:
+            - id: files
+              adapter: host.files/v1
+              capabilities: [install, configure, observe, uninstall, purge]
+              resources:
+                packages: [python3]
+                executableArtifacts: [client]
+    - name: STATUS_WEB
+      configurations:
+        - name: status
+          schema: config.schema.json
+          changeEffect: restart
+          defaults:
+            port: 18101
+      components:
+        - name: STATUS_WEB_SERVER
+          category: MASTER
+          role: service
+          profiles:
+            - id: host
+              adapter: host.systemd/v1
+              capabilities: [install, configure, start, stop, observe, restart, uninstall]
+              resources:
+                packages: [python3]
+                users:
+                  - name: mpackweb
+                directories:
+                  - path: data
+                    owner: mpackweb
+                    mode: '0750'
+                    persistent: true
+                    retention: retain
+                ports:
+                  - name: listener
+                    configRef: status.port
+                    protocol: tcp
+                command:
+                  program: python3
+                  arguments: [-m, http.server, {configRef: status.port}, --bind, 127.0.0.1, --directory, {directoryRef: data}]
+                unit:
+                  user: mpackweb
+                  workingDirectory: data
+              health:
+                kind: http
+                portRef: status.port
+                path: /
+                timeoutSeconds: 5

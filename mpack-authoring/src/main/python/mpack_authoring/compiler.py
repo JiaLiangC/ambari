@@ -26,6 +26,7 @@ import re
 import tempfile
 import urllib.parse
 import zipfile
+from pathlib import Path
 
 from .manifest import ManifestError, validate_manifest
 from .profiles import profile_capabilities
@@ -184,10 +185,16 @@ def _dependency(value, path):
 def _references(manifest, root):
   """Validate config/profile references and known adapter capability bounds."""
   _check_keys(manifest, {"apiVersion", "kind", "metadata", "spec"}, "manifest")
-  _check_keys(manifest["metadata"], {"name", "version", "displayName", "description"},
+  _check_keys(manifest["metadata"], {"name", "version", "displayName", "description", "publisher"},
               "metadata")
   _check_keys(manifest["spec"], {"compatibility", "artifacts", "services",
                                   "dependencies", "serviceGroups", "service_groups"}, "spec")
+  for field, value in manifest["spec"].get("compatibility", {}).items():
+    if field in ("ambari", "agentSdk") and value != "*" and any(
+        not re.fullmatch(r"(?:>=|<=|>|<|=)?[0-9]+(?:\.[0-9]+){0,3}", item.strip())
+        for item in value.split(",")):
+      raise CompileError("Compatibility uses comma-separated numeric version comparisons",
+                         path="spec.compatibility." + field)
   known = {"artifacts": {item["id"] for item in manifest["spec"].get("artifacts", [])}}
   for service_index, service in enumerate(manifest["spec"].get("services", [])):
     service_path = "spec.services[{}]".format(service_index)
@@ -208,12 +215,31 @@ def _references(manifest, root):
           if not os.path.isfile(resolved) or os.path.islink(resolved):
             raise CompileError("{} must reference a regular file".format(field_path),
                                code="PACKAGE_CONTENT_CONFLICT", path=field_path)
+    observability = service.get("observability", {})
+    _check_keys(observability, {"logs", "metrics"}, service_path + ".observability")
+    components = {component["name"]: component for component in service.get("components", [])}
+    for kind, entries in observability.items():
+      if not isinstance(entries, dict):
+        raise CompileError("Observability entries must be component mappings", path=service_path + ".observability")
+      for component, definition in entries.items():
+        if component not in components or components[component].get("category") == "CLIENT":
+          raise CompileError("Observability must reference an assigned server component", path=service_path + ".observability")
+        if kind == "metrics":
+          if not isinstance(definition, dict) or not isinstance(definition.get("portRef"), str):
+            raise CompileError("Metric declaration requires a port reference", path=service_path + ".observability.metrics")
+          config_name, _, field_name = definition["portRef"].partition(".")
+          config = next((item for item in configurations if item["name"] == config_name), None)
+          schema = json.loads(Path(_relative(root, config["schema"], service_path)).read_text()) if config else {}
+          field = schema.get("properties", {}).get(field_name, {})
+          if (field.get("type") != "integer" or field.get("minimum", 0) < 1
+              or field.get("maximum", 65536) > 65535 or field.get("x-sensitive") or field.get("x-resource")):
+            raise CompileError("Metric port must reference an integer configuration bounded to 1..65535", path=service_path + ".observability.metrics")
     for component_index, component in enumerate(service.get("components", [])):
       component_path = "{}.components[{}]".format(service_path, component_index)
-      _check_keys(component, {"name", "category", "role", "cardinality", "profiles"}, component_path)
+      _check_keys(component, {"name", "category", "role", "cardinality", "profiles", "softwareVersion"}, component_path)
       for profile_index, profile in enumerate(component.get("profiles", [])):
         path = "spec.services[{}].components[{}].profiles[{}]".format(service_index, component_index, profile_index)
-        _check_keys(profile, {"id", "adapter", "capabilities", "resources", "health"}, path)
+        _check_keys(profile, {"id", "adapter", "capabilities", "resources", "health", "upgradePolicy"}, path)
         try:
           supported = profile_capabilities(profile["adapter"])
         except (KeyError, ValueError) as error:

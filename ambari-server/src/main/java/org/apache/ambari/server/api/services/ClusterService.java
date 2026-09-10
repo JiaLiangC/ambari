@@ -118,6 +118,21 @@ public class ClusterService extends BaseService {
   }
 
 
+  @GET
+  @Path("{clusterName}/mpack_resources")
+  @Produces(MediaType.APPLICATION_JSON)
+  public Response getMpackResources(@PathParam("clusterName") String clusterName,
+      @jakarta.ws.rs.QueryParam("after") @jakarta.ws.rs.DefaultValue("") String after) {
+    try {
+      return Response.ok(gson.toJson(java.util.Map.of("items",
+          AmbariServer.getController().getMpackResources(clusterName, after)))).build();
+    } catch (org.apache.ambari.server.security.authorization.AuthorizationException denied) {
+      return Response.status(Response.Status.FORBIDDEN).entity("{\"message\":\"Resource access is not authorized\"}").build();
+    } catch (org.apache.ambari.server.AmbariException | IllegalArgumentException invalid) {
+      return Response.status(Response.Status.BAD_REQUEST).entity("{\"message\":\"Resource query could not be completed\"}").build();
+    }
+  }
+
   // ----- ClusterService ----------------------------------------------------
 
   /**

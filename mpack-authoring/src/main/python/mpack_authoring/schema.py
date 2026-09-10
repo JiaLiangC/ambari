@@ -30,7 +30,9 @@ def validate_schema(manifest, root):
   except ImportError as error:
     raise ManifestError("Authoring requires jsonschema; see mpack-authoring/requirements.txt") from error
   from .compiler import _relative, CompileError
-  schema_path = Path(__file__).resolve().parents[4] / "schema/manifest-v2alpha1.json"
+  schema_path = Path(__file__).with_name("manifest-v2alpha1.json")
+  if not schema_path.is_file():
+    schema_path = Path(__file__).resolve().parents[4] / "schema/manifest-v2alpha1.json"
   schema = json.loads(schema_path.read_text(encoding="utf-8"))
   error = next(Draft202012Validator(schema).iter_errors(manifest), None)
   if error:

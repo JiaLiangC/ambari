@@ -17,8 +17,9 @@
 
 # Reference acceptance scenarios
 
-Current Redis/Kyuubi walkthroughs, actual call entries and breakpoints are maintained
-once in [status](status.md). Complete authoring examples live in fixtures linked by
+The Redis walkthrough, actual call entries and breakpoints are maintained
+once in [status](status.md). Its historical Kyuubi walkthrough is outside the current
+scope; the user removed that example on 2026-09-10. Complete authoring examples live in fixtures linked by
 [manifest-spec](manifest-spec.md). The scenarios below define acceptance requirements;
 they do not report tests already run or imply missing runtime implementations exist.
 
@@ -43,22 +44,6 @@ ports, process exit after successful command submission, invalid config, interru
 publication and data retention. Local fixtures do not meet this native evidence bar.
 Server-Agent connection loss/restart acceptance must inspect persisted actual tasks,
 metadata/config generations and late responses, not only reconstruct a local class.
-
-## Kyuubi and shared dependency extension
-
-Before deployment acceptance, extend/integrate the real shared platform beyond its
-available HDFS/ZOOKEEPER types. Spark/Hadoop/Hive client/config contracts must provide
-binding UUID/incarnation, immutable provider identity, approved snapshot/revision and
-ownership/lifecycle behavior. Cross-cluster permissions stay in the shared/Ambari
-platform. Scoped secret delivery is a separate prerequisite.
-
-Test denied/missing approval, provider loss, stale snapshot, consumer recreation,
-detach/recreate, lost response and late response against that real client. Mpack may
-only store references/projections; it must not synthesize ready bindings or another
-fencing epoch. Source builds and a delegating mock prove none of these provider effects.
-Kubernetes deployment is a separate runtime extension with API-server/namespace/UID
-and rollout evidence. Upgrade requires software/config/data compatibility rules;
-there is currently no executable Kyuubi upgrade or data migration path.
 
 ## Future runtime and data lifecycle acceptance
 

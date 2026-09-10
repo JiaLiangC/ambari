@@ -34,6 +34,88 @@ import org.apache.ambari.server.controller.spi.Resource;
  * Unit tests for MpacksService
  */
 public class MpacksServiceTest extends BaseServiceTest{
+  @org.junit.Test
+  public void testUploadDenialDoesNotReadRequestBody() {
+    org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+        org.apache.ambari.server.security.TestAuthenticationFactory.createServiceAdministrator());
+    try {
+      java.io.InputStream input = new java.io.InputStream() {
+        @Override
+        public int read() {
+          throw new AssertionError("Unauthorized upload body must not be read");
+        }
+      };
+      org.junit.Assert.assertEquals(403, new MpacksService().uploadMpack(input, null, null).getStatus());
+    } finally {
+      org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
+  }
+
+  @org.junit.Test
+  public void testUploadStagesExactBytesAndDeletesTemporaryFileAfterRegistration() throws Exception {
+    org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+        org.apache.ambari.server.security.TestAuthenticationFactory.createAdministrator());
+    java.nio.file.Path[] staged = new java.nio.file.Path[1];
+    byte[] content = "transport body fixture".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    MpacksService service = new MpacksService() {
+      @Override
+      protected ResourceInstance createResource(Resource.Type type, Map<Resource.Type, String> ids) {
+        return null;
+      }
+
+      @Override
+      protected jakarta.ws.rs.core.Response handleRequest(HttpHeaders headers, String body, UriInfo uri,
+          Request.Type method, ResourceInstance resource) {
+        org.junit.Assert.assertEquals(Request.Type.POST, method);
+        String source = com.google.gson.JsonParser.parseString(body).getAsJsonObject()
+            .getAsJsonObject("MpackInfo").get("mpack_uri").getAsString();
+        staged[0] = java.nio.file.Path.of(java.net.URI.create(source));
+        try {
+          org.junit.Assert.assertArrayEquals(content, java.nio.file.Files.readAllBytes(staged[0]));
+          org.junit.Assert.assertTrue(staged[0].toString().endsWith(".mpack"));
+        } catch (java.io.IOException failure) {
+          throw new AssertionError(failure);
+        }
+        return jakarta.ws.rs.core.Response.status(201).build();
+      }
+    };
+    try {
+      org.junit.Assert.assertEquals(201, service.uploadMpack(new java.io.ByteArrayInputStream(content), null, null).getStatus());
+      org.junit.Assert.assertNotNull(staged[0]);
+      org.junit.Assert.assertFalse(java.nio.file.Files.exists(staged[0]));
+    } finally {
+      org.springframework.security.core.context.SecurityContextHolder.clearContext();
+      if (staged[0] != null) { java.nio.file.Files.deleteIfExists(staged[0]); }
+    }
+  }
+
+  @org.junit.Test
+  public void testEmptyAndInterruptedUploadsNeverReachRegistrationOrEchoInput() {
+    org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+        org.apache.ambari.server.security.TestAuthenticationFactory.createAdministrator());
+    MpacksService service = new MpacksService() {
+      @Override
+      protected jakarta.ws.rs.core.Response handleRequest(HttpHeaders headers, String body, UriInfo uri,
+          Request.Type method, ResourceInstance resource) {
+        throw new AssertionError("Incomplete upload must not reach registration");
+      }
+    };
+    try {
+      org.junit.Assert.assertEquals(400, service.uploadMpack(new java.io.ByteArrayInputStream(new byte[0]), null, null).getStatus());
+      java.io.InputStream interrupted = new java.io.InputStream() {
+        @Override
+        public int read() throws java.io.IOException {
+          throw new java.io.IOException("synthetic input marker must not reach response");
+        }
+      };
+      jakarta.ws.rs.core.Response response = service.uploadMpack(interrupted, null, null);
+      org.junit.Assert.assertEquals(400, response.getStatus());
+      org.junit.Assert.assertFalse(response.getEntity().toString().contains("synthetic input marker"));
+    } finally {
+      org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
+  }
+
   @Override
   public List<BaseServiceTest.ServiceTestInvocation> getTestInvocations() throws Exception {
     List<BaseServiceTest.ServiceTestInvocation> listInvocations = new ArrayList<>();

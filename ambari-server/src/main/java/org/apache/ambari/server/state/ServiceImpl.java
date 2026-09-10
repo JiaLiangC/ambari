@@ -99,6 +99,9 @@ public class ServiceImpl implements Service {
   private ServiceConfigDAO serviceConfigDAO;
 
   @Inject
+  private org.apache.ambari.server.orm.dao.MpackTargetResourceDAO mpackResources;
+
+  @Inject
   private AmbariManagementController ambariManagementController;
 
   @Inject
@@ -159,6 +162,7 @@ public class ServiceImpl implements Service {
     ServiceInfo sInfo = ambariMetaInfo.getService(stackId.getStackName(),
         stackId.getStackVersion(), serviceName);
 
+    validateMpackSelection(sInfo, desiredRepositoryVersion);
     displayName = sInfo.getDisplayName();
     isClientOnlyService = sInfo.isClientOnlyService();
     isCredentialStoreSupported = sInfo.isCredentialStoreSupported();
@@ -179,6 +183,38 @@ public class ServiceImpl implements Service {
     ldapEnabledTest = StringUtils.isNotBlank(sInfo.getLdapEnabledTest()) ? PredicateUtils.fromJSON(sInfo.getLdapEnabledTest()) : null;
 
     persist(serviceEntity);
+  }
+
+  private void validateMpackSelection(ServiceInfo selected, RepositoryVersionEntity repository) throws AmbariException {
+    if (repository.getStack() == null) {
+      return;
+    }
+    boolean selectedMpack = repository.getStack().getMpackId() != null;
+    if (selectedMpack && selected.getConfigTypeAttributes().containsKey("cluster-env")) {
+      throw new AmbariException("Mpack services cannot own cluster-wide configuration");
+    }
+    for (Service existing : cluster.getServices().values()) {
+      if (existing.getName().equals(serviceName)) {
+        continue;
+      }
+      RepositoryVersionEntity other = existing.getDesiredRepositoryVersion();
+      if (other == null || other.getStack() == null
+          || repository.getStackId().getStackName().equals(other.getStackId().getStackName())
+          || !selectedMpack && other.getStack().getMpackId() == null) {
+        continue;
+      }
+      ServiceInfo definition = ambariMetaInfo.getService(other.getStackId().getStackName(),
+          other.getStackId().getStackVersion(), existing.getName());
+      if (!java.util.Collections.disjoint(selected.getConfigTypeAttributes().keySet(),
+          definition.getConfigTypeAttributes().keySet())) {
+        throw new AmbariException("Selected Mpack configuration types conflict with another service");
+      }
+      java.util.Set<String> componentNames = new java.util.HashSet<>();
+      definition.getComponents().forEach(component -> componentNames.add(component.getName()));
+      if (selected.getComponents().stream().anyMatch(component -> componentNames.contains(component.getName()))) {
+        throw new AmbariException("Selected Mpack component names conflict with another service");
+      }
+    }
   }
 
   @AssistedInject
@@ -381,6 +417,40 @@ public class ServiceImpl implements Service {
   @Override
   @Transactional
   public void setDesiredRepositoryVersion(RepositoryVersionEntity repositoryVersionEntity) {
+    setDesiredRepositoryVersion(repositoryVersionEntity, null);
+  }
+
+  @Override
+  @Transactional
+  public void setDesiredRepositoryVersion(RepositoryVersionEntity repositoryVersionEntity, String expectedIncarnation) {
+    ClusterServiceEntity persisted = clusterServiceDAO.findByPKForUpdate(serviceEntityPK);
+    if (expectedIncarnation != null && (persisted == null || !expectedIncarnation.equals(persisted.getMpackTargetIncarnation()))) {
+      throw new IllegalArgumentException("PLAN_STALE: selected service incarnation has changed");
+    }
+    try {
+      RepositoryVersionEntity previous = getDesiredRepositoryVersion();
+      if (previous != null && !java.util.Objects.equals(previous.getId(), repositoryVersionEntity.getId())
+          && (previous.getStack().getMpackId() != null || repositoryVersionEntity.getStack().getMpackId() != null)) {
+        if (persisted == null || persisted.getMpackTargetIncarnation() == null
+            || repositoryVersionEntity.getStack().getMpackId() == null || getDesiredState() != State.INSTALLED
+            || getServiceComponents().values().stream().flatMap(component -> component.getServiceComponentHosts().values().stream())
+                .anyMatch(host -> host.getState() != State.INSTALLED || host.getDesiredState() != State.INSTALLED)) {
+          throw new IllegalArgumentException("Stop all package service targets before changing the selected release");
+        }
+        Long materialized = mpackResources.requireStoppedRelease(getClusterId(), getName(), persisted.getMpackTargetIncarnation());
+        Long candidate = repositoryVersionEntity.getStack().getMpackId();
+        if (!materialized.equals(candidate)) {
+          ambariMetaInfo.getMpackManager().validateUpgrade(materialized, candidate, serviceName);
+        }
+        // Selecting the last verified materialized release restores metadata after a
+        // failed attempt. Agent still verifies/stages that release before any START.
+      }
+      StackId selected = repositoryVersionEntity.getStackId();
+      validateMpackSelection(ambariMetaInfo.getService(selected.getStackName(), selected.getStackVersion(), serviceName),
+          repositoryVersionEntity);
+    } catch (AmbariException | java.io.IOException error) {
+      throw new IllegalArgumentException("Repository selection conflicts with service definitions", error);
+    }
     ServiceDesiredStateEntity serviceDesiredStateEntity = getServiceDesiredStateEntity();
     serviceDesiredStateEntity.setDesiredRepositoryVersion(repositoryVersionEntity);
     serviceDesiredStateDAO.merge(serviceDesiredStateEntity);
@@ -389,6 +459,7 @@ public class ServiceImpl implements Service {
     for (ServiceComponent component : components) {
       component.setDesiredRepositoryVersion(repositoryVersionEntity);
     }
+    cluster.addService(this);
   }
 
   /**
@@ -687,6 +758,13 @@ public class ServiceImpl implements Service {
   @Override
   @Transactional
   public void delete(DeleteHostComponentStatusMetaData deleteMetaData) {
+    clusterServiceDAO.findByPKForUpdate(serviceEntityPK);
+    try {
+      mpackResources.requireRemovable(getClusterId(), getName());
+    } catch (IllegalStateException unsafeRemoval) {
+      deleteMetaData.setAmbariException(new AmbariException(unsafeRemoval.getMessage()));
+      return;
+    }
     List<Component> components = getComponents(); // XXX temporal coupling, need to call this BEFORE deletingAllComponents
     deleteAllComponents(deleteMetaData);
     if (deleteMetaData.getAmbariException() != null) {

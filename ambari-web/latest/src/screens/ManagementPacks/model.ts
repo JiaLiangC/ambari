@@ -56,6 +56,16 @@ export type RegistryCatalog = {
 };
 
 export type RegisteredMpack = {
+  prerequisites?: Record<string, unknown>;
+  stackName?: string;
+  publisher?: string;
+  packageName?: string;
+  digest?: string;
+  signatureAlgorithm?: string;
+  signatureKeyId?: string;
+  repositoryVersionId?: number;
+  compatibility?: Record<string, unknown>;
+  softwareVersions?: Record<string, unknown>;
   id: number;
   registryId?: number;
   mpackId: string;
@@ -183,6 +193,16 @@ export function normalizeRegisteredMpacks(response: unknown): RegisteredMpack[] 
     return {
       id,
       registryId: number(info.registry_id),
+      prerequisites: record(info.prerequisites),
+      stackName: string(info.stack_name) || undefined,
+      publisher: string(info.publisher) || undefined,
+      packageName: string(info.package_name) || undefined,
+      digest: string(info.content_digest) || undefined,
+      signatureAlgorithm: string(info.signature_algorithm) || undefined,
+      signatureKeyId: string(info.signature_key_id) || undefined,
+      repositoryVersionId: info.repository_version_id == null ? undefined : number(info.repository_version_id),
+      compatibility: record(info.compatibility),
+      softwareVersions: record(info.software_versions),
       mpackId: string(info.mpack_id),
       name: string(info.mpack_name),
       displayName: string(info.mpack_display_name || info.mpack_name),

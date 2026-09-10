@@ -37,18 +37,25 @@ def main(argv=None):
   parser.add_argument("--compile", action="store_true", help="emit the normalized compiled model")
   parser.add_argument("--export", dest="export_path", help="write a deterministic offline package ZIP")
   parser.add_argument("--legacy-export", dest="legacy_export", help="write signed legacy V2 host service definitions")
-  parser.add_argument("--signing-key", dest="signing_key", help="read an external HMAC signing key")
+  parser.add_argument("--deployable-export", help="write one signed .mpack file for Ambari upload/import")
+  parser.add_argument("--signing-key", dest="signing_key", help="read an external HMAC key or Ed25519 private PEM")
+  parser.add_argument("--signature-algorithm", choices=("HMAC-SHA256", "Ed25519"), default="HMAC-SHA256",
+                      help="legacy local HMAC or publisher Ed25519 authentication")
   args = parser.parse_args(argv)
   try:
     key = None
     if args.signing_key:
-      if not args.export_path and not args.legacy_export:
+      if not args.export_path and not args.legacy_export and not args.deployable_export:
         raise ManifestError("--signing-key requires --export or --legacy-export")
       root = os.path.dirname(os.path.realpath(args.manifest))
       if os.path.commonpath((root, os.path.realpath(args.signing_key))) == root:
         raise ManifestError("Signing key must be outside the package directory")
       with open(args.signing_key, "rb") as stream:
-        key = stream.read()
+        key = stream.read(4097)
+      if not key or len(key) > 4096:
+        raise ManifestError("Signing key must contain 1..4096 bytes")
+    if args.signature_algorithm == "Ed25519" and not (args.legacy_export or args.deployable_export):
+      raise ManifestError("Ed25519 signing requires --legacy-export")
     result = compile_manifest(args.manifest)
     if args.lock_path:
       write_lock(args.manifest, args.lock_path)
@@ -56,8 +63,11 @@ def main(argv=None):
       result = build_package(args.manifest, args.export_path, key)
     if args.legacy_export:
       from mpack_authoring.legacy import export_legacy
-      result = export_legacy(args.manifest, args.legacy_export, key)
-    if args.compile or args.export_path or args.legacy_export:
+      result = export_legacy(args.manifest, args.legacy_export, key, args.signature_algorithm)
+    if args.deployable_export:
+      from mpack_authoring.legacy import export_deployable
+      result = export_deployable(args.manifest, args.deployable_export, key, args.signature_algorithm)
+    if args.compile or args.export_path or args.legacy_export or args.deployable_export:
       output = {"valid": True, **result}
     else:
       output = {"valid": True, "digest": result["manifestDigest"]}

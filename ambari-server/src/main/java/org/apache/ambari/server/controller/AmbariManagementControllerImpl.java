@@ -628,6 +628,68 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
     return mpackResponse;
   }
 
+  @Inject
+  private org.apache.ambari.server.orm.dao.MpackTargetResourceDAO mpackResources;
+
+  @Override
+  public List<Map<String, Object>> getMpackResources(String clusterName, String after) throws AmbariException {
+    Cluster cluster = clusters.getCluster(clusterName);
+    if (!org.apache.ambari.server.security.authorization.AuthorizationHelper.isAuthorized(
+        org.apache.ambari.server.security.authorization.ResourceType.CLUSTER, cluster.getResourceId(),
+        org.apache.ambari.server.security.authorization.RoleAuthorization.SERVICE_VIEW_STATUS_INFO)) {
+      throw new AuthorizationException("The user is not authorized to inspect managed resources");
+    }
+    if (after == null || !after.matches("[a-f0-9]{0,64}")) {
+      throw new IllegalArgumentException("Invalid resource cursor");
+    }
+    List<Map<String, Object>> result = new ArrayList<>();
+    Map<String, String> currentIncarnations = new HashMap<>();
+    for (org.apache.ambari.server.orm.entities.MpackTargetResourceEntity resource
+        : mpackResources.findPage(cluster.getClusterId(), after, 100)) {
+      Map<String, Object> row = new java.util.LinkedHashMap<>();
+      row.put("targetKey", resource.getTargetKey());
+      row.put("serviceName", resource.getServiceName());
+      row.put("hostName", resource.getHostName());
+      row.put("componentName", resource.getComponentName());
+      row.put("targetIncarnation", resource.getTargetIncarnation());
+      String currentIncarnation = currentIncarnations.computeIfAbsent(resource.getServiceName(), name -> {
+        org.apache.ambari.server.orm.entities.ClusterServiceEntityPK key = new org.apache.ambari.server.orm.entities.ClusterServiceEntityPK();
+        key.setClusterId(cluster.getClusterId());
+        key.setServiceName(name);
+        org.apache.ambari.server.orm.entities.ClusterServiceEntity service = mpackServiceDAO.findByPK(key);
+        return service == null || service.getMpackTargetIncarnation() == null ? "" : service.getMpackTargetIncarnation();
+      });
+      row.put("currentServiceTarget", resource.getTargetIncarnation().equals(currentIncarnation));
+      row.put("customCommands", Collections.emptyList());
+      row.put("category", "UNKNOWN");
+      if (resource.getTargetIncarnation().equals(currentIncarnation)) {
+        try {
+          Service selectedService = cluster.getService(resource.getServiceName());
+          StackId selectedStack = selectedService.getDesiredStackId();
+          ComponentInfo component = ambariMetaInfo.getComponent(selectedStack.getStackName(), selectedStack.getStackVersion(),
+              resource.getServiceName(), resource.getComponentName());
+          row.put("category", component.getCategory());
+          row.put("customCommands", component.getCustomCommands().stream()
+              .map(org.apache.ambari.server.state.CustomCommandDefinition::getName).collect(java.util.stream.Collectors.toList()));
+          row.put("selectedPackageId", selectedService.getDesiredRepositoryVersion().getStack().getMpackId());
+        } catch (AmbariException definitionChanged) {
+          // Concurrent service removal disables UI actions; task admission remains authoritative.
+          row.put("currentServiceTarget", false);
+        }
+      }
+      com.google.gson.JsonObject binding = com.google.gson.JsonParser.parseString(resource.getTaskBinding()).getAsJsonObject();
+      row.put("packageId", binding.get("packageId").getAsLong());
+      row.put("operation", binding.get("operation").getAsString());
+      row.put("materializedPackageId", resource.getMaterializedMpackId());
+      row.put("taskId", resource.getTaskId());
+      row.put("state", resource.getResourceState());
+      row.put("evidence", resource.getResourceEvidence() == null ? null
+          : com.google.gson.JsonParser.parseString(resource.getResourceEvidence()));
+      result.add(row);
+    }
+    return result;
+  }
+
   @Override
   public Set<MpackResponse> getMpacks(){
     Collection<Mpack> mpacks = ambariMetaInfo.getMpacks();
@@ -1130,6 +1192,17 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
     }
 
     Map<String, String> requestProperties = request.getProperties();
+    if (StringUtils.isNotEmpty(service)) {
+      RepositoryVersionEntity selected = cluster.getService(service).getDesiredRepositoryVersion();
+      if (selected != null && selected.getStack() != null && selected.getStack().getMpackId() != null) {
+        try {
+          ambariMetaInfo.getMpackManager().validateConfiguration(selected.getStack().getMpackId(), service,
+              configType, requestProperties);
+        } catch (IOException invalid) {
+          throw new IllegalArgumentException("SCHEMA_INVALID: package configuration could not be validated");
+        }
+      }
+    }
 
     // Configuration attributes are optional. If not present, use default(provided by stack), otherwise merge default
     // with request-provided
@@ -1151,6 +1224,14 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
     }
 
     Map<PropertyInfo.PropertyType, Set<String>> propertiesTypes = cluster.getConfigPropertiesTypes(request.getType());
+    for (String property : propertiesTypes.getOrDefault(PropertyType.SECRET_REFERENCE, Collections.emptySet())) {
+      String reference = requestProperties.get(property);
+      if (reference != null && (service == null || !reference.matches("secret://mpack\\."
+          + java.util.regex.Pattern.quote(service) + "\\.[A-Za-z0-9_.-]{1,128}"))) {
+        throw new IllegalArgumentException("Sensitive package configuration accepts only a scoped credential reference");
+      }
+    }
+
     if(propertiesTypes.containsKey(PropertyType.PASSWORD)) {
       for(String passwordProperty : propertiesTypes.get(PropertyType.PASSWORD)) {
         if(requestProperties.containsKey(passwordProperty)) {
@@ -5924,10 +6005,11 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
 
       // Get the map of service config type to password properties for the service
       Map<String, Map<String, String>> configCredentials;
-      configCredentials = configCredentialsForService.get(service.getName());
+      String configCredentialKey = service.getClusterId() + "/" + service.getName() + "/" + repositoryVersion.getId();
+      configCredentials = configCredentialsForService.get(configCredentialKey);
       if (configCredentials == null) {
         configCredentials = configHelper.getCredentialStoreEnabledProperties(serviceStackId, service);
-        configCredentialsForService.put(service.getName(), configCredentials);
+        configCredentialsForService.put(configCredentialKey, configCredentials);
       }
 
       MetadataServiceInfo metadata = new MetadataServiceInfo(serviceInfo.getVersion(),

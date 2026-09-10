@@ -93,6 +93,9 @@ public class AgentCommandsPublisher {
   @Inject
   private ThreadPools threadPools;
 
+  @Inject
+  private com.google.inject.Provider<org.apache.ambari.server.mpack.MpackSecrets> mpackSecrets;
+
 
   public void sendAgentCommand(Multimap<Long, AgentCommand> agentCommands) throws AmbariRuntimeException {
     if (agentCommands != null && !agentCommands.isEmpty()) {
@@ -195,7 +198,10 @@ public class AgentCommandsPublisher {
         }
         ec.setClusterId(clusterId);
         prepareExecutionCommandsClusters(executionCommandsClusters, hostId, clusterId);
-        executionCommandsClusters.get(hostId).get(clusterId).getExecutionCommands().add((ExecutionCommand) ac);
+        String mpackBinding = ec.getCommandParams() == null ? null : ec.getCommandParams().get("mpack_task_binding");
+        ExecutionCommand dispatched = mpackBinding != null && mpackBinding.contains("secretGenerations")
+            ? mpackSecrets.get().forDispatch(ec, hostId) : ec;
+        executionCommandsClusters.get(hostId).get(clusterId).getExecutionCommands().add(dispatched);
         break;
       }
       case CANCEL_COMMAND: {

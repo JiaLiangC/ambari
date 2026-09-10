@@ -24,7 +24,7 @@
             "name": "http",
             "schema": "config.schema.json",
             "template": "config.conf.j2",
-            "changeEffect": "restart"
+            "changeEffect": "reload"
           }
         ],
         "components": [
@@ -42,7 +42,10 @@
                   "start",
                   "stop",
                   "observe",
-                  "restart"
+                  "restart",
+                  "uninstall",
+                  "reload",
+                  "purge"
                 ],
                 "resources": {
                   "packages": [
@@ -75,20 +78,22 @@
                       {
                         "artifactRef": "server"
                       },
-                      "--port",
+                      "--config",
                       {
-                        "configRef": "http.port"
+                        "configurationRef": "http"
                       }
                     ]
                   },
                   "unit": {
                     "user": "http",
                     "workingDirectory": "data"
-                  }
+                  },
+                  "reloadSignal": "HUP"
                 },
                 "health": {
-                  "kind": "tcp",
+                  "kind": "http",
                   "portRef": "http.port",
+                  "path": "/health",
                   "timeoutSeconds": 5
                 }
               }

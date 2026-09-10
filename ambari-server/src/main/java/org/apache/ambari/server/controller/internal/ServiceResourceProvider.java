@@ -183,6 +183,8 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
     PROPERTY_IDS.add(SERVICE_CREDENTIAL_STORE_SUPPORTED_PROPERTY_ID);
     PROPERTY_IDS.add(SERVICE_CREDENTIAL_STORE_ENABLED_PROPERTY_ID);
     PROPERTY_IDS.add(SERVICE_ATTRIBUTES_PROPERTY_ID);
+    PROPERTY_IDS.add("ServiceInfo/definition_stack_name");
+    PROPERTY_IDS.add("ServiceInfo/definition_stack_version");
     PROPERTY_IDS.add(SERVICE_DESIRED_STACK_PROPERTY_ID);
     PROPERTY_IDS.add(SERVICE_DESIRED_REPO_VERSION_ID_PROPERTY_ID);
     PROPERTY_IDS.add(SERVICE_REPOSITORY_STATE);
@@ -325,6 +327,8 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
       // !!! TODO is the UI using this?
       if (null != repoVersion) {
         setResourceProperty(resource, SERVICE_DESIRED_STACK_PROPERTY_ID, repoVersion.getStackId(), requestedIds);
+        setResourceProperty(resource, "ServiceInfo/definition_stack_name", repoVersion.getStackName(), requestedIds);
+        setResourceProperty(resource, "ServiceInfo/definition_stack_version", repoVersion.getStackVersion(), requestedIds);
       }
 
       setResourceProperty(resource, SERVICE_DESIRED_REPO_VERSION_ID_PROPERTY_ID,
@@ -472,7 +476,8 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
    */
   private ServiceRequest getRequest(Map<String, Object> properties) {
 
-    String desiredRepoId = (String) properties.get(SERVICE_DESIRED_REPO_VERSION_ID_PROPERTY_ID);
+    Object requestedRepoId = properties.get(SERVICE_DESIRED_REPO_VERSION_ID_PROPERTY_ID);
+    String desiredRepoId = requestedRepoId == null ? null : requestedRepoId.toString();
 
     ServiceRequest svcRequest = new ServiceRequest(
         (String) properties.get(SERVICE_CLUSTER_NAME_PROPERTY_ID),
@@ -708,6 +713,26 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
 
       Cluster cluster = clusters.getCluster(request.getClusterName());
       Service s = cluster.getService(request.getServiceName());
+      if (request.getDesiredRepositoryVersionId() != null) {
+        if (!AuthorizationHelper.isAuthorized(ResourceType.CLUSTER, cluster.getResourceId(), RoleAuthorization.CLUSTER_UPGRADE_DOWNGRADE_STACK)) {
+          throw new AuthorizationException("The authenticated user is not authorized to select a software release");
+        }
+        if (requests.size() != 1 || request.getDesiredState() != null || request.getMaintenanceState() != null
+            || StringUtils.isNotEmpty(request.getCredentialStoreEnabled()) || StringUtils.isNotEmpty(request.getCredentialStoreSupported())) {
+          throw new IllegalArgumentException("Select one package release separately from other service changes");
+        }
+        RepositoryVersionEntity selected = repositoryVersionDAO.findByPK(request.getDesiredRepositoryVersionId());
+        if (selected == null || selected.getStack().getMpackId() == null
+            || s.getDesiredRepositoryVersion().getStack().getMpackId() == null) {
+          throw new IllegalArgumentException("Use the existing Stack upgrade workflow for non-package services");
+        }
+        String expectedIncarnation = requestProperties.get("parameters/expected_target_incarnation");
+        if (expectedIncarnation == null || !expectedIncarnation.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")) {
+          throw new IllegalArgumentException("Package selection requires the current target incarnation from resource evidence");
+        }
+        s.setDesiredRepositoryVersion(selected, expectedIncarnation);
+        continue;
+      }
       State oldState = s.getDesiredState();
       State newState = null;
       if (request.getDesiredState() != null) {

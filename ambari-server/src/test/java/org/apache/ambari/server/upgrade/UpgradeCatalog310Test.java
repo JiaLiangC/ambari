@@ -40,17 +40,54 @@ public class UpgradeCatalog310Test {
 
   @Test
   public void testHostMetadataMigrationAddsOnlyMissingNullableColumns() throws Exception {
+    expect(dbAccessor.tableHasColumn("mpacks", "release_metadata")).andReturn(false);
+    dbAccessor.addColumn(eq("mpacks"), anyObject(DBAccessor.DBColumnInfo.class));
+    expectLastCall();
     expect(dbAccessor.tableHasColumn("mpacks", "content_digest")).andReturn(false);
     dbAccessor.addColumn(eq("mpacks"), anyObject(DBAccessor.DBColumnInfo.class));
     expectLastCall();
     expect(dbAccessor.tableHasColumn("clusterservices", "mpack_target_incarnation")).andReturn(false);
     dbAccessor.addColumn(eq("clusterservices"), anyObject(DBAccessor.DBColumnInfo.class));
     expectLastCall();
+    expect(dbAccessor.tableHasColumn("mpacks", "release_metadata")).andReturn(true);
     expect(dbAccessor.tableHasColumn("mpacks", "content_digest")).andReturn(true);
     expect(dbAccessor.tableHasColumn("clusterservices", "mpack_target_incarnation")).andReturn(true);
     replay(dbAccessor);
     catalog.reconcileMpackHostMetadata();
     catalog.reconcileMpackHostMetadata();
+    verify(dbAccessor);
+  }
+
+  @Test
+  public void testRetentionTableMigrationCreatesPackageGuardAndIndexesOnce() throws Exception {
+    expect(dbAccessor.tableExists("mpack_target_resource")).andReturn(false);
+    dbAccessor.createTable(eq("mpack_target_resource"), anyObject(List.class), eq("target_key"));
+    expectLastCall();
+    dbAccessor.addFKConstraint("mpack_target_resource", "FK_mpack_target_package", "mpack_id", "mpacks", "id", true, false);
+    expectLastCall();
+    dbAccessor.addFKConstraint("mpack_target_resource", "FK_mpack_target_materialized", "materialized_mpack_id", "mpacks", "id", true, false);
+    expectLastCall();
+    dbAccessor.createIndex("idx_mpack_target_task", "mpack_target_resource", "task_id"); expectLastCall();
+    dbAccessor.createIndex("idx_mpack_target_service", "mpack_target_resource", "cluster_id", "service_name"); expectLastCall();
+    expect(dbAccessor.tableExists("mpack_target_resource")).andReturn(true);
+    expect(dbAccessor.tableHasColumn("mpack_target_resource", "materialized_mpack_id")).andReturn(true);
+    expect(dbAccessor.tableHasForeignKey("mpack_target_resource", "mpacks", "materialized_mpack_id", "id")).andReturn(true);
+    replay(dbAccessor);
+    catalog.reconcileMpackTargetResources();
+    catalog.reconcileMpackTargetResources();
+    verify(dbAccessor);
+  }
+
+  @Test
+  public void testRetentionMigrationAddsMaterializedReferenceWithoutGuessingExistingState() throws Exception {
+    expect(dbAccessor.tableExists("mpack_target_resource")).andReturn(true);
+    expect(dbAccessor.tableHasColumn("mpack_target_resource", "materialized_mpack_id")).andReturn(false);
+    dbAccessor.addColumn(eq("mpack_target_resource"), anyObject(DBAccessor.DBColumnInfo.class)); expectLastCall();
+    expect(dbAccessor.tableHasForeignKey("mpack_target_resource", "mpacks", "materialized_mpack_id", "id")).andReturn(false);
+    dbAccessor.addFKConstraint("mpack_target_resource", "FK_mpack_target_materialized", "materialized_mpack_id", "mpacks", "id", true, false);
+    expectLastCall();
+    replay(dbAccessor);
+    catalog.reconcileMpackTargetResources();
     verify(dbAccessor);
   }
 

@@ -17,9 +17,10 @@ limitations under the License.
 """
 
 PROFILES = {
-  "host.systemd/v1": {"install", "configure", "start", "stop", "restart", "observe"},
-  "oci.container/v1": {"install", "configure", "start", "stop", "observe"},
-  "kubernetes.workload/v1": {"install", "configure", "start", "stop", "observe"},
+  "host.files/v1": {"install", "configure", "uninstall", "purge", "observe"},
+  "host.systemd/v1": {"install", "configure", "start", "stop", "restart", "reload", "upgrade", "detach", "adopt", "uninstall", "purge", "observe"},
+  "oci.container/v1": {"install", "configure", "start", "stop", "restart", "uninstall", "purge", "observe"},
+  "kubernetes.workload/v1": {"install", "configure", "start", "stop", "uninstall", "purge", "observe"},
   "external.database/v1": {"observe"},
 }
 

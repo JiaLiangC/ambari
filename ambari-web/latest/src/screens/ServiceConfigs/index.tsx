@@ -193,8 +193,9 @@ export default function ServiceConfigs({
 
   const { allServiceModels } = useContext(ServiceContext);
 
-  const stackName = get(cluster, "stack");
-  const stackVersion = get(cluster, "versionNum");
+  const selectedDefinition = services.find((item) => get(item, "ServiceInfo.service_name") === serviceName);
+  const stackName = get(selectedDefinition, "ServiceInfo.definition_stack_name") || get(cluster, "stack");
+  const stackVersion = get(selectedDefinition, "ServiceInfo.definition_stack_version") || get(cluster, "versionNum");
   const [showValidationErrorsModal, setShowValidationErrorsModal] =
     useState<boolean>(false);
 

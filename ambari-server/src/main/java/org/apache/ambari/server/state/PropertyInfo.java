@@ -315,6 +315,7 @@ public class PropertyInfo {
   }
 
   public enum PropertyType {
+    SECRET_REFERENCE,
     PASSWORD,
     USER,
     UID,

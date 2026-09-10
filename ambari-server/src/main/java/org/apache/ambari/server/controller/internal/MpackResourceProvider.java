@@ -94,6 +94,15 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
   public static final String STACK_VERSION_PROPERTY_ID =
     RESPONSE_KEY + PropertyHelper.EXTERNAL_PATH_SEP + "stack_version";
 
+  public static final String PUBLISHER = RESPONSE_KEY + "/publisher";
+  public static final String PACKAGE_NAME = RESPONSE_KEY + "/package_name";
+  public static final String CONTENT_DIGEST = RESPONSE_KEY + "/content_digest";
+  public static final String SIGNATURE_ALGORITHM = RESPONSE_KEY + "/signature_algorithm";
+  public static final String SIGNATURE_KEY_ID = RESPONSE_KEY + "/signature_key_id";
+  public static final String COMPATIBILITY = RESPONSE_KEY + "/compatibility";
+  public static final String SOFTWARE_VERSIONS = RESPONSE_KEY + "/software_versions";
+  public static final String REPOSITORY_VERSION_ID = RESPONSE_KEY + "/repository_version_id";
+
   private static Set<String> pkPropertyIds = new HashSet<>(
     Arrays.asList(MPACK_RESOURCE_ID, STACK_NAME_PROPERTY_ID, STACK_VERSION_PROPERTY_ID));
 
@@ -124,7 +133,18 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
 
   static {
     // properties
+    PROPERTY_IDS.add(RESPONSE_KEY + "/prerequisites");
+    PROPERTY_IDS.add(RESPONSE_KEY + "/stack_name");
     PROPERTY_IDS.add(MPACK_RESOURCE_ID);
+    PROPERTY_IDS.add(PUBLISHER);
+    PROPERTY_IDS.add(PACKAGE_NAME);
+    PROPERTY_IDS.add(CONTENT_DIGEST);
+    PROPERTY_IDS.add(SIGNATURE_ALGORITHM);
+    PROPERTY_IDS.add(SIGNATURE_KEY_ID);
+    PROPERTY_IDS.add(COMPATIBILITY);
+    PROPERTY_IDS.add(SOFTWARE_VERSIONS);
+    PROPERTY_IDS.add(REPOSITORY_VERSION_ID);
+
     PROPERTY_IDS.add(REGISTRY_ID);
     PROPERTY_IDS.add(MPACK_ID);
     PROPERTY_IDS.add(MPACK_NAME);
@@ -180,11 +200,22 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
       resource.setProperty(MPACK_RESOURCE_ID, response.getId());
       resource.setProperty(MPACK_ID, response.getMpackId());
       resource.setProperty(MPACK_NAME, response.getMpackName());
+      resource.setProperty(RESPONSE_KEY + "/stack_name", response.getStackName());
+      resource.setProperty(RESPONSE_KEY + "/prerequisites", response.getPrerequisites());
       resource.setProperty(MPACK_VERSION, response.getMpackVersion());
       resource.setProperty(MPACK_URI, response.getMpackUri());
       resource.setProperty(MPACK_DESCRIPTION, response.getDescription());
       resource.setProperty(REGISTRY_ID, response.getRegistryId());
       resource.setProperty(MPACK_DISPLAY_NAME, response.getDisplayName());
+    resource.setProperty(PUBLISHER, response.getPublisher());
+    resource.setProperty(PACKAGE_NAME, response.getPackageName());
+    resource.setProperty(CONTENT_DIGEST, response.getContentDigest());
+    resource.setProperty(SIGNATURE_ALGORITHM, response.getSignatureAlgorithm());
+    resource.setProperty(SIGNATURE_KEY_ID, response.getSignatureKeyId());
+    resource.setProperty(COMPATIBILITY, response.getCompatibility());
+    resource.setProperty(SOFTWARE_VERSIONS, response.getSoftwareVersions());
+    resource.setProperty(REPOSITORY_VERSION_ID, response.getRepositoryVersionId());
+
       associatedResources.add(resource);
       return getRequestStatus(null, associatedResources);
     } catch (IOException e) {
@@ -346,11 +377,21 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
     resource.setProperty(MPACK_RESOURCE_ID, response.getId());
     resource.setProperty(MPACK_ID, response.getMpackId());
     resource.setProperty(MPACK_NAME, response.getMpackName());
+      resource.setProperty(RESPONSE_KEY + "/stack_name", response.getStackName());
+      resource.setProperty(RESPONSE_KEY + "/prerequisites", response.getPrerequisites());
     resource.setProperty(MPACK_VERSION, response.getMpackVersion());
     resource.setProperty(MPACK_URI, response.getMpackUri());
     resource.setProperty(MPACK_DESCRIPTION, response.getDescription());
     resource.setProperty(REGISTRY_ID, response.getRegistryId());
     resource.setProperty(MPACK_DISPLAY_NAME, response.getDisplayName());
+    resource.setProperty(PUBLISHER, response.getPublisher());
+    resource.setProperty(PACKAGE_NAME, response.getPackageName());
+    resource.setProperty(CONTENT_DIGEST, response.getContentDigest());
+    resource.setProperty(SIGNATURE_ALGORITHM, response.getSignatureAlgorithm());
+    resource.setProperty(SIGNATURE_KEY_ID, response.getSignatureKeyId());
+    resource.setProperty(COMPATIBILITY, response.getCompatibility());
+    resource.setProperty(SOFTWARE_VERSIONS, response.getSoftwareVersions());
+
     return resource;
   }
 

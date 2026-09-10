@@ -72,6 +72,7 @@ public class UpgradeCatalog310 extends AbstractUpgradeCatalog {
   protected void executeDDLUpdates() throws AmbariException, SQLException {
     reconcileMpackCatalogSchema();
     reconcileMpackHostMetadata();
+    reconcileMpackTargetResources();
     createDatasourceTable();
     createBoardTable();
     createBoardPayloadTable();
@@ -80,6 +81,9 @@ public class UpgradeCatalog310 extends AbstractUpgradeCatalog {
   }
 
   protected void reconcileMpackHostMetadata() throws SQLException {
+    if (!dbAccessor.tableHasColumn("mpacks", "release_metadata")) {
+      dbAccessor.addColumn("mpacks", column("release_metadata", Clob.class, null, null, true));
+    }
     if (!dbAccessor.tableHasColumn("mpacks", "content_digest")) {
       dbAccessor.addColumn("mpacks", column("content_digest", String.class, 64, null, true));
     }
@@ -88,12 +92,45 @@ public class UpgradeCatalog310 extends AbstractUpgradeCatalog {
     }
   }
 
+  protected void reconcileMpackTargetResources() throws SQLException {
+    String table = "mpack_target_resource";
+    if (dbAccessor.tableExists(table)) {
+      if (!dbAccessor.tableHasColumn(table, "materialized_mpack_id")) {
+        dbAccessor.addColumn(table, column("materialized_mpack_id", Long.class, null, null, true));
+      }
+      if (!dbAccessor.tableHasForeignKey(table, "mpacks", "materialized_mpack_id", "id")) {
+        dbAccessor.addFKConstraint(table, "FK_mpack_target_materialized", "materialized_mpack_id", "mpacks", "id", true, false);
+      }
+      return;
+    }
+    List<DBAccessor.DBColumnInfo> columns = new ArrayList<>();
+    columns.add(column("target_key", String.class, 64, null, false));
+    columns.add(column("cluster_id", Long.class, null, null, false));
+    columns.add(column("service_name", String.class, 255, null, false));
+    columns.add(column("target_incarnation", String.class, 36, null, false));
+    columns.add(column("host_name", String.class, 255, null, false));
+    columns.add(column("component_name", String.class, 255, null, false));
+    columns.add(column("mpack_id", Long.class, null, null, true));
+    columns.add(column("materialized_mpack_id", Long.class, null, null, true));
+    columns.add(column("task_id", Long.class, null, null, false));
+    columns.add(column("resource_state", String.class, 32, null, false));
+    columns.add(column("task_binding", Clob.class, null, null, false));
+    columns.add(column("resource_evidence", Clob.class, null, null, true));
+    dbAccessor.createTable(table, columns, "target_key");
+    dbAccessor.addFKConstraint(table, "FK_mpack_target_package", "mpack_id", "mpacks", "id", true, false);
+    dbAccessor.addFKConstraint(table, "FK_mpack_target_materialized", "materialized_mpack_id", "mpacks", "id", true, false);
+    dbAccessor.createIndex("idx_mpack_target_task", table, "task_id");
+    dbAccessor.createIndex("idx_mpack_target_service", table, "cluster_id", "service_name");
+  }
+
   @Override
   protected void executePreDMLUpdates() throws AmbariException, SQLException {
   }
 
   @Override
   protected void executeDMLUpdates() throws AmbariException, SQLException {
+    addRoleAuthorization("SERVICE.PURGE_DATA", "Purge retained service data",
+        java.util.Collections.singleton("AMBARI.ADMINISTRATOR:AMBARI"));
   }
 
   protected void createDatasourceTable() throws SQLException {

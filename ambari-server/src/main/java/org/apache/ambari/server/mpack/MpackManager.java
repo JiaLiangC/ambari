@@ -85,6 +85,8 @@ import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.inject.Inject;
 import com.google.inject.assistedinject.Assisted;
 import com.google.inject.assistedinject.AssistedInject;
@@ -94,6 +96,9 @@ import com.google.inject.assistedinject.AssistedInject;
  * the Stack resource tree.
  */
 public class MpackManager {
+  @com.google.inject.Inject
+  private org.apache.ambari.server.security.encryption.CredentialStoreService artifactCredentials;
+
   private static final String MPACK_METADATA = "mpack.json";
   private static final String MPACK_TAR_LOCATION = "staging";
   private static final String MODULE_ARCHIVES_DIRECTORY = "modules";
@@ -175,6 +180,7 @@ public class MpackManager {
             continue;
           }
           MpackEntity entity = entities.get(0);
+          verifyCatalogMetadata(entity, existingMpack);
           if (!java.util.Objects.equals(entity.getContentDigest(), existingMpack.getPackageDigest())) {
             throw new IOException("Package digest differs from catalog authority");
           }
@@ -184,7 +190,10 @@ public class MpackManager {
           // A surviving DB row means the deletion transaction did not commit.
           Files.deleteIfExists(versionDirectory.toPath().resolve(DELETION_PENDING));
           if (Files.exists(versionDirectory.toPath().resolve(REGISTRATION_PENDING))) {
-            StackEntity stack = stackDAO.find(mpackName, mpackVersion);
+            StackEntity stack = stackDAO.find(existingMpack.getStackName(), mpackVersion);
+            if (stack == null && !existingMpack.getStackName().equals(mpackName)) {
+              stack = stackDAO.find(mpackName, mpackVersion);
+            }
             if (stack == null) {
               populateStackDB(existingMpack);
             } else if (!entity.getId().equals(stack.getMpackId())) {
@@ -193,6 +202,8 @@ public class MpackManager {
             ensureStackProjection(existingMpack, versionDirectory.toPath());
             Files.delete(versionDirectory.toPath().resolve(REGISTRATION_PENDING));
           }
+          ensureDefaultRepository(existingMpack);
+          ensureStackProjection(existingMpack, versionDirectory.toPath());
           mpackMap.put(entity.getId(), existingMpack);
         } catch (IOException | ResourceAlreadyExistsException | RuntimeException e) {
           LOG.error("Unable to load registered mpack {}-{} from {}", mpackName, mpackVersion,
@@ -204,6 +215,55 @@ public class MpackManager {
 
   public Map<Long, Mpack> getMpackMap() {
     return Collections.unmodifiableMap(mpackMap);
+  }
+
+  public void validateUpgrade(Long previousId, Long candidateId, String service) throws IOException {
+    synchronized (registrationLock) {
+      validateIdentifier(service, "service");
+      Mpack previous = mpackMap.get(previousId);
+      Mpack candidate = mpackMap.get(candidateId);
+      if (previous == null || candidate == null || previous.getPackageDigest() == null || candidate.getPackageDigest() == null
+          || !previous.getName().equals(candidate.getName())) {
+        throw new IOException("Artifact update requires two available authored packages");
+      }
+      try {
+        com.google.gson.JsonObject oldDescriptor = MpackConfiguration.read(finalMpackDirectory(previous)
+            .resolve("services").resolve(service).resolve("package/manifest-service.json"));
+        com.google.gson.JsonObject newDescriptor = MpackConfiguration.read(finalMpackDirectory(candidate)
+            .resolve("services").resolve(service).resolve("package/manifest-service.json"));
+        if (!previous.getPackageDigest().equals(oldDescriptor.getAsJsonObject("package").get("digest").getAsString())
+            || !candidate.getPackageDigest().equals(newDescriptor.getAsJsonObject("package").get("digest").getAsString())
+            || !previous.getName().equals(oldDescriptor.getAsJsonObject("package").get("name").getAsString())
+            || !candidate.getName().equals(newDescriptor.getAsJsonObject("package").get("name").getAsString())
+            || !service.equals(oldDescriptor.getAsJsonObject("service").get("name").getAsString())
+            || !service.equals(newDescriptor.getAsJsonObject("service").get("name").getAsString())) {
+          throw new IOException("Package descriptor differs from catalog authority");
+        }
+        MpackUpgrade.validate(oldDescriptor, newDescriptor);
+      } catch (RuntimeException invalid) {
+        throw new IOException("Package artifact update metadata is invalid");
+      }
+    }
+  }
+
+  public void validateConfiguration(Long packageId, String service, String type, Map<String, String> properties)
+      throws IOException {
+    synchronized (registrationLock) {
+      Mpack pack = mpackMap.get(packageId);
+      if (pack == null) {
+        throw new IOException("Selected package is not available");
+      }
+      if (pack.getPackageDigest() == null) {
+        return;
+      }
+      validateIdentifier(service, "service");
+      Path module = finalMpackDirectory(pack).resolve("services").resolve(service).resolve("package");
+      try {
+        MpackConfiguration.validate(module, pack.getPackageDigest(), service, type, properties);
+      } catch (RuntimeException invalid) {
+        throw new IOException("SCHEMA_INVALID: package configuration is invalid");
+      }
+    }
   }
 
   public void setMpackMap(Map<Long, Mpack> replacement) {
@@ -239,7 +299,14 @@ public class MpackManager {
 
     try {
       Path metadataPath = requestDirectory.resolve(MPACK_METADATA);
-      download(metadataUri, metadataPath, MAX_METADATA_BYTES);
+      boolean transportArchive = metadataUri.getPath().endsWith(".mpack");
+      if (transportArchive) {
+        Path transport = requestDirectory.resolve("release.mpack");
+        download(metadataUri, transport, MAX_ARCHIVE_BYTES + MAX_METADATA_BYTES + 65536);
+        unpackRelease(transport, requestDirectory);
+      } else {
+        download(metadataUri, metadataPath, MAX_METADATA_BYTES);
+      }
       Mpack mpack = readMpackMetadata(metadataPath);
       validateMpackMetadata(mpack);
 
@@ -253,9 +320,21 @@ public class MpackManager {
       mpack.setMpackUri(metadataUri.toString());
 
       Path finalDirectory = finalMpackDirectory(mpack);
+      if (transportArchive && "file".equalsIgnoreCase(metadataUri.getScheme())) {
+        // Uploaded transports are temporary. Retain a resolvable verified catalog source.
+        mpack.setMpackUri(finalDirectory.resolve(MPACK_METADATA).toUri().toString());
+      }
       URI archiveUri = resolveDefinitionUri(metadataUri, mpack.getDefinition());
       Path archivePath = requestDirectory.resolve("mpack-definition.tar.gz");
-      download(archiveUri, archivePath, MAX_ARCHIVE_BYTES);
+      if (transportArchive) {
+        Path bundledDefinition = requestDirectory.resolve(mpack.getDefinition());
+        if (!Files.isRegularFile(bundledDefinition, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+          throw new IOException("Deployable release has no matching definition archive");
+        }
+        Files.move(bundledDefinition, archivePath);
+      } else {
+        download(archiveUri, archivePath, MAX_ARCHIVE_BYTES);
+      }
       verifyAuthoringArchive(mpack, archivePath);
       Path preparedDirectory = prepareMpack(requestDirectory, archivePath, metadataPath, mpack);
 
@@ -283,6 +362,7 @@ public class MpackManager {
           mpack.setResourceId(mpackResourceId);
           populateStackDB(mpack);
           stackPersisted = true;
+          ensureDefaultRepository(mpack);
           Files.delete(finalDirectory.resolve(REGISTRATION_PENDING));
           mpackMap.put(mpackResourceId, mpack);
           return new MpackResponse(mpack);
@@ -305,6 +385,7 @@ public class MpackManager {
         throw duplicateMpack(mpack);
       }
       Mpack existing = readMpackMetadata(finalDirectory.resolve(MPACK_METADATA));
+      verifyCatalogMetadata(entity, existing);
       if (!mpack.getPackageDigest().equals(existing.getPackageDigest())
           || !mpack.getName().equals(existing.getName()) || !mpack.getVersion().equals(existing.getVersion())) {
         throw new IOException("Existing definition does not match catalog authority");
@@ -312,12 +393,16 @@ public class MpackManager {
       existing.setResourceId(entity.getId());
       existing.setMpackUri(entity.getMpackUri());
       existing.setRegistryId(entity.getRegistryId());
-      StackEntity stack = stackDAO.find(existing.getName(), existing.getVersion());
+      StackEntity stack = stackDAO.find(existing.getStackName(), existing.getVersion());
+      if (stack == null && !existing.getName().equals(existing.getStackName())) {
+        stack = stackDAO.find(existing.getName(), existing.getVersion());
+      }
       if (stack == null) {
         populateStackDB(existing);
       } else if (!entity.getId().equals(stack.getMpackId())) {
         throw new IOException("Stack identity belongs to another package");
       }
+      ensureDefaultRepository(existing);
       ensureStackProjection(existing, finalDirectory);
       Files.deleteIfExists(finalDirectory.resolve(REGISTRATION_PENDING));
       Files.deleteIfExists(finalDirectory.resolve(DELETION_PENDING));
@@ -325,7 +410,7 @@ public class MpackManager {
       return existing;
     }
     quarantineIncompleteRegistration(finalDirectory);
-    if (stackDAO.find(mpack.getName(), mpack.getVersion()) != null
+    if (stackDAO.find(mpack.getStackName(), mpack.getVersion()) != null
         || Files.exists(finalDirectory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
       throw duplicateMpack(mpack);
     }
@@ -335,6 +420,12 @@ public class MpackManager {
   private ResourceAlreadyExistsException duplicateMpack(Mpack mpack) {
     return new ResourceAlreadyExistsException(
         "Mpack " + mpack.getName() + " version " + mpack.getVersion() + " already exists in server");
+  }
+
+  private void ensureDefaultRepository(Mpack mpack) {
+    if (mpack.getPackageDigest() != null) {
+      mpack.setRepositoryVersionId(mpackDAO.ensureDefaultRepository(mpack.getResourceId()));
+    }
   }
 
   private URI parseMpackUri(String value) {
@@ -349,6 +440,9 @@ public class MpackManager {
       }
       if (uri.getRawUserInfo() != null) {
         throw new IllegalArgumentException("Mpack URI must not contain user information");
+      }
+      if (uri.getRawQuery() != null) {
+        throw new IllegalArgumentException("Mpack URLs use configured credential references, not query parameters");
       }
       if (uri.getRawFragment() != null) {
         throw new IllegalArgumentException("Mpack URI must not contain a fragment");
@@ -376,21 +470,125 @@ public class MpackManager {
     return resolved;
   }
 
+  private void unpackRelease(Path transport, Path directory) throws IOException {
+    Set<String> names = new HashSet<>();
+    long total = 0;
+    try (org.apache.commons.compress.archivers.tar.TarArchiveInputStream archive =
+        new org.apache.commons.compress.archivers.tar.TarArchiveInputStream(
+            new java.util.zip.GZIPInputStream(Files.newInputStream(transport)))) {
+      org.apache.commons.compress.archivers.tar.TarArchiveEntry entry;
+      while ((entry = archive.getNextTarEntry()) != null) {
+        String name = entry.getName();
+        if (!entry.isFile() || entry.isSymbolicLink() || entry.isLink() || entry.isSparse()
+            || !name.matches("[A-Za-z0-9][A-Za-z0-9_.-]{0,254}")
+            || !(name.equals(MPACK_METADATA) || name.endsWith(".tar.gz"))
+            || !names.add(name) || names.size() > 2) {
+          throw new IOException("Invalid deployable release inventory");
+        }
+        long limit = name.equals(MPACK_METADATA) ? MAX_METADATA_BYTES : MAX_ARCHIVE_BYTES;
+        if (entry.getSize() < 0 || entry.getSize() > limit) {
+          throw new IOException("Deployable release entry exceeds its limit");
+        }
+        try (OutputStream output = Files.newOutputStream(directory.resolve(name), StandardOpenOption.CREATE_NEW)) {
+          long copied = copyLimited(archive, output, limit);
+          if (copied != entry.getSize()) {
+            throw new IOException("Truncated deployable release");
+          }
+          total += copied;
+        }
+      }
+    }
+    if (names.size() != 2 || !names.contains(MPACK_METADATA) || total > MAX_ARCHIVE_BYTES + MAX_METADATA_BYTES) {
+      throw new IOException("Incomplete deployable release inventory");
+    }
+  }
+
   private void download(URI source, Path target, long maximumBytes) throws IOException {
     URLConnection connection = source.toURL().openConnection();
+    java.net.HttpURLConnection http = connection instanceof java.net.HttpURLConnection
+        ? (java.net.HttpURLConnection) connection : null;
+    if (http != null) {
+      http.setInstanceFollowRedirects(false);
+      applyDownloadPolicy(source, http);
+    }
     connection.setUseCaches(false);
     connection.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
     connection.setReadTimeout(READ_TIMEOUT_MILLIS);
-    long declaredLength = connection.getContentLengthLong();
-    if (declaredLength > maximumBytes) {
-      throw new IOException("Remote content exceeds the allowed size");
+    long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(120);
+    try {
+      if (http != null && http.getResponseCode() != 200) {
+        throw new IOException("Artifact source did not return HTTP 200; redirects are not accepted");
+      }
+      long declaredLength = connection.getContentLengthLong();
+      if (declaredLength > maximumBytes) {
+        throw new IOException("Remote content exceeds the allowed size");
+      }
+      Files.createDirectories(target.getParent());
+      try (InputStream input = new BufferedInputStream(connection.getInputStream());
+          OutputStream output = new BufferedOutputStream(Files.newOutputStream(target,
+              StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))) {
+        byte[] buffer = new byte[65536];
+        long total = 0;
+        int count;
+        while ((count = input.read(buffer)) != -1) {
+          total += count;
+          if (total > maximumBytes || System.nanoTime() > deadline) {
+            throw new IOException("Artifact transfer exceeded size or duration limit");
+          }
+          output.write(buffer, 0, count);
+        }
+        if (declaredLength >= 0 && declaredLength != total) {
+          throw new IOException("Artifact source returned incomplete content");
+        }
+      }
+    } finally {
+      if (http != null) {
+        http.disconnect();
+      }
     }
+  }
 
-    Files.createDirectories(target.getParent());
-    try (InputStream input = new BufferedInputStream(connection.getInputStream());
-        OutputStream output = new BufferedOutputStream(Files.newOutputStream(target,
-            StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))) {
-      copyLimited(input, output, maximumBytes);
+  private void applyDownloadPolicy(URI source, java.net.HttpURLConnection connection) throws IOException {
+    String policyFile = configuration == null ? null : configuration.getProperty("mpack.download.policy.file");
+    if (StringUtils.isBlank(policyFile)) {
+      throw new IOException("Network package imports require an administrator-configured artifact source policy");
+    }
+    Path policyPath = Paths.get(policyFile);
+    if (!Files.isRegularFile(policyPath, java.nio.file.LinkOption.NOFOLLOW_LINKS) || Files.size(policyPath) > MAX_METADATA_BYTES) {
+      throw new IOException("Invalid artifact source policy file");
+    }
+    try {
+      JsonObject policy = JsonParser.parseString(Files.readString(policyPath)).getAsJsonObject();
+      String origin = source.getScheme().toLowerCase(java.util.Locale.ROOT) + "://"
+          + source.getHost().toLowerCase(java.util.Locale.ROOT) + ":"
+          + (source.getPort() < 0 ? ("https".equalsIgnoreCase(source.getScheme()) ? 443 : 80) : source.getPort());
+      JsonObject sources = policy.getAsJsonObject("sources");
+      JsonObject allowed = sources == null ? null : sources.getAsJsonObject(origin);
+      String prefix = allowed == null ? null : allowed.get("pathPrefix").getAsString();
+      if (prefix == null || !prefix.startsWith("/") || !prefix.endsWith("/")
+          || !source.normalize().getPath().startsWith(prefix) || source.getRawPath().contains("%")) {
+        throw new IOException("Artifact URL is outside the approved origin and path");
+      }
+      if (allowed.has("credential")) {
+        if (!"https".equalsIgnoreCase(source.getScheme())) {
+          throw new IOException("Private artifact sources require HTTPS");
+        }
+        JsonObject reference = allowed.getAsJsonObject("credential");
+        org.apache.ambari.server.security.credential.Credential credential = artifactCredentials.getCredential(
+            reference.get("cluster").getAsString(), reference.get("alias").getAsString());
+        char[] token = MpackSecrets.credentialKey(credential);
+        if (token == null || token.length == 0 || token.length > 8192) {
+          throw new IOException("Invalid artifact bearer credential");
+        }
+        for (char value : token) {
+          if (value < 33 || value > 126) {
+            throw new IOException("Invalid artifact bearer credential");
+          }
+        }
+        connection.setRequestProperty("Authorization", "Bearer " + new String(token));
+      }
+    } catch (org.apache.ambari.server.AmbariException | RuntimeException invalidPolicy) {
+      throw new IOException("Artifact source policy or credential resolution failed");
     }
   }
 
@@ -408,25 +606,47 @@ public class MpackManager {
     return total;
   }
 
+  private void verifyCatalogMetadata(MpackEntity entity, Mpack mpack) throws IOException {
+    if (mpack.getPublisher() != null && entity.getReleaseMetadata() == null) {
+      throw new IOException("Publisher release has no persisted authentication evidence");
+    }
+    if (entity.getReleaseMetadata() != null
+        && !JsonParser.parseString(entity.getReleaseMetadata()).equals(mpack.getAuthoringMetadata())) {
+      throw new IOException("Release metadata differs from catalog authority");
+    }
+  }
+
   private Mpack readMpackMetadata(Path metadataPath) throws IOException {
     if (!Files.isRegularFile(metadataPath) || Files.size(metadataPath) > MAX_METADATA_BYTES) {
       throw new IOException("Missing or oversized " + MPACK_METADATA + " at " + metadataPath);
     }
     try (Reader reader = Files.newBufferedReader(metadataPath, StandardCharsets.UTF_8)) {
-      Mpack parsed = new Gson().fromJson(reader, Mpack.class);
+      JsonObject metadata = JsonParser.parseReader(reader).getAsJsonObject();
+      Mpack parsed = new Gson().fromJson(metadata, Mpack.class);
       if (parsed == null) {
         throw new IOException("Empty " + MPACK_METADATA + " at " + metadataPath);
       }
+      parsed.setAuthoringMetadata(metadata);
       return parsed;
-    } catch (JsonParseException e) {
-      throw new IOException("Invalid " + MPACK_METADATA + " at " + metadataPath, e);
+    } catch (JsonParseException | IllegalStateException e) {
+      throw new IOException("Invalid " + MPACK_METADATA + " metadata");
     }
   }
 
   /** Authenticate generated executable definitions before unpacking or publishing. */
   protected void verifyAuthoringArchive(Mpack mpack, Path archive) throws IOException {
+    if ("Ed25519".equals(mpack.getSignatureAlgorithm())) {
+      MpackTrust.verify(mpack, archive, configuration);
+      return;
+    }
+    if (mpack.getPublisher() != null || mpack.getName().startsWith("publisher-")) {
+      throw new IOException("Publisher packages require asymmetric authentication");
+    }
     if (mpack.getAuthoringFormat() == null) {
-      return; // Existing legacy packages retain their established admin trust boundary.
+      if (configuration != null && "false".equalsIgnoreCase(configuration.getProperty("mpack.legacy.allow"))) {
+        throw new IOException("Legacy executable packages are disabled by administrator policy");
+      }
+      return;
     }
     if (!"mpack.ambari.apache.org/host-service/v1".equals(mpack.getAuthoringFormat())
         || !"HMAC-SHA256".equals(mpack.getSignatureAlgorithm())
@@ -789,7 +1009,7 @@ public class MpackManager {
   }
 
   private Path createStackProjection(Mpack mpack, Path mpackDirectory) throws IOException {
-    Path stackNameDirectory = stackRoot.toPath().toAbsolutePath().normalize().resolve(mpack.getName());
+    Path stackNameDirectory = stackRoot.toPath().toAbsolutePath().normalize().resolve(mpack.getStackName());
     Files.createDirectories(stackNameDirectory);
     Path stackPath = stackNameDirectory.resolve(mpack.getVersion());
     if (Files.exists(stackPath, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
@@ -885,7 +1105,7 @@ public class MpackManager {
 
   protected Long populateDB(Mpack mpack) throws IOException {
     if (!mpackDAO.findByNameVersion(mpack.getName(), mpack.getVersion()).isEmpty()
-        || stackDAO.find(mpack.getName(), mpack.getVersion()) != null) {
+        || stackDAO.find(mpack.getStackName(), mpack.getVersion()) != null) {
       return null;
     }
     MpackEntity entity = new MpackEntity();
@@ -894,16 +1114,19 @@ public class MpackManager {
     entity.setMpackUri(mpack.getMpackUri());
     entity.setRegistryId(mpack.getRegistryId());
     entity.setContentDigest(mpack.getPackageDigest());
+    if (mpack.getAuthoringMetadata() != null) {
+      entity.setReleaseMetadata(mpack.getAuthoringMetadata().toString());
+    }
     return mpackDAO.create(entity);
   }
 
   protected void populateStackDB(Mpack mpack) throws IOException, ResourceAlreadyExistsException {
-    if (stackDAO.find(mpack.getName(), mpack.getVersion()) != null) {
+    if (stackDAO.find(mpack.getStackName(), mpack.getVersion()) != null) {
       throw new ResourceAlreadyExistsException(
           "Stack " + mpack.getName() + "-" + mpack.getVersion() + " already exists");
     }
     StackEntity stackEntity = new StackEntity();
-    stackEntity.setStackName(mpack.getName());
+    stackEntity.setStackName(mpack.getStackName());
     stackEntity.setStackVersion(mpack.getVersion());
     stackEntity.setMpackId(mpack.getResourceId());
     stackDAO.create(stackEntity);
@@ -951,15 +1174,28 @@ public class MpackManager {
     }
   }
 
+  private void removeLegacyProjection(Mpack mpack, Path directory) throws IOException {
+    if (mpack.getName().equals(mpack.getStackName())) {
+      return;
+    }
+    Path old = stackRoot.toPath().toAbsolutePath().normalize().resolve(mpack.getName()).resolve(mpack.getVersion());
+    if (Files.isSymbolicLink(old)
+        && old.getParent().resolve(Files.readSymbolicLink(old)).normalize().equals(directory.toAbsolutePath().normalize())) {
+      Files.delete(old);
+      deleteDirectoryIfEmpty(old.getParent());
+    }
+  }
+
   private void ensureStackProjection(Mpack mpack, Path directory) throws IOException {
     Path link = stackRoot.toPath().toAbsolutePath().normalize()
-        .resolve(mpack.getName()).resolve(mpack.getVersion());
+        .resolve(mpack.getStackName()).resolve(mpack.getVersion());
     if (!Files.exists(link, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
       createStackProjection(mpack, directory);
     } else if (!Files.isSymbolicLink(link)
         || !link.getParent().resolve(Files.readSymbolicLink(link)).normalize().equals(directory.toAbsolutePath().normalize())) {
       throw new IOException("Stack projection is owned by another package");
     }
+    removeLegacyProjection(mpack, directory);
   }
 
   private void quarantineIncompleteRegistration(Path directory) throws IOException {
@@ -968,8 +1204,9 @@ public class MpackManager {
       LOG.warn("Unregistered mpack directory retained for operator review: {}", directory);
       return;
     }
+    Mpack removed = readMpackMetadata(directory.resolve(MPACK_METADATA));
     Path link = stackRoot.toPath().toAbsolutePath().normalize()
-        .resolve(directory.getParent().getFileName()).resolve(directory.getFileName());
+        .resolve(removed.getStackName()).resolve(directory.getFileName());
     if (Files.isSymbolicLink(link)
         && link.getParent().resolve(Files.readSymbolicLink(link)).normalize().equals(directory.toAbsolutePath().normalize())) {
       Files.delete(link);

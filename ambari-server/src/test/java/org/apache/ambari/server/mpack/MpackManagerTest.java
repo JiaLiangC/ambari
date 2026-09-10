@@ -237,6 +237,7 @@ public class MpackManagerTest {
     Path fixtureRoot = Path.of(fixture);
     org.apache.ambari.server.configuration.Configuration configuration =
         EasyMock.createMock(org.apache.ambari.server.configuration.Configuration.class);
+    EasyMock.expect(mpackDAO.ensureDefaultRepository(70L)).andReturn(700L).times(2);
     EasyMock.expect(configuration.getProperty("mpack.signing.key.file"))
         .andReturn(fixtureRoot.resolve("../signing.key").normalize().toString()).times(2);
     java.lang.reflect.Field field = MpackManager.class.getDeclaredField("configuration");
@@ -244,7 +245,7 @@ public class MpackManagerTest {
     field.set(manager, configuration);
     EasyMock.expect(mpackDAO.findByNameVersion("http-authoring-example", "0.1.0"))
         .andReturn(Collections.emptyList()).times(2);
-    EasyMock.expect(stackDAO.find("http-authoring-example", "0.1.0")).andReturn(null).times(3);
+    EasyMock.expect(stackDAO.find("MPACK_" + org.apache.commons.codec.digest.DigestUtils.sha256Hex("http-authoring-example"), "0.1.0")).andReturn(null).times(3);
     EasyMock.expect(mpackDAO.create(EasyMock.anyObject(MpackEntity.class))).andAnswer(() -> {
       MpackEntity entity = (MpackEntity) EasyMock.getCurrentArguments()[0];
       Assert.assertEquals(64, entity.getContentDigest().length());
@@ -262,7 +263,7 @@ public class MpackManagerTest {
         .andReturn(Collections.singletonList(registered));
     StackEntity registeredStack = new StackEntity();
     registeredStack.setMpackId(70L);
-    EasyMock.expect(stackDAO.find("http-authoring-example", "0.1.0")).andReturn(registeredStack);
+    EasyMock.expect(stackDAO.find("MPACK_" + org.apache.commons.codec.digest.DigestUtils.sha256Hex("http-authoring-example"), "0.1.0")).andReturn(registeredStack);
     EasyMock.replay(mpackDAO, stackDAO, configuration);
     MpackResponse response = manager.registerMpack(requestFor(fixtureRoot.resolve("mpack.json")));
     Assert.assertEquals(Long.valueOf(70), response.getId());
@@ -325,6 +326,88 @@ public class MpackManagerTest {
   private void assertRequestStagingEmpty() throws IOException {
     try (java.util.stream.Stream<Path> children = Files.list(staging.resolve("staging"))) {
       Assert.assertEquals(0, children.count());
+    }
+  }
+
+  @Test
+  public void testDeployableFileAndApprovedHttpSourceUseOneImporter() throws Exception {
+    String fixture = System.getProperty("mpack.host.fixture");
+    org.junit.Assume.assumeNotNull(fixture);
+    Path fixtureRoot = Path.of(fixture);
+    Path transport = repository.resolve("release.mpack");
+    try (OutputStream file = Files.newOutputStream(transport);
+        GzipCompressorOutputStream gzip = new GzipCompressorOutputStream(file);
+        TarArchiveOutputStream tar = new TarArchiveOutputStream(gzip)) {
+      for (String name : java.util.List.of("mpack.json", "definition.tar.gz")) {
+        byte[] bytes = Files.readAllBytes(fixtureRoot.resolve(name));
+        TarArchiveEntry entry = new TarArchiveEntry(name);
+        entry.setSize(bytes.length);
+        tar.putArchiveEntry(entry);
+        tar.write(bytes);
+        tar.closeArchiveEntry();
+      }
+    }
+    com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+        new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+    java.util.concurrent.atomic.AtomicInteger fetched = new java.util.concurrent.atomic.AtomicInteger();
+    server.createContext("/release.mpack", exchange -> {
+      fetched.incrementAndGet();
+      byte[] bytes = Files.readAllBytes(transport);
+      exchange.sendResponseHeaders(200, bytes.length);
+      try (OutputStream output = exchange.getResponseBody()) { output.write(bytes); }
+    });
+    server.createContext("/redirect.mpack", exchange -> {
+      exchange.getResponseHeaders().add("Location", "/release.mpack");
+      exchange.sendResponseHeaders(302, -1);
+      exchange.close();
+    });
+    server.start();
+    try {
+      String origin = "http://127.0.0.1:" + server.getAddress().getPort();
+      Path policy = repository.resolve("source-policy.json");
+      Files.writeString(policy, new com.google.gson.Gson().toJson(java.util.Map.of("sources",
+          java.util.Map.of(origin, java.util.Map.of("pathPrefix", "/")))));
+      java.util.Properties properties = new java.util.Properties();
+      properties.setProperty("mpack.signing.key.file", fixtureRoot.resolve("../signing.key").normalize().toString());
+      properties.setProperty("mpack.download.policy.file", policy.toString());
+      java.lang.reflect.Field configuration = MpackManager.class.getDeclaredField("configuration");
+      configuration.setAccessible(true);
+      configuration.set(manager, new org.apache.ambari.server.configuration.Configuration(properties));
+      String name = "http-authoring-example";
+      String projection = "MPACK_" + org.apache.commons.codec.digest.DigestUtils.sha256Hex(name);
+      MpackEntity entity = new MpackEntity();
+      entity.setId(91L); entity.setMpackName(name); entity.setMpackVersion("0.1.0");
+      entity.setReleaseMetadata(Files.readString(fixtureRoot.resolve("mpack.json")));
+      entity.setContentDigest(com.google.gson.JsonParser.parseString(entity.getReleaseMetadata()).getAsJsonObject()
+          .get("packageDigest").getAsString());
+      StackEntity stack = new StackEntity(); stack.setMpackId(91L);
+      EasyMock.expect(mpackDAO.findByNameVersion(name, "0.1.0")).andReturn(Collections.emptyList()).times(2);
+      EasyMock.expect(stackDAO.find(projection, "0.1.0")).andReturn(null).times(3);
+      EasyMock.expect(mpackDAO.create(EasyMock.anyObject(MpackEntity.class))).andReturn(91L);
+      stackDAO.create(EasyMock.anyObject(StackEntity.class)); EasyMock.expectLastCall();
+      EasyMock.expect(mpackDAO.ensureDefaultRepository(91L)).andReturn(910L).times(2);
+      EasyMock.expect(mpackDAO.findByNameVersion(name, "0.1.0")).andReturn(Collections.singletonList(entity));
+      EasyMock.expect(stackDAO.find(projection, "0.1.0")).andReturn(stack);
+      EasyMock.replay(mpackDAO, stackDAO);
+      Assert.assertEquals(Long.valueOf(91), manager.registerMpack(requestFor(transport)).getId());
+      MpackRequest http = new MpackRequest(); http.setMpackUri(origin + "/release.mpack");
+      Assert.assertEquals(Long.valueOf(91), manager.registerMpack(http).getId());
+      http.setMpackUri(origin + "/redirect.mpack");
+      Assert.assertThrows(IOException.class, () -> manager.registerMpack(http));
+      Assert.assertEquals(1, fetched.get());
+      http.setMpackUri(origin + "/release.mpack?credential=forbidden");
+      Assert.assertThrows(IllegalArgumentException.class, () -> manager.registerMpack(http));
+      EasyMock.verify(mpackDAO, stackDAO);
+    } finally { server.stop(0); }
+  }
+
+  @Test
+  public void testDeployableTransportRejectsTraversalAndIncompleteInventory() throws Exception {
+    for (String name : java.util.List.of("../mpack.json", "mpack.json")) {
+      Path transport = repository.resolve("invalid.mpack");
+      writeArchive(transport, name, "{}");
+      Assert.assertThrows(IOException.class, () -> manager.registerMpack(requestFor(transport)));
+      Assert.assertTrue(manager.mpackMap.isEmpty());
     }
   }
 

@@ -48,21 +48,29 @@ sets in profiles.py are authoring constraints; deployment discovery is separate 
 
 Arguments support strings and typed artifactRef/configRef/configurationRef/directoryRef/
 secretRef expressions. Known artifacts/config fields/directories must resolve within
-the declared scope. A configurationRef requires a template. Host export rejects secretRef;
-source authoring support is not runtime secret resolution. Health is process, TCP or
+the declared scope. A configurationRef requires a template. Host secret references
+are allowed in private runtime configuration and environment files, never process
+arguments. The P6 implementation uses scoped existing credentials; validation is pending. Health is process, TCP or
 HTTP with a bounded timeout and a required schema-constrained port reference for
 network probes. Every declared listener also requires a bounded integer port field.
 Host preflight checks IPv4 listeners; HTTP probes remain at their original endpoint.
 
 Configuration schemas use JSON Schema 2020-12, local references only, and object roots.
 Defaults are validated without requiring deployment-supplied fields. Sensitive defaults
-must be SecretRef objects. Host export further restricts schemas to closed non-secret
-scalars, supported constraints, and scalar template substitutions. `x-resource` string
+must be SecretRef objects. Host export supports closed scalar fields and closed
+`x-sensitive` objects with a single required `secretRef` string. Secret defaults use
+`secret://mpack.<SERVICE>.<alias>`; config projection emits a SECRET_REFERENCE property,
+and runtime values are not written to durable package/config generations. Other
+constraints and template substitutions retain their explicit bounded support. `x-resource` string
 fields inject an isolated managed directory; defaults/overrides/extra constraints are
 not allowed for these runtime-owned values. Runtime validation repeats the supported
 scalar constraints after applying Ambari desired values. Unsupported constraints fail
 export instead of disappearing from generated UI/runtime behavior. Host configuration
-changeEffect must be restart (the export default); none/reload/migration are rejected.
+changeEffect defaults to restart. Reload requires an explicit signal and HTTP
+`X-Ambari-Config-Generation` acknowledgement of the rendered
+`{{ mpack_config_generation }}` token, with an unchanged native invocation. Port/unit
+changes or environment secrets require restart. None/migration remain unsupported.
+These additions are source implementation with consolidated verification pending.
 
 ## Source examples and standard onboarding
 
@@ -72,9 +80,14 @@ Use complete source fixtures instead of copying another illustrative schema:
   user, private data directory, port and common host lifecycle.
 - [Redis](../../mpack-authoring/fixtures/redis/manifest.json): OS package prerequisite,
   foreground redis-server and generated config-file argument; persistent data retained.
-- [Kyuubi](../../mpack-authoring/fixtures/kyuubi/manifest.json): two config files,
-  SecretRef shape and Spark/Hadoop/Hive requirements; source only until shared
-  dependency/secret execution contracts are integrated.
+- [Multi-service YAML](../../mpack-authoring/fixtures/multi-service/manifest.yaml):
+  two independent services, distinct config defaults/ports, one shared schema and
+  standard-library HTTP entry points using the same host adapter.
+
+The English [development guide](../../mpack-authoring/README.md) explains how to copy
+and adapt these sources, build them and run `mpack-authoring/validate.py`. Its `examples`
+command checks HTTP, Redis and multi-service YAML source and host export. A passing
+suite proves no live runtime deployment.
 
 New software under host-service/v1 changes its manifest, schema/templates and artifacts,
 then uses the existing compiler/export/import and Ambari service workflow. One profile
@@ -102,5 +115,5 @@ Compiler validation/build executes no scripts, dependency mutations or native co
 
 Deployment-time authorization, host assignment, native capabilities and shared approval
 cannot be validated by source compilation alone. Source fixtures must not be described
-as successful Redis/Kyuubi deployment; current matrices and exact evidence are in
+as successful Redis deployment; current matrices and exact evidence are in
 [status](status.md).

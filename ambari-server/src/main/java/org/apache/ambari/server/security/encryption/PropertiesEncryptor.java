@@ -23,12 +23,10 @@ package org.apache.ambari.server.security.encryption;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.PropertyInfo;
-import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.utils.TextEncoding;
 import org.apache.commons.collections4.CollectionUtils;
 
@@ -36,7 +34,6 @@ import org.apache.commons.collections4.CollectionUtils;
  * A common base class for various encryptor implementations
  */
 public class PropertiesEncryptor {
-  private final Map<Long, Map<StackId, Map<String, Set<String>>>> clusterPasswordProperties = new ConcurrentHashMap<>(); //Map<clusterId, <Map<stackId, Map<configType, Set<passwordPropertyKeys>>>>;
   protected final EncryptionService encryptionService;
 
   public PropertiesEncryptor(EncryptionService encryptionService) {
@@ -72,20 +69,9 @@ public class PropertiesEncryptor {
   }
 
   private Set<String> getPasswordProperties(Cluster cluster, String configType) {
-    //in case of normal configuration change on the UI - or via the API - the current and desired stacks are equal
-    //in case of an upgrade they are different; in this case we want to get password properties from the desired stack
-    if (cluster.getCurrentStackVersion().equals(cluster.getDesiredStackVersion())) {
-      return getPasswordProperties(cluster, cluster.getCurrentStackVersion(), configType);
-    } else {
-      return getPasswordProperties(cluster, cluster.getDesiredStackVersion(), configType);
-    }
-  }
-
-  private Set<String> getPasswordProperties(Cluster cluster, StackId stackId, String configType) {
-    final long clusterId = cluster.getClusterId();
-    clusterPasswordProperties.computeIfAbsent(clusterId, v -> new ConcurrentHashMap<>()).computeIfAbsent(stackId, v -> new ConcurrentHashMap<>())
-        .computeIfAbsent(configType, v -> cluster.getConfigPropertiesTypes(configType, stackId).getOrDefault(PropertyInfo.PropertyType.PASSWORD, new HashSet<>()));
-    return clusterPasswordProperties.get(clusterId).get(stackId).getOrDefault(configType, new HashSet<>());
+    // Cluster resolves the owner service's selected definitions. StackInfo already
+    // caches property metadata; a second cache here could retain an old selection.
+    return cluster.getConfigPropertiesTypes(configType).getOrDefault(PropertyInfo.PropertyType.PASSWORD, new HashSet<>());
   }
 
   private String encryptAndDecoratePropertyValue(String propertyValue) {

@@ -24,6 +24,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
@@ -68,6 +69,13 @@ public class MpackEntity {
 
   @Column(name = "content_digest", length = 64, updatable = false)
   private String contentDigest;
+
+  @Lob
+  @Column(name = "release_metadata", updatable = false)
+  private String releaseMetadata;
+
+  public String getReleaseMetadata() { return releaseMetadata; }
+  public void setReleaseMetadata(String value) { releaseMetadata = value; }
 
   public String getContentDigest() { return contentDigest; }
   public void setContentDigest(String value) { contentDigest = value; }

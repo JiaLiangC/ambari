@@ -1130,6 +1130,54 @@ public class ServiceResourceProviderTest {
   }
 
   @Test
+  public void testPackageSelectionRequiresUpgradePermissionAndAnIsolatedIncarnationPinnedRequest() throws Exception {
+    String incarnation = "00000000-0000-0000-0000-000000000001";
+    for (String scenario : new String[]{"allowed", "denied", "missing-incarnation", "combined-state"}) {
+      AmbariManagementController controller = createNiceMock(AmbariManagementController.class);
+      Clusters clusters = createNiceMock(Clusters.class);
+      Cluster cluster = createNiceMock(Cluster.class);
+      Service service = createMock(Service.class);
+      RepositoryVersionDAO repositories = createNiceMock(RepositoryVersionDAO.class);
+      MaintenanceStateHelper maintenance = createNiceMock(MaintenanceStateHelper.class);
+      RepositoryVersionEntity previous = new RepositoryVersionEntity();
+      RepositoryVersionEntity candidate = new RepositoryVersionEntity();
+      org.apache.ambari.server.orm.entities.StackEntity stack = new org.apache.ambari.server.orm.entities.StackEntity();
+      stack.setMpackId(2L);
+      previous.setStack(stack);
+      candidate.setStack(stack);
+      candidate.setId(44L);
+      expect(controller.getClusters()).andReturn(clusters).anyTimes();
+      expect(clusters.getCluster("cluster")).andReturn(cluster).anyTimes();
+      expect(cluster.getService("HTTP_ECHO")).andReturn(service).anyTimes();
+      expect(cluster.getResourceId()).andReturn(4L).anyTimes();
+      expect(repositories.findByPK(44L)).andReturn(candidate).anyTimes();
+      expect(service.getDesiredRepositoryVersion()).andReturn(previous).anyTimes();
+      if ("allowed".equals(scenario)) {
+        service.setDesiredRepositoryVersion(candidate, incarnation);
+        EasyMock.expectLastCall().once();
+      }
+      replay(controller, clusters, cluster, service, repositories, maintenance);
+      SecurityContextHolder.getContext().setAuthentication("denied".equals(scenario)
+          ? TestAuthenticationFactory.createServiceAdministrator() : TestAuthenticationFactory.createAdministrator());
+      ServiceResourceProvider provider = getServiceProvider(controller, maintenance, repositories);
+      ServiceRequest request = new ServiceRequest("cluster", "HTTP_ECHO", 44L,
+          "combined-state".equals(scenario) ? "STARTED" : null);
+      Map<String, String> parameters = "missing-incarnation".equals(scenario)
+          ? Collections.emptyMap() : Collections.singletonMap("parameters/expected_target_incarnation", incarnation);
+      if ("allowed".equals(scenario)) {
+        provider.updateServices(null, Collections.singleton(request), parameters, false, false, false);
+      } else if ("denied".equals(scenario)) {
+        Assert.assertThrows(AuthorizationException.class,
+            () -> provider.updateServices(null, Collections.singleton(request), parameters, false, false, false));
+      } else {
+        Assert.assertThrows(IllegalArgumentException.class,
+            () -> provider.updateServices(null, Collections.singleton(request), parameters, false, false, false));
+      }
+      verify(service);
+    }
+  }
+
+  @Test
   public void testCheckPropertyIds() throws Exception {
     AmbariManagementController managementController = createMock(AmbariManagementController.class);
 

@@ -32,6 +32,7 @@ export const ChooseServicesApi = {
     const response = await ambariApi.request({
       url: url,
       method: "GET",
+      params: { fields: "ServiceInfo/*" },
     });
     return response.data;
   },

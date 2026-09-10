@@ -18,6 +18,8 @@
 package org.apache.ambari.server.controller;
 
 
+import java.util.Map;
+
 import org.apache.ambari.server.controller.internal.MpackResourceProvider;
 import org.apache.ambari.server.state.Mpack;
 
@@ -28,6 +30,10 @@ import io.swagger.annotations.ApiModelProperty;
  * Represents a mpack response.
  */
 public class MpackResponse {
+  private java.util.Map<String, Object> prerequisites;
+  public java.util.Map<String, Object> getPrerequisites() { return prerequisites; }
+  private String stackName;
+  public String getStackName() { return stackName; }
 
   private Long id;
   private String mpackId;
@@ -38,16 +44,43 @@ public class MpackResponse {
   private String stackId;
   private String description;
   private String displayName;
+  private String publisher;
+  private String packageName;
+  private String contentDigest;
+  private String signatureAlgorithm;
+  private String signatureKeyId;
+  private Long repositoryVersionId;
+  private Map<String, String> compatibility;
+  private Map<String, String> softwareVersions;
+
+  public String getPublisher() { return publisher; }
+  public String getPackageName() { return packageName; }
+  public String getContentDigest() { return contentDigest; }
+  public String getSignatureAlgorithm() { return signatureAlgorithm; }
+  public String getSignatureKeyId() { return signatureKeyId; }
+  public Long getRepositoryVersionId() { return repositoryVersionId; }
+  public Map<String, String> getCompatibility() { return compatibility; }
+  public Map<String, String> getSoftwareVersions() { return softwareVersions; }
 
   public MpackResponse(Mpack mpack) {
     this.id = mpack.getResourceId();
     this.mpackId = mpack.getMpackId();
     this.mpackName = mpack.getName();
+    this.stackName = mpack.getStackName();
+    this.prerequisites = mpack.getInstallationPrerequisites();
     this.mpackVersion = mpack.getVersion();
     this.mpackUri = mpack.getMpackUri();
     this.registryId = mpack.getRegistryId();
     this.description = mpack.getDescription();
     this.displayName = mpack.getDisplayName();
+    this.publisher = mpack.getPublisher();
+    this.packageName = mpack.getPackageName() == null ? mpack.getName() : mpack.getPackageName();
+    this.contentDigest = mpack.getPackageDigest();
+    this.signatureAlgorithm = mpack.getSignatureAlgorithm();
+    this.signatureKeyId = mpack.getSignatureKeyId();
+    this.repositoryVersionId = mpack.getRepositoryVersionId();
+    this.compatibility = mpack.getCompatibility();
+    this.softwareVersions = mpack.getSoftwareVersions();
   }
 
   public Long getId() {

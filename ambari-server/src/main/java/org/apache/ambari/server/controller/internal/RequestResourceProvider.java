@@ -238,6 +238,22 @@ public class RequestResourceProvider extends AbstractControllerResourceProvider 
             if (!AuthorizationHelper.isAuthorized(resourceType, resourceId, RoleAuthorization.SERVICE_RUN_SERVICE_CHECK)) {
               throw new AuthorizationException("The authenticated user is not authorized to execute service checks.");
             }
+          } else if (commandName.equals("UPGRADE")) {
+            if (!AuthorizationHelper.isAuthorized(resourceType, resourceId, RoleAuthorization.CLUSTER_UPGRADE_DOWNGRADE_STACK)) {
+              throw new AuthorizationException("The authenticated user is not authorized to upgrade software.");
+            }
+          } else if (commandName.equals("PURGE")) {
+            if (!AuthorizationHelper.isAuthorized(resourceType, resourceId, RoleAuthorization.SERVICE_PURGE_DATA)) {
+              throw new AuthorizationException("The authenticated user is not authorized to purge service data.");
+            }
+          } else if (commandName.equals("RELOAD")) {
+            if (!AuthorizationHelper.isAuthorized(resourceType, resourceId, RoleAuthorization.SERVICE_START_STOP)) {
+              throw new AuthorizationException("The authenticated user is not authorized to reload services.");
+            }
+          } else if (java.util.Set.of("UNINSTALL", "DETACH", "ADOPT").contains(commandName)) {
+            if (!AuthorizationHelper.isAuthorized(resourceType, resourceId, RoleAuthorization.SERVICE_ADD_DELETE_SERVICES)) {
+              throw new AuthorizationException("The authenticated user is not authorized to uninstall services.");
+            }
           } else if (commandName.equals("DECOMMISSION")) {
             if (!AuthorizationHelper.isAuthorized(resourceType, resourceId, RoleAuthorization.SERVICE_DECOMMISSION_RECOMMISSION)) {
               throw new AuthorizationException("The authenticated user is not authorized to decommission services.");

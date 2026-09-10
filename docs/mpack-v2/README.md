@@ -23,6 +23,19 @@ configuration, Agent ownership, request/task history, and dependency authority.
 Current availability and acceptance are recorded in [status.md](status.md).
 Design descriptions are not claims of implemented or tested runtime support.
 
+The independent [Store design](store-design.md) covers the third-party website and
+backend, to be implemented later in a new repository. Ambari provides file/URL import
+and local package/service management, without Store pages. The [Ambari delivery plan](implementation-plan.md#package-import-and-lifecycle-delivery-plan)
+is authorized implementation in progress, separate from the completed audit remediation.
+The user removed the Kyuubi example and its dedicated integration work; current
+examples are HTTP, Redis and multi-service YAML. Historical review records retain
+their original scope and do not override the active plan.
+
+Package authors should start with the English [development guide and examples](../../mpack-authoring/README.md)
+and run [validate.py](../../mpack-authoring/validate.py) against their own source or
+offline source bundle. The guide distinguishes source checks from host export and
+actual runtime acceptance.
+
 ## Read in this order
 
 1. [Architecture](architecture.md): boundaries, ownership, decisions and tradeoffs.
@@ -37,11 +50,14 @@ Design descriptions are not claims of implemented or tested runtime support.
 
 The user authorized documentation consolidation, implementation and verification,
 then explicitly requested committing and pushing this work to the personal fork.
-Publication is limited to origin/AMBARI-14714-mpack-v2-remote. Do not deploy to a
+That audit delivery was published to origin/AMBARI-14714-mpack-v2-remote; it does not
+authorize deployment or publication of a new Store. Do not deploy to a
 live cluster or modify another worktree. Historical model,
 tmux, worker, approval, and publication instructions are not active work orders.
 
 Keep one architecture, one implementation plan, and one status ledger. Update
-these documents instead of adding per-batch completion reports. Record external
+these documents instead of adding per-batch completion reports. The separate Store
+design is explicitly requested and will move to its future repository; it is not a
+second Ambari architecture or implementation plan. Record external
 acceptance dependencies explicitly. Do not replace an unresolved defect with a
 claim that a fixture, command exit code, or class definition proves support.

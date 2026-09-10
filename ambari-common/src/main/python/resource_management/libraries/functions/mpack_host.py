@@ -41,7 +41,7 @@ import urllib.request
 import uuid
 
 
-HOST_OPERATIONS = frozenset({"install", "configure", "start", "stop", "restart", "observe"})
+HOST_OPERATIONS = frozenset({"install", "configure", "start", "stop", "restart", "reload", "upgrade", "detach", "adopt", "uninstall", "purge", "observe"})
 
 
 class HostError(Exception):
@@ -138,8 +138,10 @@ class NativeRunner:
 
 
 class HostDeployment:
+  runtime_profile = "host.systemd/v1"
+
   def __init__(self, descriptor, payload, command, root="/var/lib/ambari-agent/mpack/deployments",
-               units="/etc/systemd/system", runner=None, cancel=None, provision=None):
+               units="/etc/systemd/system", runner=None, cancel=None, provision=None, runtime_root="/run/ambari-mpack"):
     if descriptor.get("format") != "mpack.ambari.apache.org/host-service/v1":
       raise HostError("CAPABILITY_UNSUPPORTED", "Unsupported installed host-service contract")
     self.descriptor = descriptor
@@ -168,7 +170,7 @@ class HostDeployment:
       raise HostError("TARGET_CONFLICT", "Command component does not match installed package")
     self.component = components[role]
     self.profile = self.component["profiles"][0]
-    if len(self.component["profiles"]) != 1 or self.profile["adapter"] != "host.systemd/v1":
+    if len(self.component["profiles"]) != 1 or self.profile["adapter"] != self.runtime_profile:
       raise HostError("CAPABILITY_UNSUPPORTED", "An explicit host profile is required")
     self.identity = {"clusterId": int(cluster), "serviceName": _name(self.service["name"]),
                      "componentName": _name(role), "hostName": command.get("mpackCurrentHost", {}).get("hostName")
@@ -182,6 +184,8 @@ class HostDeployment:
     self.identity["targetIncarnation"] = incarnation
     self.target = "ambari-{}-{}-{}-{}".format(cluster, self.identity["serviceName"], role, incarnation)
     self.root = Path(root) / self.target
+    self.runtime_root = Path(runtime_root) / self.target
+    self.secret_values = {}
     self.unit = self.target + ".service"
     if len(self.unit) > 255:
       raise HostError("CAPABILITY_UNSUPPORTED", "Service/component names exceed the native unit limit")
@@ -243,7 +247,15 @@ class HostDeployment:
             raise HostError("SCHEMA_INVALID", "Managed directory fields are injected by the runtime")
           values[name] = str(resource)
           continue
-        if field.get("x-sensitive") or field.get("type") not in ("string", "integer", "number", "boolean"):
+        if field.get("x-sensitive"):
+          reference = values.get(name, field.get("default"))
+          if isinstance(reference, dict) and set(reference) == {"secretRef"}:
+            reference = reference["secretRef"]
+          if not isinstance(reference, str) or reference not in (self.task_binding or {}).get("secretGenerations", {}):
+            raise HostError("DEPENDENCY_UNRESOLVED", "Sensitive configuration requires a resolved scoped reference")
+          values[name] = {"secretRef": reference}
+          continue
+        if field.get("type") not in ("string", "integer", "number", "boolean"):
           raise HostError("CAPABILITY_UNSUPPORTED", "Host scalar config contract does not resolve secrets or objects")
         value = values.get(name, field.get("default"))
         if value is None:
@@ -319,6 +331,56 @@ class HostDeployment:
   def _save(self, receipt):
     _atomic(self.root / "receipt.json", json.dumps(receipt, sort_keys=True).encode())
 
+  def _release_layout(self):
+    return _json_hash({"resources": {key: value for key, value in self.resources.items()
+                                   if key not in ("command", "reloadSignal")},
+                       "configurations": sorted(config["name"] for config in self.service.get("configurations", []))})
+
+  def _check_upgrade(self, receipt, current, generation):
+    policy = self.profile.get("upgradePolicy", {})
+    previous = receipt.get("materializedPackage", {})
+    release = self.descriptor["package"]
+    source = receipt.get("materializedPackageDigest")
+    if source == self.package_digest:
+      completed = receipt.get("lastUpgrade", {})
+      if completed.get("toDigest") != self.package_digest or receipt.get("publishedConfigGeneration") != generation:
+        raise HostError("TARGET_CONFLICT", "No matching artifact update requires recovery")
+      source = completed.get("fromDigest")
+    if (policy.get("configuration") != "compatible" or policy.get("data") != "unchanged"
+        or source not in policy.get("fromPackageDigests", [])
+        or not previous.get("name") or previous.get("name") != release.get("name")
+        or receipt.get("resourceLayout") != self._release_layout()
+        or not any(isinstance(argument, dict) and "artifactRef" in argument
+                   for argument in self.resources.get("command", {}).get("arguments", []))):
+      raise HostError("CAPABILITY_UNSUPPORTED", "Artifact update requires declared compatibility and unchanged owned resources")
+    if current["state"] != "inactive" or current["pid"] != "0" or current["loadState"] != "loaded":
+      raise HostError("TARGET_CONFLICT", "Stop the installed target before updating its artifacts")
+
+  def _installed_file_digest(self, generation):
+    paths = ["releases/" + self.package_digest + "/" + item["path"] for item in self.descriptor["artifacts"]]
+    paths += ["config/g-" + generation + "/" + config["name"] + ".conf"
+              for config in self.service.get("configurations", []) if config.get("template")]
+    inventory = {}
+    for relative in paths:
+      path = self.root / relative
+      if path.is_symlink() or not path.is_file() or self.root not in path.resolve().parents:
+        raise HostError("TARGET_CONFLICT", "Published file identity has changed")
+      inventory[relative] = {"sha256": _hash(path.read_bytes()), "mode": path.stat().st_mode & 0o777}
+    return _json_hash(inventory)
+
+  def _check_handoff(self, action, receipt, current, configs, generation):
+    if (action == "adopt" and not receipt.get("detached") and receipt.get("operation") != "adopt"
+        or receipt.get("materializedPackageDigest") != self.package_digest
+        or receipt.get("resourceLayout") != self._release_layout()
+        or receipt.get("publishedConfigGeneration") != generation
+        or not receipt.get("publicationDigest")
+        or (self.task_binding or {}).get("secretGenerations")
+        or receipt.get("publicationDigest") != self._installed_file_digest(generation)
+        or receipt.get("unitHash") != _hash(self._unit_content(configs, generation))):
+      raise HostError("TARGET_CONFLICT", "Ownership handoff requires the unchanged verified publication and existing detached identity")
+    if current["state"] != "inactive" or current["pid"] != "0" or current["loadState"] != "loaded":
+      raise HostError("TARGET_CONFLICT", "Stop the verified target before handing off ownership")
+
   def _owned(self, receipt):
     if self.unit_path.exists() or self.unit_path.is_symlink():
       hashes = {receipt.get("unitHash")}
@@ -330,13 +392,13 @@ class HostDeployment:
   def plan(self, action):
     if action == "observe" or action not in HOST_OPERATIONS or action not in self.profile["capabilities"]:
       raise HostError("CAPABILITY_UNSUPPORTED", "Host operation is unsupported")
-    configs = self.validate_inputs(validate_config=action != "stop")
+    configs = self.validate_inputs(validate_config=action not in ("stop", "uninstall", "purge"))
     discovery = self.discover()
     receipt = self._receipt()
     self._owned(receipt)
-    return {"identity": self.identity, "target": self.unit, "operation": action,
+    return {"identity": self.identity, "target": discovery["target"], "operation": action,
       "taskId": self.command.get("taskId"), "packageDigest": self.package_digest,
-      "configGeneration": _json_hash(configs), "configTags": json.loads(json.dumps(self._config_tags())),
+      "configGeneration": self._generation(configs), "configTags": json.loads(json.dumps(self._config_tags())),
       "expectedReceipt": _json_hash(receipt), "observation": self.observe(), "createdAt": time.time(), "expiresAt": time.time() + 30,
       "discovery": discovery}
 
@@ -357,6 +419,8 @@ class HostDeployment:
     if kind == "configRef":
       name, _, field = reference.partition(".")
       if name in configs and field in configs[name]:
+        if isinstance(configs[name][field], dict):
+          raise HostError("CAPABILITY_UNSUPPORTED", "Secret values cannot appear in native arguments or unit files")
         return str(configs[name][field])
     raise HostError("SCHEMA_INVALID", "Unresolved typed argument")
 
@@ -367,6 +431,9 @@ class HostDeployment:
       source = self._source(item["path"])
       _atomic(target, source.read_bytes(), 0o644)
     directory = self.root / "config" / ("g-" + generation)
+    if self.secret_values:
+      # Create the generation even if this component has no rendered template.
+      self._runtime_file("g-" + generation, ".generation", generation.encode(), root_only=True)
     rendered_bytes = 0
     for config in self.service.get("configurations", []):
       if not config.get("template"):
@@ -376,22 +443,39 @@ class HostDeployment:
         raise HostError("CAPABILITY_UNSUPPORTED", "Only scalar template substitutions are supported")
       def substitute(match):
         key = match.group(1)
+        if key == "mpack_config_generation":
+          return generation
         if key not in configs[config["name"]]:
           raise HostError("SCHEMA_INVALID", "Template references an absent configuration field")
-        return str(configs[config["name"]][key])
+        value = configs[config["name"]][key]
+        if isinstance(value, dict) and "secretRef" in value:
+          secret = self.secret_values[value["secretRef"]]
+          schema = json.loads(self._source(config["schema"]).read_text())
+          return secret if schema["properties"][key].get("x-secret-encoding") == "literal" else json.dumps(secret, ensure_ascii=True)
+        return str(value)
       rendered = re.sub(r"\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}", substitute, template)
       if "{{" in rendered:
         raise HostError("SCHEMA_INVALID", "Unsupported template expression")
       rendered_bytes += len(rendered.encode())
       if rendered_bytes > 32 * 1024 * 1024:
         raise HostError("SCHEMA_INVALID", "Rendered configuration exceeds 32 MiB")
-      _atomic(directory / (config["name"] + ".conf"), rendered.encode(), 0o644)
+      if self.secret_values:
+        self._runtime_file("g-" + generation, config["name"] + ".conf", rendered.encode())
+      else:
+        _atomic(directory / (config["name"] + ".conf"), rendered.encode(), 0o644)
+    secret_environment = []
+    for name, expression in self.resources.get("command", {}).get("environment", {}).items():
+      if isinstance(expression, dict) and "secretRef" in expression:
+        value = self.secret_values[expression["secretRef"]]
+        secret_environment.append(name + "=" + json.dumps(value, ensure_ascii=True))
+    if secret_environment:
+      self._runtime_file("g-" + generation, "environment", ("\n".join(secret_environment) + "\n").encode(), root_only=True)
     directory.mkdir(parents=True, exist_ok=True)
     current = self.root / "config" / "current"
     temporary = current.with_name("current.pending")
     with contextlib.suppress(FileNotFoundError):
       temporary.unlink()
-    temporary.symlink_to(directory.name)
+    temporary.symlink_to(self.runtime_root / ("g-" + generation) if self.secret_values else directory.name)
     os.replace(temporary, current)
     descriptor = os.open(current.parent, os.O_RDONLY)
     try:
@@ -420,10 +504,20 @@ class HostDeployment:
     for name, value in command.get("environment", {}).items():
       if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
         raise HostError("SCHEMA_INVALID", "Invalid environment variable name")
+      if isinstance(value, dict) and "secretRef" in value:
+        continue
       environment += "Environment=" + quote(name + "=" + self._resolve(value, configs, generation)) + "\n"
+    if any(isinstance(value, dict) and "secretRef" in value for value in command.get("environment", {}).values()):
+      environment += "EnvironmentFile=" + quote(str(self.root / "config" / "current" / "environment")) + "\n"
+    reload_command = ""
+    if "reload" in self.profile["capabilities"]:
+      reload_signal = self.resources.get("reloadSignal")
+      if reload_signal not in ("HUP", "USR1", "USR2"):
+        raise HostError("SCHEMA_INVALID", "Reload requires an explicit supported signal")
+      reload_command = "\nExecReload=/bin/kill -" + reload_signal + " $MAINPID"
     return ("[Unit]\nDescription=Ambari managed service\n[Service]\nType=simple\n" + environment + "User=" + user + group_line
       + "\nWorkingDirectory=" + str(directory) + "\nExecStart=" + " ".join(map(quote, argv))
-      + "\nRestart=no\n[Install]\nWantedBy=multi-user.target\n").encode()
+      + reload_command + "\nRestart=no\n[Install]\nWantedBy=multi-user.target\n").encode()
 
   def _native(self, action):
     argv = ["/usr/bin/systemctl", action]
@@ -472,18 +566,18 @@ class HostDeployment:
         probe["path"] = health.get("path", "/")
     return probe
 
-  def _healthy(self, configs=None):
+  def _healthy(self, configs=None, generation=None):
     health = self._probe_config(configs) if configs is not None else self._receipt().get("runningProbe")
     if not isinstance(health, dict):
       return False
     if health.get("kind") == "process":
-      return True
+      return generation is None
     port = int(health["port"])
     timeout = min(30, float(health.get("timeoutSeconds", 5)))
     try:
       if health["kind"] == "tcp":
         with socket.create_connection(("127.0.0.1", port), timeout=timeout):
-          return True
+          return generation is None
       if health["kind"] == "http":
         path = health.get("path", "/")
         if not path.startswith("/") or "\n" in path:
@@ -491,7 +585,8 @@ class HostDeployment:
         # Ignore process proxy environment; probes are scoped to this local target.
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _LocalProbeRedirectHandler())
         with opener.open("http://127.0.0.1:{}{}".format(port, path), timeout=timeout) as response:
-          return response.status == 200
+          return response.status == 200 and (generation is None
+            or response.headers.get("X-Ambari-Config-Generation") == generation)
     except (OSError, ValueError):
       return False
     return False
@@ -500,12 +595,29 @@ class HostDeployment:
     deadline = time.monotonic() + 30
     while True:
       observation = self.observe()
+      if action == "uninstall" and observation["loadState"] == "not-found" and observation["state"] == "inactive" and observation["pid"] == "0":
+        return observation
+      if action == "purge" and observation["loadState"] == "not-found" and observation["state"] == "inactive" and observation["pid"] == "0":
+        if set(path.name for path in self.root.iterdir()) <= {"receipt.json", "operation.lock"}:
+          return observation
+      if action in ("detach", "adopt") and observation["loadState"] == "loaded" and observation["state"] == "inactive" and observation["pid"] == "0":
+        if self._receipt().get("detached", False) == (action == "detach"):
+          return observation
       if action == "stop" and observation["state"] == "inactive":
         return observation
       if action in ("start", "restart") and observation["state"] == "active" and int(observation["pid"]) > 0 and self._healthy(configs):
         return observation
+      if action == "reload" and observation["state"] == "active" and int(observation["pid"]) > 0:
+        before = self._receipt().get("beforeObservation", {})
+        if not before.get("invocationId") or observation["invocationId"] != before["invocationId"]:
+          raise HostError("OUTCOME_UNKNOWN", "Process changed during reload", "UNKNOWN")
+        if self._healthy(configs, self._generation(configs)):
+          return observation
       if action in ("install", "configure") and observation["loadState"] == "loaded":
         return observation
+      if action == "upgrade" and observation["loadState"] == "loaded" and observation["state"] == "inactive" and observation["pid"] == "0":
+        if self._receipt().get("publishedConfigGeneration") == self._generation(configs):
+          return observation
       if self.cancel is not None and self.cancel.is_set():
         raise HostError("OUTCOME_UNKNOWN", "Verification canceled", "UNKNOWN")
       if time.monotonic() >= deadline:
@@ -528,12 +640,15 @@ class HostDeployment:
     if (membership.get("hostName") != self.command.get("hostname")
         or self.identity["componentName"] not in membership.get("components", [])):
       raise HostError("TARGET_CONFLICT", "Task target is no longer assigned to this Agent")
-    if action != "stop" and membership.get("configurationHashes") != self.task_binding.get("configurationHashes"):
+    if action not in ("stop", "uninstall", "purge") and membership.get("configurationHashes") != self.task_binding.get("configurationHashes"):
       raise HostError("PLAN_STALE", "Desired configuration superseded the persisted task snapshot")
     metadata = self.command.get("serviceLevelParams", {})
     if (metadata.get("mpack_target_incarnation") != self.identity["targetIncarnation"]
         or metadata.get("mpack_content_digest") != self.package_digest):
       raise HostError("PLAN_STALE", "Service metadata superseded the persisted task binding")
+
+  def _observation_stamp(self, observation):
+    return {field: observation.get(field) for field in ("state", "loadState", "invocationId", "job")}
 
   def apply(self, plan):
     self._validate_task_binding(plan["operation"])
@@ -543,22 +658,25 @@ class HostDeployment:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
       except BlockingIOError as error:
         raise HostError("TARGET_CONFLICT", "Another task owns the deployment mutation") from error
-      configs = self.validate_inputs(validate_config=plan["operation"] != "stop")
+      configs = self.validate_inputs(validate_config=plan["operation"] not in ("stop", "uninstall", "purge"))
       receipt = self._receipt()
       self._owned(receipt)
       if (plan["expiresAt"] < time.time() or plan["expectedReceipt"] != _json_hash(receipt)
-          or plan["configGeneration"] != _json_hash(configs)
+          or plan["configGeneration"] != self._generation(configs)
           or plan["configTags"] != self._config_tags()):
         raise HostError("PLAN_STALE", "Task plan no longer matches target or configuration")
       current = self.observe()
-      if any(current.get(field) != plan["observation"].get(field)
-             for field in ("state", "loadState", "invocationId", "job")):
+      if self._observation_stamp(current) != self._observation_stamp(plan["observation"]):
         raise HostError("PLAN_STALE", "Native state changed after planning")
       action = plan["operation"]
-      if action != "stop" and current.get("job") not in (None, "", "0", "0 /"):
+      if receipt.get("detached") and action not in ("detach", "adopt"):
+        raise HostError("TARGET_CONFLICT", "Adopt the detached target before managing its resources")
+      if (receipt.get("purged") or receipt.get("operation") == "purge") and action != "purge":
+        raise HostError("TARGET_CONFLICT", "Purge has begun; finish purge and use a new service incarnation")
+      if action not in ("stop", "uninstall", "purge") and current.get("job") not in (None, "", "0", "0 /"):
         raise HostError("OUTCOME_UNKNOWN", "Native job is still pending; observe or explicitly stop", "UNKNOWN")
       materialized_digest = receipt.get("materializedPackageDigest", receipt.get("packageDigest"))
-      if materialized_digest not in (None, self.package_digest) and action != "stop":
+      if materialized_digest not in (None, self.package_digest) and action not in ("stop", "uninstall", "purge", "upgrade"):
         raise HostError("CAPABILITY_UNSUPPORTED", "This host profile does not declare binary/data upgrade compatibility")
       task = str(self.command.get("taskId", ""))
       if not task.isdigit() or int(task) <= 0:
@@ -571,10 +689,26 @@ class HostDeployment:
         raise HostError("TARGET_CONFLICT", "Task ID was reused with another intent")
       if receipt.get("taskId") == task and receipt.get("state") == "SUCCEEDED":
         return {"state": "SUCCEEDED", "replayed": True, "observation": self.verify(action, configs),
-                "configGeneration": receipt.get("configGeneration")}
+                "configGeneration": receipt.get("configGeneration"),
+                "identity": self.identity, "taskId": task, "packageDigest": self.package_digest,
+                "materializedPackageDigest": receipt.get("materializedPackageDigest"),
+                "retainedResources": receipt.get("retainedResources", []),
+                "detached": receipt.get("detached", False),
+                "purged": receipt.get("purged", False), "purgedResources": receipt.get("purgedResources", [])}
       interrupted = receipt.get("state") in ("APPLYING", "UNKNOWN")
-      if interrupted and receipt.get("intentDigest") != key and action != "stop":
+      if interrupted and receipt.get("intentDigest") != key and action not in ("stop", "uninstall", "purge"):
         raise HostError("OUTCOME_UNKNOWN", "Previous task must be reconciled or explicitly stopped", "UNKNOWN")
+      if interrupted and action == "reload":
+        # A matching acknowledgement resolves response loss without sending the signal again.
+        observed = self.verify("reload", configs)
+        receipt.update(state="SUCCEEDED", taskId=task, runningConfigGeneration=plan["configGeneration"],
+                       publishedConfigGeneration=plan["configGeneration"])
+        self._save(receipt)
+        return {"state": "SUCCEEDED", "recovered": True, "observation": observed,
+                "identity": self.identity, "taskId": task, "packageDigest": self.package_digest,
+                "runningConfigGeneration": plan["configGeneration"],
+                "materializedPackageDigest": receipt.get("materializedPackageDigest"),
+                "publishedConfigGeneration": plan["configGeneration"]}
       if interrupted and action in ("start", "restart") and receipt.get("intentDigest") == key:
         observed = self.observe()
         before = receipt.get("beforeObservation", {})
@@ -583,13 +717,38 @@ class HostDeployment:
             verified = self.verify("start", configs)
             receipt.update(state="SUCCEEDED", taskId=task,
               runningConfigGeneration=plan["configGeneration"], runningPackageDigest=self.package_digest,
+              materializedPackageDigest=self.package_digest, materializedPackage=dict(self.descriptor["package"]),
+              resourceLayout=self._release_layout(),
               runningProbe=self._probe_config(configs), runningPorts=self._declared_ports(configs))
             self._save(receipt)
-            return {"state": "SUCCEEDED", "recovered": True, "observation": verified}
+            return {"state": "SUCCEEDED", "recovered": True, "observation": verified,
+                    "identity": self.identity, "taskId": task, "packageDigest": self.package_digest,
+                    "materializedPackageDigest": self.package_digest,
+                    "publishedConfigGeneration": receipt.get("publishedConfigGeneration"),
+                    "runningConfigGeneration": receipt.get("runningConfigGeneration")}
           raise HostError("OUTCOME_UNKNOWN", "Running invocation cannot prove the new intent; explicitly stop before starting again", "UNKNOWN")
         raise HostError("OUTCOME_UNKNOWN", "Interrupted start has no surviving invocation evidence; explicitly stop before retry", "UNKNOWN")
       if action in ("install", "configure", "start", "restart"):
         self._check_ports(configs, current, receipt)
+      if action == "upgrade":
+        self._check_upgrade(receipt, current, plan["configGeneration"])
+      if action in ("detach", "adopt"):
+        self._check_handoff(action, receipt, current, configs, plan["configGeneration"])
+      if action == "reload":
+        if (current["state"] != "active" or not current.get("invocationId")
+            or self.profile.get("health", {}).get("kind") != "http"
+            or self._declared_ports(configs) != receipt.get("runningPorts", [])
+            or any(config.get("changeEffect", "restart") != "reload" for config in self.service.get("configurations", []))
+            or any(isinstance(value, dict) and "secretRef" in value for value in self.resources["command"].get("environment", {}).values())
+            or _hash(self._unit_content(configs, plan["configGeneration"])) != receipt.get("unitHash")):
+          raise HostError("CAPABILITY_UNSUPPORTED", "This change requires restart rather than reload")
+      if action == "purge":
+        if not receipt.get("retainedResources") or not (
+            receipt.get("operation") == "uninstall" and receipt.get("state") == "SUCCEEDED"
+            or receipt.get("operation") == "purge"):
+          raise HostError("TARGET_CONFLICT", "Purge requires a verified uninstall receipt")
+        self.verify("uninstall", configs)
+        self._validate_retained_paths(receipt)
       receipt["materializedPackageDigest"] = materialized_digest or self.package_digest
       receipt.update(intent, taskId=task, intentDigest=key, state="APPLYING",
                      beforeObservation=plan["observation"])
@@ -597,22 +756,15 @@ class HostDeployment:
       try:
         if self.cancel is not None and self.cancel.is_set():
           raise HostError("OUTCOME_UNKNOWN", "Task canceled before mutation", "UNKNOWN")
-        if action in ("install", "configure", "start", "restart"):
-          if self.provision is None:
-            raise HostError("CAPABILITY_UNSUPPORTED", "Ambari resource provisioner is required")
-          self.provision(self.resources, self.directories, self.root)
-          content = self._unit_content(configs, plan["configGeneration"])
+        if action in ("install", "configure", "start", "restart", "upgrade"):
+          self._publish(configs, plan["configGeneration"], receipt)
+        if action == "reload":
+          self._load_secrets()
           self._stage(configs, plan["configGeneration"])
-          # Save ownership evidence before publication, so a lost response never
-          # adopts a name. The exclusive target lock protects these two writes.
-          receipt["pendingUnitHash"] = _hash(content)
-          self._save(receipt)
-          _atomic(self.unit_path, content, 0o644)
-          receipt["unitHash"] = receipt.pop("pendingUnitHash")
-          self._save(receipt)
-          self._native("daemon-reload")
           receipt["publishedConfigGeneration"] = plan["configGeneration"]
-        if action in ("start", "restart"):
+          self._save(receipt)
+          self._native("reload")
+        elif action in ("start", "restart"):
           current = self.observe()
           if current["state"] == "active" and (action == "restart" or receipt.get("runningConfigGeneration") != plan["configGeneration"]
               or receipt.get("runningPackageDigest") != self.package_digest):
@@ -621,23 +773,59 @@ class HostDeployment:
             self._native("start")
           receipt["runningConfigGeneration"] = plan["configGeneration"]
           receipt["runningPackageDigest"] = self.package_digest
+        elif action in ("detach", "adopt"):
+          receipt["detached"] = action == "detach"
+          if action == "detach":
+            receipt["retainedResources"] = self._retained_resources()
+          self._save(receipt)
+        elif action == "purge":
+          self._purge_files()
+          receipt["purgedResources"] = [dict(resource, disposition="receipt-only" if resource["path"] == str(self.root) else "purged")
+                                         for resource in receipt["retainedResources"]]
+          receipt["purged"] = True
+        elif action == "uninstall":
+          self._uninstall(configs, receipt)
         elif action == "stop":
           if self.observe()["state"] != "inactive":
             self._native("stop")
         observation = self.verify(action, configs)
         receipt["state"] = "SUCCEEDED"
-        if action in ("start", "restart"):
+        if action in ("install", "configure", "start", "restart", "upgrade"):
+          if action == "upgrade" and materialized_digest != self.package_digest:
+            receipt["lastUpgrade"] = {"fromDigest": materialized_digest, "toDigest": self.package_digest,
+                                      "taskId": task, "data": "unchanged"}
+            receipt["releaseHistory"] = (receipt.get("releaseHistory", []) + [receipt.get("materializedPackage", {})])[-10:]
+          receipt["materializedPackage"] = dict(self.descriptor["package"])
+          receipt["materializedPackageDigest"] = self.package_digest
+          receipt["resourceLayout"] = self._release_layout()
+        if action in ("stop", "uninstall", "purge"):
+          if action == "stop" and receipt.get("pendingUnitHash") and self.unit_path.exists():
+            # _owned accepted this exact interrupted publication before STOP.
+            # Preserve its evidence after leaving UNKNOWN, without claiming the
+            # candidate release is installed or safe to start.
+            receipt["unitHash"] = _hash(self.unit_path.read_bytes())
+            receipt.pop("pendingUnitHash", None)
+          self._clear_runtime_secrets()
+        if action in ("start", "restart", "reload"):
+          receipt["runningConfigGeneration"] = plan["configGeneration"]
           receipt["runningProbe"] = self._probe_config(configs)
           receipt["runningPorts"] = self._declared_ports(configs)
         self._save(receipt)
         # Retention cleanup must not turn an already verified operation UNKNOWN.
         # A later successful task retries this bounded projection cleanup.
-        with contextlib.suppress(OSError):
-          self._prune_configurations(receipt)
+        if action not in ("detach", "adopt"):
+          with contextlib.suppress(OSError):
+            self._prune_configurations(receipt)
+            self._prune_runtime_secrets(receipt)
+            self._prune_releases(receipt)
         return {"state": "SUCCEEDED", "observation": observation,
                 "publishedConfigGeneration": receipt.get("publishedConfigGeneration"),
                 "runningConfigGeneration": receipt.get("runningConfigGeneration"),
-                "taskId": task, "packageDigest": self.package_digest}
+                "taskId": task, "packageDigest": self.package_digest, "identity": self.identity,
+                "materializedPackageDigest": receipt.get("materializedPackageDigest"),
+                "retainedResources": receipt.get("retainedResources", []),
+                "detached": receipt.get("detached", False),
+                "purged": receipt.get("purged", False), "purgedResources": receipt.get("purgedResources", [])}
       except HostError as error:
         receipt["state"] = error.state
         self._save(receipt)
@@ -646,6 +834,193 @@ class HostDeployment:
         receipt["state"] = "UNKNOWN"
         self._save(receipt)
         raise HostError("OUTCOME_UNKNOWN", "Materialization requires recovery", "UNKNOWN") from error
+
+  def _publish(self, configs, generation, receipt):
+    self._load_secrets()
+    if self.provision is None:
+      raise HostError("CAPABILITY_UNSUPPORTED", "Ambari resource provisioner is required")
+    self.provision(self.resources, self.directories, self.root)
+    content = self._unit_content(configs, generation)
+    self._stage(configs, generation)
+    receipt["publicationDigest"] = None if self.secret_values else self._installed_file_digest(generation)
+    # Save ownership evidence before publication, so a lost response never
+    # adopts a name. The exclusive target lock protects these two writes.
+    receipt["pendingUnitHash"] = _hash(content)
+    self._save(receipt)
+    _atomic(self.unit_path, content, 0o644)
+    receipt["unitHash"] = receipt.pop("pendingUnitHash")
+    self._save(receipt)
+    self._native("daemon-reload")
+    receipt["publishedConfigGeneration"] = generation
+    self._save(receipt)
+
+  def _uninstall(self, configs, receipt):
+    # The receipt is retained even when no unit was ever published. It is
+    # the only acceptable evidence for retrying a partial removal.
+    if self.observe()["state"] != "inactive":
+      self._native("stop")
+    self.verify("stop", configs)
+    self._owned(receipt)
+    receipt["retainedResources"] = self._retained_resources()
+    self._save(receipt)
+    if self.unit_path.exists():
+      self.unit_path.unlink()
+      directory = os.open(str(self.unit_path.parent), os.O_RDONLY | os.O_DIRECTORY)
+      try:
+        os.fsync(directory)
+      finally:
+        os.close(directory)
+    self._native("daemon-reload")
+
+  def _generation(self, configs):
+    generations = (self.task_binding or {}).get("secretGenerations", {})
+    return _json_hash({"config": configs, "secretGenerations": generations}) if generations else _json_hash(configs)
+
+  def _load_secrets(self):
+    self.secret_values.clear()
+    if self.command.get("mpackSecretError"):
+      code = "PLAN_STALE" if self.command["mpackSecretError"] == "PLAN_STALE" else "DEPENDENCY_UNRESOLVED"
+      raise HostError(code, "Scoped credential material is unavailable or superseded")
+    generations = (self.task_binding or {}).get("secretGenerations", {})
+    if not generations:
+      return
+    from resource_management.core.encryption import ensure_decrypted, V2_PREFIX
+    material = self.command.get("mpackSecretMaterial", {})
+    if len(generations) > 32 or set(material) != set(generations):
+      raise HostError("DEPENDENCY_UNRESOLVED", "Credential transport does not match the persisted references")
+    for reference, generation in generations.items():
+      try:
+        encrypted = material[reference]
+        if not encrypted.startswith(V2_PREFIX):
+          raise ValueError()
+        value = json.loads(ensure_decrypted(encrypted))
+        if value.get("reference") != reference or value.get("generation") != generation:
+          raise ValueError()
+        secret = value["value"]
+        if not isinstance(secret, str) or not secret or len(secret) > 8192 or any(char in secret for char in ("\n", "\r", "\0")):
+          raise ValueError()
+        self.secret_values[reference] = secret
+      except Exception:
+        raise HostError("DEPENDENCY_UNRESOLVED", "Credential transport could not be authenticated") from None
+
+  def _runtime_file(self, generation, name, content, root_only=False):
+    import pwd
+    parent = self.runtime_root.parent
+    if parent.is_symlink() or self.runtime_root.is_symlink():
+      raise HostError("TARGET_CONFLICT", "Runtime secret path is not owned")
+    parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    if parent.stat().st_uid != 0 or parent.stat().st_mode & 0o022:
+      raise HostError("TARGET_CONFLICT", "Runtime secret parent is not root controlled")
+    self.runtime_root.mkdir(mode=0o711, exist_ok=True)
+    directory = self.runtime_root / generation
+    if directory.is_symlink():
+      raise HostError("TARGET_CONFLICT", "Runtime generation path is not owned")
+    directory.mkdir(mode=0o711, exist_ok=True)
+    if any(path.stat().st_uid != 0 or path.stat().st_mode & 0o022 for path in (self.runtime_root, directory)):
+      raise HostError("TARGET_CONFLICT", "Runtime secret directory is not root controlled")
+    destination = directory / name
+    _atomic(destination, content, 0o600)
+    if not root_only:
+      account = pwd.getpwnam(self.resources["unit"]["user"])
+      os.chown(destination, account.pw_uid, account.pw_gid)
+
+  def _prune_runtime_secrets(self, receipt):
+    if not self.runtime_root.exists() or self.runtime_root.is_symlink():
+      return
+    protected = {"g-" + value for value in (receipt.get("publishedConfigGeneration"),
+                 receipt.get("runningConfigGeneration")) if value}
+    for path in self.runtime_root.iterdir():
+      if path.name not in protected and re.fullmatch(r"g-[a-f0-9]{64}", path.name) and not path.is_symlink():
+        shutil.rmtree(path)
+
+  def _clear_runtime_secrets(self):
+    if self.runtime_root.is_symlink():
+      raise HostError("TARGET_CONFLICT", "Runtime secret directory was replaced")
+    if self.runtime_root.exists():
+      if self.runtime_root.stat().st_uid != 0 or self.runtime_root.stat().st_mode & 0o022:
+        raise HostError("TARGET_CONFLICT", "Runtime secret directory is not root controlled")
+      shutil.rmtree(self.runtime_root)
+    self.secret_values.clear()
+
+  def _validate_retained_paths(self, receipt):
+    allowed = {str(self.root), *(str(path) for path in self.directories.values())}
+    seen = set()
+    for resource in receipt["retainedResources"]:
+      if resource.get("path") not in allowed or resource["path"] in seen:
+        raise HostError("TARGET_CONFLICT", "Retained path differs from the installed descriptor")
+      seen.add(resource["path"])
+      path = Path(resource["path"])
+      try:
+        info = path.lstat()
+      except FileNotFoundError as error:
+        if receipt.get("operation") == "purge" and path != self.root:
+          continue  # A previous purge may already have removed this exact owned directory.
+        raise HostError("TARGET_CONFLICT", "Retained resource disappeared before purge") from error
+      except OSError as error:
+        raise HostError("TARGET_CONFLICT", "Retained resource cannot be inspected") from error
+      if path.is_symlink() or info.st_dev != resource.get("device") or info.st_ino != resource.get("inode"):
+        raise HostError("TARGET_CONFLICT", "Retained resource identity changed before purge")
+    if not any(item.get("path") == str(self.root) for item in receipt["retainedResources"]):
+      raise HostError("TARGET_CONFLICT", "Retained root identity is missing")
+
+  def _purge_files(self):
+    # systemd/v1 is Linux-only. Bind mounts can share st_dev, so also consult mountinfo.
+    with open("/proc/self/mountinfo", "rb") as mounts:
+      data = mounts.read(4 * 1024 * 1024 + 1)
+    if len(data) > 4 * 1024 * 1024:
+      raise HostError("TARGET_CONFLICT", "Mount inventory exceeds purge limits")
+    for line in data.decode("utf-8", errors="strict").splitlines():
+      fields = line.split()
+      if len(fields) < 6:
+        raise HostError("TARGET_CONFLICT", "Mount inventory is invalid")
+      mounted = re.sub(r"\\([0-7]{3})", lambda match: chr(int(match[1], 8)), fields[4])
+      if mounted == str(self.root) or mounted.startswith(str(self.root) + "/"):
+        raise HostError("TARGET_CONFLICT", "Purge cannot cross a nested mount")
+    deadline = time.monotonic() + 30
+    remaining = [100000]
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptor = os.open(self.root, flags)
+    device = os.fstat(descriptor).st_dev
+    def remove(parent, depth):
+      if depth > 64:
+        raise HostError("OUTCOME_UNKNOWN", "Purge depth limit reached", "UNKNOWN")
+      with os.scandir(parent) as entries:
+        for entry in entries:
+          if depth == 0 and entry.name in ("receipt.json", "operation.lock"):
+            continue
+          remaining[0] -= 1
+          if remaining[0] < 0 or time.monotonic() >= deadline or self.cancel is not None and self.cancel.is_set():
+            raise HostError("OUTCOME_UNKNOWN", "Purge paused at its bound; inspect and resume", "UNKNOWN")
+          if entry.is_dir(follow_symlinks=False):
+            child = os.open(entry.name, flags, dir_fd=parent)
+            try:
+              if os.fstat(child).st_dev != device:
+                raise HostError("TARGET_CONFLICT", "Purge cannot cross filesystems")
+              remove(child, depth + 1)
+            finally:
+              os.close(child)
+            os.rmdir(entry.name, dir_fd=parent)
+          else:
+            # Symlinks themselves are removed; their destinations are never followed.
+            os.unlink(entry.name, dir_fd=parent)
+      os.fsync(parent)
+    try:
+      remove(descriptor, 0)
+    finally:
+      os.close(descriptor)
+
+  def _retained_resources(self):
+    # Keep config and receipt evidence together with all declared directories.
+    # Never remove shared OS packages/users, or traverse user-controlled data.
+    result = []
+    for path in [self.root] + list(self.directories.values()):
+      if path.is_symlink():
+        raise HostError("TARGET_CONFLICT", "Retained resource identity is a symlink")
+      if path.exists():
+        state = path.stat()
+        result.append({"path": str(path), "device": state.st_dev, "inode": state.st_ino,
+                       "ownership": "managed", "retention": "retain"})
+    return result
 
   def _prune_configurations(self, receipt):
     config_root = self.root / "config"
@@ -659,4 +1034,17 @@ class HostDeployment:
     for path in histories[10:]:
       if path.name not in protected:
         # These are compiler-generated config generations, never data directories.
+        shutil.rmtree(path)
+
+  def _prune_releases(self, receipt):
+    release_root = self.root / "releases"
+    if not release_root.exists():
+      return
+    protected = {self.package_digest, receipt.get("materializedPackageDigest"),
+                 receipt.get("runningPackageDigest")}
+    protected.update(release.get("digest") for release in receipt.get("releaseHistory", []))
+    for path in release_root.iterdir():
+      if (re.fullmatch(r"[a-f0-9]{64}", path.name) and path.name not in protected
+          and path.is_dir() and not path.is_symlink()):
+        # Only root-owned, compiler-staged artifacts; never declared data paths.
         shutil.rmtree(path)

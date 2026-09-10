@@ -11,6 +11,11 @@
     "data_dir": {
       "type": "string",
       "x-resource": "data"
+    },
+    "message": {
+      "type": "string",
+      "default": "ok",
+      "maxLength": 1024
     }
   },
   "required": [

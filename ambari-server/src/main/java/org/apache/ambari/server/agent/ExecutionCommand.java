@@ -46,6 +46,12 @@ import com.google.gson.annotations.SerializedName;
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public class ExecutionCommand extends AgentCommand {
+  private Map<String, String> mpackSecretMaterial;
+  private String mpackSecretError;
+  public Map<String, String> getMpackSecretMaterial() { return mpackSecretMaterial; }
+  public void setMpackSecretMaterial(Map<String, String> value) { mpackSecretMaterial = value; }
+  public String getMpackSecretError() { return mpackSecretError; }
+  public void setMpackSecretError(String value) { mpackSecretError = value; }
 
   private static final Logger LOG = LoggerFactory.getLogger(ExecutionCommand.class);
 

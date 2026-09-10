@@ -51,6 +51,8 @@ import MpackApi, { RegistryDefinition } from "../../api/mpacksApi";
 import { AppContext } from "../../store/context";
 import { useAuth } from "../../hooks/useAuth";
 import Spinner from "../../components/Spinner";
+import PackageInstallDialog from "./PackageInstallDialog";
+import { managedActions, PackageLifecycle, ManagedResource } from "./packageLifecycle";
 import {
   CatalogMpackVersion,
   catalogKey,
@@ -143,6 +145,18 @@ export default function ManagementPacks() {
   const [registryEditor, setRegistryEditor] = useState<RegistryEditor>();
   const [registryToDelete, setRegistryToDelete] = useState<RegistryCatalog>();
   const [directUri, setDirectUri] = useState<string>();
+  const [uploadFile, setUploadFile] = useState<File>();
+  const [releaseDetails, setReleaseDetails] = useState<RegisteredMpack>();
+  const [installPack, setInstallPack] = useState<RegisteredMpack>();
+  const [managed, setManaged] = useState<ManagedResource[]>([]);
+  const [resourceCluster, setResourceCluster] = useState("");
+  const [activeServices, setActiveServices] = useState<Set<string>>(new Set());
+  const resourceGeneration = useRef(0);
+  const [resourceAfter, setResourceAfter] = useState("");
+  const [resourceDetails, setResourceDetails] = useState<ManagedResource>();
+  const [serviceAction, setServiceAction] = useState<{cluster: string; service: string; incarnation: string; action: "start" | "stop" | "uninstall" | "purge" | "upgrade" | "detach" | "adopt" | "remove"}>();
+  const [upgradePackageId, setUpgradePackageId] = useState<number>();
+  const [purgeConfirmation, setPurgeConfirmation] = useState("");
   const [showInstallConfirmation, setShowInstallConfirmation] = useState(false);
   const [mpackToDelete, setMpackToDelete] = useState<RegisteredMpack>();
   const [osDialog, setOsDialog] = useState<{
@@ -158,6 +172,11 @@ export default function ManagementPacks() {
   const [recommendationNotice, setRecommendationNotice] = useState("");
   const loadGeneration = useRef(0);
 
+  const canInstall = hasAuthorization("SERVICE.ADD_DELETE_SERVICES");
+  const canOperate = hasAuthorization("SERVICE.START_STOP");
+  const canPurge = hasAuthorization("SERVICE.PURGE_DATA");
+  const canUpgradePackage = hasAuthorization("CLUSTER.UPGRADE_DOWNGRADE_STACK");
+  const canViewResources = hasAuthorization("SERVICE.VIEW_STATUS_INFO");
   const canManage = hasAuthorization("AMBARI.MANAGE_STACK_VERSIONS");
   const mutationBlocked = upgradeIsRunning || isNonWizardUser;
   const canMutate = canManage && !mutationBlocked;
@@ -167,19 +186,24 @@ export default function ManagementPacks() {
     setLoading(true);
     setLoadError("");
     try {
-      const [registryResponse, installedResponse] = await Promise.all([
+      const [registryResponse, installedResponse] = await Promise.allSettled([
         MpackApi.getRegistries(),
         MpackApi.getRegisteredMpacks(),
       ]);
       if (generation !== loadGeneration.current) return;
-      const nextRegistries = normalizeRegistries(registryResponse);
-      setRegistries(nextRegistries);
-      setInstalled(normalizeRegisteredMpacks(installedResponse));
-      setSelectedRegistryId((current) => (
-        current && nextRegistries.some((registry) => registry.id === current)
-          ? current
-          : nextRegistries[0]?.id
-      ));
+      if (registryResponse.status === "fulfilled") {
+        const nextRegistries = normalizeRegistries(registryResponse.value);
+        setRegistries(nextRegistries);
+        setSelectedRegistryId((current) => (
+          current && nextRegistries.some((registry) => registry.id === current)
+            ? current : nextRegistries[0]?.id
+        ));
+      }
+      if (installedResponse.status === "fulfilled") {
+        setInstalled(normalizeRegisteredMpacks(installedResponse.value));
+      }
+      const failures = [registryResponse, installedResponse].filter((result) => result.status === "rejected");
+      if (failures.length) setLoadError("Some catalog data could not be loaded. Available package actions remain usable; refresh to retry.");
     } catch (error) {
       if (generation === loadGeneration.current) {
         setLoadError(errorMessage(error, "Management pack data could not be loaded."));
@@ -195,6 +219,52 @@ export default function ManagementPacks() {
       loadGeneration.current += 1;
     };
   }, [load]);
+
+  const loadResources = useCallback(async (after = "") => {
+    if (!clusterName || !canViewResources) return;
+    const generation = ++resourceGeneration.current;
+    setResourceCluster("");
+    try {
+      const [next, services] = await Promise.all([PackageLifecycle.resources(clusterName, after), PackageLifecycle.installed(clusterName)]);
+      if (generation !== resourceGeneration.current) return;
+      setActiveServices(new Set(services.map((service) => String((service.ServiceInfo as {service_name?: string})?.service_name || ""))));
+      setManaged(next); setResourceAfter(after);
+      setResourceCluster(clusterName);
+    } catch { if (generation === resourceGeneration.current) setOperationError("Managed resource evidence could not be loaded."); }
+  }, [clusterName, canViewResources]);
+  useEffect(() => { void loadResources(); return () => { resourceGeneration.current += 1; }; }, [loadResources]);
+
+  async function executeServiceAction() {
+    if (!serviceAction || !clusterName || resourceCluster !== clusterName || serviceAction.cluster !== clusterName || !activeServices.has(serviceAction.service) || mutationBlocked) return;
+    if (!managed.some((resource) => resource.currentServiceTarget && resource.serviceName === serviceAction.service && resource.targetIncarnation === serviceAction.incarnation)) return;
+    if (serviceAction.action === "purge" && (!canPurge || purgeConfirmation !== serviceAction.service)) return;
+    setBusy("service"); setOperationError("");
+    try {
+      if (serviceAction.action === "uninstall") await PackageLifecycle.uninstall(clusterName, serviceAction.service);
+      else if (serviceAction.action === "purge") await PackageLifecycle.purge(clusterName, serviceAction.service, serviceAction.incarnation);
+      else if (serviceAction.action === "detach" || serviceAction.action === "adopt") {
+        if (!canInstall) return;
+        await PackageLifecycle.handoff(clusterName, serviceAction.service, serviceAction.action === "detach" ? "DETACH" : "ADOPT", serviceAction.incarnation);
+      }
+      else if (serviceAction.action === "upgrade") {
+        const selected = installed.find((pack) => pack.id === upgradePackageId);
+        if (!canUpgradePackage || !selected?.repositoryVersionId || !selected.digest) return;
+        const targets = managed.filter((resource) => resource.currentServiceTarget && resource.serviceName === serviceAction.service);
+        // A current selection can be a partially applied update on another page.
+        // Only changing selection back to a materialized release skips native work;
+        // Server checks every target before accepting that selection change.
+        const restoreSelection = targets.length > 0 && targets.some((resource) => resource.packageId !== selected.id)
+          && targets.every((resource) => resource.materializedPackageId === selected.id);
+        await PackageLifecycle.changeRelease(clusterName, serviceAction.service, selected.repositoryVersionId,
+          selected.digest, serviceAction.incarnation, restoreSelection);
+      }
+      else if (serviceAction.action === "remove") await PackageLifecycle.removeService(clusterName, serviceAction.service);
+      else await PackageLifecycle.state(clusterName, serviceAction.service, serviceAction.action === "start" ? "STARTED" : "INSTALLED");
+      toast.success("Request accepted. Refresh resource evidence and inspect the service's background operations for its outcome.");
+      setServiceAction(undefined); await loadResources(resourceAfter);
+    } catch { setOperationError("The service action was rejected or its response was lost. Inspect existing requests and resource evidence before submitting another action."); }
+    finally { setBusy(""); }
+  }
 
   const activeRegistry = registries.find((registry) => registry.id === selectedRegistryId);
   const visibleVersions = useMemo(() => {
@@ -380,11 +450,16 @@ export default function ManagementPacks() {
   }
 
   async function registerDirectUri() {
-    if (!directUri?.trim()) return;
+    if ((!directUri?.trim() && !uploadFile) || !canMutate) return;
     setBusy("direct");
     setOperationError("");
     try {
-      await MpackApi.registerFromUri(directUri.trim());
+      if (uploadFile) {
+        await MpackApi.uploadPackage(uploadFile);
+      } else {
+        await MpackApi.registerFromUri(directUri!.trim());
+      }
+      setUploadFile(undefined);
       setDirectUri(undefined);
       toast.success("Management pack registered successfully.");
       await load();
@@ -464,7 +539,7 @@ export default function ManagementPacks() {
                 Add Registry
               </Button>
               <Button
-                onClick={() => setDirectUri("")}
+                onClick={() => { setUploadFile(undefined); setDirectUri(""); }}
                 disabled={!canMutate || Boolean(busy)}
                 variant="primary"
               >
@@ -712,13 +787,16 @@ export default function ManagementPacks() {
                 <tr key={mpack.id}>
                   <td>
                     <div className="fw-semibold">{mpack.displayName}</div>
-                    <div className="small text-muted">{mpack.name}</div>
+                    <div className="small text-muted">{mpack.publisher ? `${mpack.publisher}/${mpack.packageName}` : mpack.name}</div>
+                    <Button variant="link" size="sm" className="p-0" onClick={() => setReleaseDetails(mpack)}>Release details</Button>
                   </td>
                   <td>{mpack.version}</td>
                   <td>{mpack.modules.map((module) => module.displayName).join(", ") || "None"}</td>
                   <td>{registries.find((registry) => registry.id === mpack.registryId)?.name || "Direct URI"}</td>
                   <td className="text-end">
                     <ButtonGroup>
+                      {clusterName && canInstall && mpack.repositoryVersionId && mpack.stackName && <Button
+                        size="sm" disabled={mutationBlocked || Boolean(busy)} onClick={() => setInstallPack(mpack)}>Install service</Button>}
                       <ActionButton
                         icon={faHardDrive}
                         label={`Repository metadata for ${mpack.name}`}
@@ -741,6 +819,75 @@ export default function ManagementPacks() {
           </Table>
         ) : <p className="text-muted">No management packs are registered.</p>}
       </section>
+
+      {clusterName && canViewResources && <section className="mt-4" aria-label="Managed package resources">
+        <div className="d-flex justify-content-between"><h3 className="h5">Managed and retained resources</h3>
+          <Button variant="outline-secondary" disabled={Boolean(busy)} onClick={() => void loadResources(resourceAfter)}>Refresh resources</Button></div>
+        <Table responsive><thead><tr><th>Service / component</th><th>Host</th><th>Evidence</th><th>Actions</th></tr></thead>
+          <tbody>{managed.map((resource) => <tr key={resource.targetKey}>
+            <td>{resource.currentServiceTarget && resourceCluster === clusterName && activeServices.has(resource.serviceName) ? <>
+              <a href={`/main/services/${encodeURIComponent(resource.serviceName)}/summary`}>{resource.serviceName}</a>
+              {hasAuthorization("CLUSTER.VIEW_CONFIGS") && <> · <a href={`/main/services/${encodeURIComponent(resource.serviceName)}/configs`}>Configs</a></>}
+            </> : resource.serviceName} / {resource.componentName}</td>
+            <td>{resource.hostName}</td><td><Button variant="link" onClick={() => setResourceDetails(resource)}>{resource.state}</Button></td>
+            <td><ButtonGroup size="sm">
+              {canOperate && managedActions(resource).has("start") && resource.currentServiceTarget && resourceCluster === clusterName && activeServices.has(resource.serviceName) && <><Button disabled={mutationBlocked || Boolean(busy)} onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "start"})}>Start</Button>
+                <Button disabled={mutationBlocked || Boolean(busy)} onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "stop"})}>Stop</Button></>}
+              {canPurge && resource.currentServiceTarget && resourceCluster === clusterName && activeServices.has(resource.serviceName) && managedActions(resource).has("purge") && <Button variant="outline-danger" disabled={mutationBlocked || Boolean(busy)} onClick={() => {
+                setPurgeConfirmation(""); setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "purge"});
+              }}>{resource.operation === "PURGE" ? "Resume purge" : "Purge data"}</Button>}
+              {canUpgradePackage && resource.currentServiceTarget && resourceCluster === clusterName && activeServices.has(resource.serviceName)
+                && managedActions(resource).has("upgrade") && <Button disabled={mutationBlocked || Boolean(busy)} onClick={() => {
+                  setUpgradePackageId(undefined);
+                  setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "upgrade"});
+                }}>Change release</Button>}
+              {canInstall && resourceCluster === clusterName && activeServices.has(resource.serviceName) && (["detach", "adopt"] as const).filter((action) => managedActions(resource).has(action)).map((action) =>
+                <Button key={action} variant="outline-warning" disabled={mutationBlocked || Boolean(busy)} onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action})}>
+                  {resource.state === "PENDING" ? "Resume " : ""}{action === "detach" ? "Detach resources" : "Adopt resources"}
+                </Button>)}
+              {canInstall && resource.currentServiceTarget && resourceCluster === clusterName && activeServices.has(resource.serviceName) && <><Button disabled={mutationBlocked || Boolean(busy) || !managedActions(resource).has("uninstall")} onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "uninstall"})}>Uninstall resources</Button>
+                <Button variant="outline-danger" disabled={mutationBlocked || Boolean(busy) || !managedActions(resource).has("remove")}
+                  onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "remove"})}>Remove service record</Button></>}
+            </ButtonGroup></td>
+          </tr>)}</tbody></Table>
+        {!managed.length && <p>No managed resource evidence is recorded on this page.</p>}
+        <Button size="sm" variant="link" disabled={!resourceAfter} onClick={() => void loadResources()}>First page</Button>
+        <Button size="sm" variant="link" disabled={managed.length !== 100} onClick={() => void loadResources(managed[managed.length - 1].targetKey)}>Next page</Button>
+      </section>}
+      {installPack && clusterName && <PackageInstallDialog pack={installPack} cluster={clusterName}
+        close={() => setInstallPack(undefined)} submitted={(service) => {
+          setInstallPack(undefined); void loadResources(); toast.success(`Installation submitted for ${service}. Inspect its background operations before starting.`);
+        }} />}
+      <Modal show={serviceAction !== undefined} onHide={() => !busy && setServiceAction(undefined)}>
+        <Modal.Header closeButton={!busy}><Modal.Title>{serviceAction?.action} {serviceAction?.service}</Modal.Title></Modal.Header>
+        <Modal.Body>{serviceAction?.action === "purge" ? <>
+          <p>Permanently delete retained data for all assigned components of {serviceAction.service}. This has no automatic data rollback. Purge must finish before removing the service record.</p>
+          <Form.Label>Type the service name to confirm</Form.Label>
+          <Form.Control value={purgeConfirmation} onChange={(event) => setPurgeConfirmation(event.target.value)} disabled={Boolean(busy)} />
+        </> : serviceAction?.action === "detach" || serviceAction?.action === "adopt" ? <>
+          <p>Stop and verify all service targets first. Detach hands existing resources to external management and retains their files and data. Adopt reclaims only the same verified detached target while this service incarnation and package still exist.</p>
+          <p>Changed files, configuration, native identity or live secrets prevent this operation. Resolve any pending handoff before starting or removing resources. Removing the service record ends this adoption path.</p>
+        </> : serviceAction?.action === "upgrade" ? <>
+          <p>Stop and verify every service target first. Only declared compatible artifact updates with unchanged data and resource layout are supported. The service remains stopped until you start it separately.</p>
+          <Form.Label>Imported release</Form.Label>
+          <Form.Select value={upgradePackageId ?? ""} disabled={Boolean(busy)} onChange={(event) => setUpgradePackageId(event.target.value ? Number(event.target.value) : undefined)}>
+            <option value="">Select a release</option>
+            {installed.filter((pack) => {
+              const resource = managed.find((item) => item.currentServiceTarget && item.serviceName === serviceAction.service);
+              const current = installed.find((item) => item.id === resource?.packageId);
+              return resource && pack.digest && pack.repositoryVersionId && current?.name === pack.name
+                && (pack.id !== resource.packageId || resource.operation === "UPGRADE" || resource.packageId !== resource.materializedPackageId);
+            }).map((pack) => <option key={pack.id} value={pack.id}>{pack.displayName} {pack.version}</option>)}
+          </Form.Select>
+          <p className="mt-2">Selecting the last verified installed release can restore package selection after a failed attempt. This does not restore data. Inspect existing requests before retrying an interrupted update.</p>
+        </> : <>This action applies to all assigned components of the service. Stop the service before uninstalling. Uninstall removes owned runtime definitions while retaining data. Removing a service record requires verified uninstall evidence for every target.</>}</Modal.Body>
+        <Modal.Footer><Button variant="secondary" disabled={Boolean(busy)} onClick={() => setServiceAction(undefined)}>Cancel</Button>
+          <Button variant={serviceAction?.action === "purge" ? "danger" : "primary"} disabled={Boolean(busy) || (serviceAction?.action === "purge" && purgeConfirmation !== serviceAction.service) || (serviceAction?.action === "upgrade" && !upgradePackageId)} onClick={() => void executeServiceAction()}>Submit</Button></Modal.Footer>
+      </Modal>
+      <Modal show={resourceDetails !== undefined} onHide={() => setResourceDetails(undefined)} size="lg">
+        <Modal.Header closeButton><Modal.Title>Resource ownership and retention evidence</Modal.Title></Modal.Header>
+        <Modal.Body><pre className="text-break" style={{whiteSpace: "pre-wrap"}}>{JSON.stringify(resourceDetails, null, 2)}</pre></Modal.Body>
+      </Modal>
 
       <Modal show={registryEditor !== undefined} onHide={() => !busy && setRegistryEditor(undefined)}>
         <Modal.Header closeButton={!busy}>
@@ -788,13 +935,21 @@ export default function ManagementPacks() {
       </Modal>
 
       <Modal show={directUri !== undefined} onHide={() => !busy && setDirectUri(undefined)}>
-        <Modal.Header closeButton={!busy}><Modal.Title>Register Management Pack</Modal.Title></Modal.Header>
+        <Modal.Header closeButton={!busy}><Modal.Title>Import Management Pack</Modal.Title></Modal.Header>
         <Modal.Body>
+          <Form.Group className="mb-3">
+            <Form.Label>Deployable package file (.mpack)</Form.Label>
+            <Form.Control type="file" accept=".mpack" disabled={Boolean(busy)} onChange={(event) => {
+              setUploadFile((event.target as HTMLInputElement).files?.[0]);
+              setDirectUri("");
+            }} />
+            <Form.Text>Import a signed release downloaded from its publisher or built with the authoring tools.</Form.Text>
+          </Form.Group>
           <Form.Group>
-            <Form.Label>Management Pack URI</Form.Label>
+            <Form.Label>Or approved artifact URL</Form.Label>
             <Form.Control
               value={directUri || ""}
-              onChange={(event) => setDirectUri(event.target.value)}
+              onChange={(event) => { setDirectUri(event.target.value); setUploadFile(undefined); }}
               disabled={Boolean(busy)}
               autoComplete="off"
             />
@@ -802,11 +957,27 @@ export default function ManagementPacks() {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setDirectUri(undefined)} disabled={Boolean(busy)}>Cancel</Button>
-          <Button onClick={() => void registerDirectUri()} disabled={!directUri?.trim() || Boolean(busy)}>
+          <Button onClick={() => void registerDirectUri()} disabled={(!directUri?.trim() && !uploadFile) || Boolean(busy) || !canMutate}>
             {busy === "direct" && <BootstrapSpinner size="sm" className="me-2" />}
             Register
           </Button>
         </Modal.Footer>
+      </Modal>
+
+      <Modal show={releaseDetails !== undefined} onHide={() => setReleaseDetails(undefined)} size="lg">
+        <Modal.Header closeButton><Modal.Title>Release details</Modal.Title></Modal.Header>
+        <Modal.Body>
+          <dl className="text-break">
+            <dt>Publisher / package</dt><dd>{releaseDetails?.publisher || "Legacy local package"} / {releaseDetails?.packageName || releaseDetails?.name}</dd>
+            <dt>Packaging version</dt><dd>{releaseDetails?.version}</dd>
+            <dt>Package digest</dt><dd>{releaseDetails?.digest || "Not supplied by this legacy package"}</dd>
+            <dt>Signature verified at import</dt><dd>{releaseDetails?.signatureAlgorithm || "Unsigned legacy import"}</dd>
+            <dt>Publisher key fingerprint</dt><dd>{releaseDetails?.signatureKeyId || "Not applicable"}</dd>
+            <dt>Compatibility requirements</dt><dd><pre>{JSON.stringify(releaseDetails?.compatibility || {}, null, 2)}</pre></dd>
+            <dt>Declared prerequisites</dt><dd><pre>{JSON.stringify(releaseDetails?.prerequisites || {}, null, 2)}</pre></dd>
+            <dt>Software versions</dt><dd><pre>{JSON.stringify(releaseDetails?.softwareVersions || {}, null, 2)}</pre></dd>
+          </dl>
+        </Modal.Body>
       </Modal>
 
       <Modal show={showInstallConfirmation} onHide={() => setShowInstallConfirmation(false)}>
@@ -839,7 +1010,8 @@ export default function ManagementPacks() {
       <Modal show={mpackToDelete !== undefined} onHide={() => !busy && setMpackToDelete(undefined)}>
         <Modal.Header closeButton={!busy}><Modal.Title>Remove Management Pack</Modal.Title></Modal.Header>
         <Modal.Body>
-          Remove {mpackToDelete?.name} {mpackToDelete?.version}?
+          Remove the imported definition for {mpackToDelete?.name} {mpackToDelete?.version}?
+          Referenced definitions and packages with retained resources cannot be removed.
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setMpackToDelete(undefined)} disabled={Boolean(busy)}>Cancel</Button>

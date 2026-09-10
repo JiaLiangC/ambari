@@ -121,6 +121,15 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
   private RepositoryVersionDAO repositoryVersionDAO;
 
   @Inject
+  private org.apache.ambari.server.orm.dao.MpackTargetResourceDAO mpackResources;
+
+  @Inject
+  private org.apache.ambari.server.orm.dao.ClusterServiceDAO mpackServices;
+
+  @Inject
+  private org.apache.ambari.server.orm.dao.MpackDAO mpackPackages;
+
+  @Inject
   private HostVersionDAO hostVersionDAO;
 
   private final ServiceComponentDesiredStateDAO serviceComponentDesiredStateDAO;
@@ -1363,7 +1372,10 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
       removeEntities();
       fireRemovalEvent = true;
       clusters.getCluster(getClusterName()).removeServiceComponentHost(this);
+    } catch (IllegalStateException ex) {
+      deleteMetaData.setAmbariException(new AmbariException(ex.getMessage()));
     } catch (AmbariException ex) {
+      deleteMetaData.setAmbariException(ex);
       LOG.error("Unable to remove a service component from a host", ex);
     } finally {
       writeLock.unlock();
@@ -1400,6 +1412,17 @@ public class ServiceComponentHostImpl implements ServiceComponentHost {
 
   @Transactional
   protected void removeEntities() {
+    RepositoryVersionEntity repository = serviceComponent.getDesiredRepositoryVersion();
+    if (repository != null && repository.getStack() != null && repository.getStack().getMpackId() != null
+        && mpackPackages.findById(repository.getStack().getMpackId()).getContentDigest() != null) {
+      org.apache.ambari.server.orm.entities.ClusterServiceEntityPK key =
+          new org.apache.ambari.server.orm.entities.ClusterServiceEntityPK();
+      key.setClusterId(getClusterId());
+      key.setServiceName(getServiceName());
+      org.apache.ambari.server.orm.entities.ClusterServiceEntity service = mpackServices.findByPKForUpdate(key);
+      mpackResources.requireHostRemovable(getClusterId(), getServiceName(), service.getMpackTargetIncarnation(),
+          getHostName(), getServiceComponentName(), getState() == State.INIT);
+    }
     HostComponentStateEntity stateEntity = getStateEntity();
     if (stateEntity != null) {
       HostEntity hostEntity = stateEntity.getHostEntity();

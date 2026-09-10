@@ -255,4 +255,231 @@ public class MpackDAOTest {
     }
   }
 
+  @Test
+  public void testFailedUpgradeKeepsConfirmedCatalogReferenceAndLateResponsesCannotReplaceIt() {
+    MpackEntity previous = release("1", "a".repeat(64));
+    MpackEntity candidate = release("2", "b".repeat(64));
+    MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
+    com.google.gson.JsonObject binding = releaseBinding(previous, "host-one", "STOP");
+    resources.recordIntent(binding.toString(), 200L);
+    resources.recordReport(200L, stoppedReport(binding, 200L, previous.getContentDigest()));
+    assertEquals(previous.getId(), resources.requireStoppedRelease(9L, "HTTP_ECHO", binding.get("targetIncarnation").getAsString()));
+
+    binding.addProperty("operation", "UPGRADE");
+    binding.addProperty("packageId", candidate.getId());
+    binding.addProperty("packageDigest", candidate.getContentDigest());
+    resources.recordIntent(binding.toString(), 201L);
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> m_dao.removeCatalog(previous.getId()));
+    org.junit.Assert.assertThrows(IllegalStateException.class,
+        () -> resources.requireStoppedRelease(9L, "HTTP_ECHO", binding.get("targetIncarnation").getAsString()));
+    assertEquals(previous.getId(), resources.findByCluster(9L).get(0).getMaterializedMpackId());
+
+    // STOP can resolve native uncertainty without claiming that new artifacts were installed.
+    binding.addProperty("operation", "STOP");
+    resources.recordIntent(binding.toString(), 202L);
+    resources.recordReport(202L, stoppedReport(binding, 202L, previous.getContentDigest()));
+    assertEquals(previous.getId(), resources.requireStoppedRelease(9L, "HTTP_ECHO", binding.get("targetIncarnation").getAsString()));
+    resources.recordReport(201L, stoppedReport(binding, 201L, candidate.getContentDigest()));
+    assertEquals(previous.getId(), resources.findByCluster(9L).get(0).getMaterializedMpackId());
+
+    binding.addProperty("operation", "UPGRADE");
+    resources.recordIntent(binding.toString(), 203L);
+    resources.recordReport(203L, stoppedReport(binding, 203L, candidate.getContentDigest()));
+    assertEquals(candidate.getId(), resources.requireStoppedRelease(9L, "HTTP_ECHO", binding.get("targetIncarnation").getAsString()));
+    m_dao.removeCatalog(previous.getId());
+    org.junit.Assert.assertNull(m_dao.findById(previous.getId()));
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> m_dao.removeCatalog(candidate.getId()));
+  }
+
+  @Test
+  public void testDetachedOwnershipMustBeReclaimedBeforeMutationAndSurvivesCatalogRemoval() {
+    MpackEntity pack = release("1", "a".repeat(64));
+    MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
+    com.google.gson.JsonObject binding = releaseBinding(pack, "host-one", "ADOPT");
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.recordIntent(binding.toString(), 300L));
+    binding.addProperty("operation", "STOP");
+    resources.recordIntent(binding.toString(), 300L);
+    resources.recordReport(300L, stoppedReport(binding, 300L, pack.getContentDigest()));
+    binding.addProperty("operation", "DETACH");
+    resources.recordIntent(binding.toString(), 301L);
+    binding.addProperty("operation", "START");
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.recordIntent(binding.toString(), 302L));
+    com.google.gson.JsonObject report = com.google.gson.JsonParser.parseString(stoppedReport(binding, 301L, pack.getContentDigest())).getAsJsonObject();
+    com.google.gson.JsonObject operation = report.getAsJsonObject("mpackOperation");
+    operation.addProperty("detached", true);
+    operation.add("retainedResources", com.google.gson.JsonParser.parseString("[{\"path\":\"/fixture/owned\",\"device\":1,\"inode\":2}]"));
+    resources.recordReport(301L, report.toString());
+    assertEquals("DETACHED", resources.findByCluster(9L).get(0).getResourceState());
+    resources.requireRemovable(9L, "HTTP_ECHO");
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.recordIntent(binding.toString(), 302L));
+    binding.addProperty("operation", "ADOPT");
+    resources.recordIntent(binding.toString(), 302L);
+    operation.addProperty("taskId", "302");
+    operation.addProperty("detached", false);
+    resources.recordReport(302L, report.toString());
+    assertEquals("MANAGED", resources.findByCluster(9L).get(0).getResourceState());
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> m_dao.removeCatalog(pack.getId()));
+    binding.addProperty("operation", "DETACH");
+    resources.recordIntent(binding.toString(), 303L);
+    operation.addProperty("taskId", "303");
+    operation.addProperty("detached", true);
+    resources.recordReport(303L, report.toString());
+    m_dao.removeCatalog(pack.getId());
+    org.junit.Assert.assertNull(resources.findByCluster(9L).get(0).getMpackId());
+    assertEquals("DETACHED", resources.findByCluster(9L).get(0).getResourceState());
+  }
+
+  @Test
+  public void testMixedConfirmedReleasesCannotSelectAnotherPackage() {
+    MpackEntity previous = release("1", "a".repeat(64));
+    MpackEntity candidate = release("2", "b".repeat(64));
+    MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
+    com.google.gson.JsonObject first = releaseBinding(previous, "host-one", "STOP");
+    com.google.gson.JsonObject second = releaseBinding(candidate, "host-two", "STOP");
+    resources.recordIntent(first.toString(), 210L);
+    resources.recordReport(210L, stoppedReport(first, 210L, previous.getContentDigest()));
+    resources.recordIntent(second.toString(), 211L);
+    resources.recordReport(211L, stoppedReport(second, 211L, candidate.getContentDigest()));
+    org.junit.Assert.assertThrows(IllegalStateException.class,
+        () -> resources.requireStoppedRelease(9L, "HTTP_ECHO", first.get("targetIncarnation").getAsString()));
+  }
+
+  private MpackEntity release(String version, String digest) {
+    MpackEntity pack = new MpackEntity();
+    pack.setMpackName("UPGRADE_PACKAGE");
+    pack.setMpackVersion(version);
+    pack.setMpackUri("file:///fixture/mpack.json");
+    pack.setContentDigest(digest);
+    m_dao.create(pack);
+    return pack;
+  }
+
+  private com.google.gson.JsonObject releaseBinding(MpackEntity pack, String host, String operation) {
+    com.google.gson.JsonObject binding = new com.google.gson.JsonObject();
+    binding.addProperty("packageId", pack.getId());
+    binding.addProperty("packageDigest", pack.getContentDigest());
+    binding.addProperty("clusterId", 9);
+    binding.addProperty("serviceName", "HTTP_ECHO");
+    binding.addProperty("targetIncarnation", "00000000-0000-0000-0000-000000000009");
+    binding.addProperty("hostName", host);
+    binding.addProperty("role", "HTTP_ECHO_SERVER");
+    binding.addProperty("operation", operation);
+    return binding;
+  }
+
+  private String stoppedReport(com.google.gson.JsonObject binding, Long task, String materializedDigest) {
+    com.google.gson.JsonObject identity = binding.deepCopy();
+    identity.addProperty("componentName", "HTTP_ECHO_SERVER");
+    com.google.gson.JsonObject observation = new com.google.gson.JsonObject();
+    observation.add("identity", identity);
+    observation.addProperty("loadState", "loaded");
+    observation.addProperty("state", "inactive");
+    observation.addProperty("pid", "0");
+    com.google.gson.JsonObject outcome = new com.google.gson.JsonObject();
+    outcome.addProperty("state", "SUCCEEDED");
+    outcome.addProperty("taskId", task.toString());
+    outcome.add("packageDigest", binding.get("packageDigest"));
+    outcome.addProperty("materializedPackageDigest", materializedDigest);
+    outcome.add("observation", observation);
+    com.google.gson.JsonObject report = new com.google.gson.JsonObject();
+    report.add("mpackOperation", outcome);
+    return report.toString();
+  }
+
+  @Test
+  public void testDefaultRepositorySelectionAndDurableUninstallEvidence() {
+    MpackEntity pack = new MpackEntity();
+    pack.setMpackName("RESOURCE_PACKAGE");
+    pack.setMpackVersion("1");
+    pack.setMpackUri("file:///fixture/mpack.json");
+    pack.setContentDigest("a".repeat(64));
+    Long id = m_dao.create(pack);
+    org.apache.ambari.server.orm.entities.StackEntity stack = new org.apache.ambari.server.orm.entities.StackEntity();
+    stack.setStackName("RESOURCE_PACKAGE");
+    stack.setStackVersion("1");
+    stack.setMpackId(id);
+    m_injector.getInstance(StackDAO.class).create(stack);
+    Long repository = m_dao.ensureDefaultRepository(id);
+    assertEquals(repository, m_dao.ensureDefaultRepository(id));
+    assertEquals(id, m_injector.getInstance(RepositoryVersionDAO.class).findByPK(repository).getStack().getMpackId());
+
+    MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
+    com.google.gson.JsonObject binding = new com.google.gson.JsonObject();
+    binding.addProperty("packageId", id);
+    binding.addProperty("packageDigest", pack.getContentDigest());
+    binding.addProperty("clusterId", 7);
+    binding.addProperty("serviceName", "HTTP_ECHO");
+    binding.addProperty("targetIncarnation", "00000000-0000-0000-0000-000000000007");
+    binding.addProperty("hostName", "host.example");
+    binding.addProperty("role", "HTTP_ECHO_SERVER");
+    binding.addProperty("operation", "INSTALL");
+    resources.recordIntent(binding.toString(), 100L);
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.requireRemovable(7L, "HTTP_ECHO"));
+    binding.addProperty("operation", "UNINSTALL");
+    resources.recordIntent(binding.toString(), 101L);
+    com.google.gson.JsonObject identity = binding.deepCopy();
+    identity.addProperty("componentName", "HTTP_ECHO_SERVER");
+    com.google.gson.JsonObject observation = new com.google.gson.JsonObject();
+    observation.add("identity", identity);
+    observation.addProperty("loadState", "not-found");
+    observation.addProperty("state", "inactive");
+    observation.addProperty("pid", "0");
+    com.google.gson.JsonObject outcome = new com.google.gson.JsonObject();
+    outcome.addProperty("state", "SUCCEEDED");
+    outcome.addProperty("taskId", "101");
+    outcome.addProperty("packageDigest", pack.getContentDigest());
+    outcome.addProperty("materializedPackageDigest", pack.getContentDigest());
+    outcome.add("observation", observation);
+    outcome.add("retainedResources", new com.google.gson.JsonArray());
+    com.google.gson.JsonObject report = new com.google.gson.JsonObject();
+    report.add("mpackOperation", outcome);
+    resources.recordReport(101L, report.toString());
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.requireRemovable(7L, "HTTP_ECHO"));
+    com.google.gson.JsonObject retainedRoot = new com.google.gson.JsonObject();
+    retainedRoot.addProperty("path", "/fixture/owned");
+    retainedRoot.addProperty("device", 1);
+    retainedRoot.addProperty("inode", 2);
+    outcome.getAsJsonArray("retainedResources").add(retainedRoot);
+    resources.recordReport(100L, report.toString());
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.requireRemovable(7L, "HTTP_ECHO"));
+    identity.addProperty("targetIncarnation", "00000000-0000-0000-0000-000000000008");
+    resources.recordReport(101L, report.toString());
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.requireRemovable(7L, "HTTP_ECHO"));
+    identity.add("targetIncarnation", binding.get("targetIncarnation"));
+    resources.recordReport(101L, report.toString());
+    resources.requireRemovable(7L, "HTTP_ECHO");
+    // No task/service FK: evidence remains valid after normal history retention.
+    m_injector.getInstance(jakarta.persistence.EntityManager.class).clear();
+    assertEquals("UNINSTALLED_RETAINED", resources.findByCluster(7L).get(0).getResourceState());
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> m_dao.removeCatalog(id));
+    assertNotNull(m_dao.findById(id));
+    binding.addProperty("operation", "PURGE");
+    resources.recordIntent(binding.toString(), 102L);
+    binding.addProperty("operation", "STOP");
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.recordIntent(binding.toString(), 103L));
+    binding.addProperty("operation", "PURGE");
+    assertEquals(102L, resources.findByCluster(7L).get(0).getTaskId().longValue());
+    outcome.addProperty("taskId", "102");
+    resources.recordReport(102L, report.toString());
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.requireRemovable(7L, "HTTP_ECHO"));
+    outcome.addProperty("purged", true);
+    outcome.add("purgedResources", new com.google.gson.JsonArray());
+    resources.recordReport(102L, report.toString());
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.requireRemovable(7L, "HTTP_ECHO"));
+    com.google.gson.JsonObject purgedRoot = retainedRoot.deepCopy();
+    purgedRoot.addProperty("disposition", "receipt-only");
+    outcome.getAsJsonArray("purgedResources").add(purgedRoot);
+    resources.recordReport(102L, report.toString());
+    resources.requireRemovable(7L, "HTTP_ECHO");
+    binding.addProperty("operation", "START");
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.recordIntent(binding.toString(), 103L));
+    org.apache.ambari.server.orm.entities.MpackTargetResourceEntity held = resources.findByCluster(7L).get(0);
+    m_dao.removeCatalog(id);
+    org.junit.Assert.assertNull(held.getMpackId());
+    m_injector.getInstance(jakarta.persistence.EntityManager.class).clear();
+    assertEquals("PURGED", resources.findByCluster(7L).get(0).getResourceState());
+    org.junit.Assert.assertNull(resources.findByCluster(7L).get(0).getMpackId());
+    assertNotNull(resources.findByCluster(7L).get(0).getTaskBinding());
+  }
+
 }

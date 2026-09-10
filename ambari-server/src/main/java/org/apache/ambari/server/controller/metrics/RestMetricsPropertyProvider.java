@@ -480,6 +480,13 @@ public class RestMetricsPropertyProvider extends ThreadPoolEnabledPropertyProvid
       String metricsPath = propertyInfo.getPropertyId();
       String documentPath = extractDocumentPath(metricsPath);
       String[] docPath = documentPath.split(DOCUMENT_PATH_SEPARATOR);
+      if ("true".equals(metricsProperties.get("numeric_only"))) {
+        Double value = numericValue(gson.toJsonTree(jsonMap), docPath);
+        if (value != null) {
+          resource.setProperty(requestedPropertyId, value);
+        }
+        continue;
+      }
       Map<String, String> subMap = jsonMap;
       for (int i = 0; i < docPath.length; i++) {
         String pathElement = docPath[i];
@@ -499,6 +506,29 @@ public class RestMetricsPropertyProvider extends ThreadPoolEnabledPropertyProvid
           subMap = gson.fromJson((JsonElement) jsonSubElement, type);
         }
       }
+    }
+  }
+
+  /** Numeric-only declarations never project strings, arrays, or entire documents. */
+  static Double numericValue(JsonElement document, String[] path) {
+    if (path.length == 0 || path.length > 8) {
+      return null;
+    }
+    JsonElement value = document;
+    for (String name : path) {
+      if (value == null || !value.isJsonObject()) {
+        return null;
+      }
+      value = value.getAsJsonObject().get(name);
+    }
+    if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+      return null;
+    }
+    try {
+      double number = value.getAsDouble();
+      return Double.isFinite(number) ? number : null;
+    } catch (NumberFormatException malformed) {
+      return null;
     }
   }
 

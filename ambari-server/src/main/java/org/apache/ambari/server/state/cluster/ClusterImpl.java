@@ -387,12 +387,17 @@ public class ClusterImpl implements Cluster {
   private Multimap<String, String> collectServiceConfigTypesMapping() throws AmbariException {
     Multimap<String, String> serviceConfigTypes = HashMultimap.create();
 
-    Map<String, ServiceInfo> serviceInfoMap = null;
+    Map<String, ServiceInfo> serviceInfoMap = new HashMap<>();
     try {
-      serviceInfoMap = ambariMetaInfo.getServices(desiredStackVersion.getStackName(), desiredStackVersion.getStackVersion());
+      serviceInfoMap.putAll(ambariMetaInfo.getServices(desiredStackVersion.getStackName(), desiredStackVersion.getStackVersion()));
     } catch (ParentObjectNotFoundException e) {
-      LOG.error("Service config versioning disabled due to exception: ", e);
-      return serviceConfigTypes;
+      LOG.warn("Base Stack configuration metadata is unavailable");
+    }
+    // Installed services resolve definitions through their own existing repository.
+    for (Service service : services.values()) {
+      StackId selected = service.getDesiredStackId();
+      serviceInfoMap.put(service.getName(), ambariMetaInfo.getService(
+          selected.getStackName(), selected.getStackVersion(), service.getName()));
     }
     for (Entry<String, ServiceInfo> entry : serviceInfoMap.entrySet()) {
       String serviceName = entry.getKey();
@@ -904,6 +909,13 @@ public class ClusterImpl implements Cluster {
       LOG.debug("Adding a new Service, clusterName={}, clusterId={}, serviceName={}", getClusterName(), getClusterId(), service.getName());
     }
     services.put(service.getName(), service);
+    if (serviceConfigTypes != null) {
+      try {
+        loadServiceConfigTypes();
+      } catch (AmbariException error) {
+        throw new IllegalStateException("Selected service configuration metadata is unavailable", error);
+      }
+    }
   }
 
   /**
@@ -911,18 +923,18 @@ public class ClusterImpl implements Cluster {
    */
   @Override
   public Service addService(String serviceName, RepositoryVersionEntity repositoryVersion) throws AmbariException {
-    if (services.containsKey(serviceName)) {
-      String message = MessageFormat.format("The {0} service already exists in {1}", serviceName,
-          getClusterName());
-
-      throw new AmbariException(message);
+    clusterGlobalLock.writeLock().lock();
+    try {
+      if (services.containsKey(serviceName)) {
+        throw new AmbariException("The service already exists in this cluster");
+      }
+      @Experimental(feature = ExperimentalFeature.PATCH_UPGRADES)
+      Service service = serviceFactory.createNew(this, serviceName, repositoryVersion);
+      addService(service);
+      return service;
+    } finally {
+      clusterGlobalLock.writeLock().unlock();
     }
-
-    @Experimental(feature = ExperimentalFeature.PATCH_UPGRADES)
-    Service service = serviceFactory.createNew(this, serviceName, repositoryVersion);
-    addService(service);
-
-    return service;
   }
 
   @Override
@@ -1235,10 +1247,18 @@ public class ClusterImpl implements Cluster {
 
   @Override
   public List<Config> getLatestConfigsWithTypes(Collection<String> types) {
-    return clusterDAO.getLatestConfigurationsWithTypes(clusterId, getDesiredStackVersion(), types)
-      .stream()
-      .map(clusterConfigEntity -> configFactory.createExisting(this, clusterConfigEntity))
-      .collect(toList());
+    Map<StackId, List<String>> selectedTypes = new HashMap<>();
+    for (String type : types) {
+      String owner = getServiceByConfigType(type);
+      StackId selected = owner == null ? getDesiredStackVersion() : services.get(owner).getDesiredStackId();
+      selectedTypes.computeIfAbsent(selected, ignored -> new ArrayList<>()).add(type);
+    }
+    List<Config> result = new ArrayList<>();
+    for (Entry<StackId, List<String>> entry : selectedTypes.entrySet()) {
+      clusterDAO.getLatestConfigurationsWithTypes(clusterId, entry.getKey(), entry.getValue())
+          .forEach(entity -> result.add(configFactory.createExisting(this, entity)));
+    }
+    return result;
   }
 
   @Override
@@ -1394,7 +1414,11 @@ public class ClusterImpl implements Cluster {
         return;
       }
       deleteService(service, deleteMetaData);
+      if (deleteMetaData.getAmbariException() != null) {
+        return;
+      }
       services.remove(serviceName);
+      loadServiceConfigTypes();
 
     } finally {
       clusterGlobalLock.writeLock().unlock();
@@ -2607,7 +2631,9 @@ public class ClusterImpl implements Cluster {
    */
   @Override
   public Map<PropertyInfo.PropertyType, Set<String>> getConfigPropertiesTypes(String configType){
-    return getConfigPropertiesTypes(configType, getCurrentStackVersion());
+    String owner = getServiceByConfigType(configType);
+    return getConfigPropertiesTypes(configType,
+        owner == null ? getCurrentStackVersion() : services.get(owner).getDesiredStackId());
   }
 
   /**

@@ -99,6 +99,12 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
   org.apache.ambari.server.orm.dao.MpackDAO mpackDAO;
 
   @Inject
+  org.apache.ambari.server.orm.dao.MpackTargetResourceDAO mpackResources;
+
+  @Inject
+  com.google.inject.Provider<org.apache.ambari.server.mpack.MpackSecrets> mpackSecrets;
+
+  @Inject
   com.google.inject.Provider<org.apache.ambari.server.api.services.AmbariMetaInfo> mpackMetaInfo;
 
   @Inject
@@ -380,7 +386,18 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
     Map<String, String> params = command.getCommandParams();
     params.put("mpack_content_digest", pack.getContentDigest());
     params.put("mpack_target_incarnation", mpackServiceDAO.getOrCreateMpackTargetIncarnation(clusterId, command.getServiceName()));
+    if (java.util.Set.of("PURGE", "UPGRADE", "DETACH", "ADOPT").contains(params.getOrDefault("custom_command", ""))
+        && !params.get("mpack_target_incarnation").equals(params.get("expected_target_incarnation"))) {
+      throw new AmbariException("PLAN_STALE: retained target differs from the current service incarnation");
+    }
+    if ("UPGRADE".equals(params.get("custom_command")) && !pack.getContentDigest().equals(params.get("expected_package_digest"))) {
+      throw new AmbariException("PLAN_STALE: selected package differs from the requested artifact update");
+    }
     org.apache.ambari.server.state.Cluster cluster = clusters.getClusterById(clusterId);
+    if (java.util.Set.of("UNINSTALL", "PURGE", "UPGRADE", "DETACH", "ADOPT").contains(params.getOrDefault("custom_command", ""))
+        && cluster.getService(command.getServiceName()).getDesiredState() == org.apache.ambari.server.state.State.STARTED) {
+      throw new AmbariException("Stop the service through its existing workflow before removing or updating resources");
+    }
     Map<String, Map<String, String>> tags = mpackConfigHelper.get().getEffectiveDesiredTags(
         cluster, command.getHostname(), cluster.getDesiredConfigs());
     Map<String, Map<String, String>> effective = mpackConfigHelper.get().getEffectiveConfigProperties(cluster, tags);
@@ -391,6 +408,14 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
     Map<String, Map<String, String>> selectedTags = new java.util.TreeMap<>();
     for (String type : info.getConfigTypeAttributes().keySet()) {
       Map<String, String> values = new java.util.TreeMap<>(effective.getOrDefault(type, Collections.emptyMap()));
+      if (command.getRoleCommand() != org.apache.ambari.server.RoleCommand.STOP
+          && !java.util.Set.of("UNINSTALL", "PURGE").contains(params.getOrDefault("custom_command", ""))) {
+        try {
+          mpackMetaInfo.get().getMpackManager().validateConfiguration(pack.getId(), command.getServiceName(), type, values);
+        } catch (java.io.IOException invalid) {
+          throw new AmbariException("SCHEMA_INVALID: effective package configuration is invalid");
+        }
+      }
       selected.put(type, values);
       selectedTags.put(type, tags.getOrDefault(type, Collections.emptyMap()));
       Map<String, String> fields = new java.util.TreeMap<>();
@@ -405,9 +430,36 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
     binding.put("operation", command.getRoleCommand() == org.apache.ambari.server.RoleCommand.CUSTOM_COMMAND
         ? params.get("custom_command") : command.getRoleCommand().toString());
     binding.put("packageDigest", pack.getContentDigest());
+    binding.put("packageId", pack.getId());
+    binding.put("packageIdentity", Map.of("name", pack.getMpackName(), "version", pack.getMpackVersion()));
     binding.put("targetIncarnation", params.get("mpack_target_incarnation"));
     binding.put("configTags", selectedTags);
     binding.put("configurationHashes", hashes);
+    java.util.Set<String> declaredSecrets = new java.util.TreeSet<>();
+    if (pack.getReleaseMetadata() != null) {
+      com.google.gson.JsonObject release = com.google.gson.JsonParser.parseString(pack.getReleaseMetadata()).getAsJsonObject();
+      if (release.has("secretConfigurationDefaults")) {
+        com.google.gson.JsonObject defaults = release.getAsJsonObject("secretConfigurationDefaults").getAsJsonObject(command.getServiceName());
+        if (defaults != null) {
+          defaults.entrySet().forEach(entry -> {
+            String[] field = entry.getKey().split("\\.", 2);
+            if (field.length == 2 && !selected.getOrDefault(field[0], Collections.emptyMap()).containsKey(field[1])) {
+              declaredSecrets.add(entry.getValue().getAsString());
+            }
+          });
+        }
+      }
+      if (release.has("secretReferences")) {
+        com.google.gson.JsonArray refs = release.getAsJsonObject("secretReferences").getAsJsonArray(command.getServiceName());
+        if (refs != null) { refs.forEach(reference -> declaredSecrets.add(reference.getAsString())); }
+      }
+    }
+    boolean hasSecretReferences = !declaredSecrets.isEmpty() || selected.values().stream().flatMap(fields -> fields.values().stream())
+        .anyMatch(value -> value != null && value.startsWith("secret://"));
+    if (hasSecretReferences && !java.util.Set.of("STOP", "UNINSTALL", "PURGE").contains(binding.get("operation"))) {
+      binding.put("secretGenerations", mpackSecrets.get().pin(cluster, command.getServiceName(), selected, declaredSecrets));
+    }
+
     params.put("mpack_task_binding", new com.google.gson.Gson().toJson(binding));
     command.setConfigurations(selected);
     command.setOverrideConfigs(false);
@@ -498,6 +550,8 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
         pinMpackTask(hostRoleCommand.getExecutionCommandWrapper().getExecutionCommand(), clusterId);
         if (hostRoleCommand.getExecutionCommandWrapper().getExecutionCommand().getCommandParams().containsKey("mpack_task_binding")) {
           hostRoleCommand.getExecutionCommandWrapper().invalidateJson();
+          mpackResources.recordIntent(hostRoleCommand.getExecutionCommandWrapper().getExecutionCommand()
+              .getCommandParams().get("mpack_task_binding"), hostRoleCommandEntity.getTaskId());
         }
         ExecutionCommandEntity executionCommandEntity = hostRoleCommand.constructExecutionCommandEntity();
         executionCommandEntity.setHostRoleCommand(hostRoleCommandEntity);
@@ -616,6 +670,9 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
     }
     for (HostRoleCommandEntity commandEntity : commandEntities) {
       CommandReport report = taskReports.get(commandEntity.getTaskId());
+      if (report.getStructuredOut() != null && report.getStructuredOut().contains("\"mpackOperation\"")) {
+        mpackResources.recordReport(commandEntity.getTaskId(), report.getStructuredOut());
+      }
       HostRoleStatus existingTaskStatus = commandEntity.getStatus();
       HostRoleStatus reportedTaskStatus = HostRoleStatus.valueOf(report.getStatus());
       if (!existingTaskStatus.isCompletedState()) {
@@ -692,6 +749,9 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
       hostname, requestId, stageId, role);
 
     for (HostRoleCommandEntity command : commands) {
+      if (report.getStructuredOut() != null && report.getStructuredOut().contains("\"mpackOperation\"")) {
+        mpackResources.recordReport(command.getTaskId(), report.getStructuredOut());
+      }
       HostRoleStatus status = HostRoleStatus.valueOf(report.getStatus());
 
       // if FAILED and marked for holding then set status = HOLDING_FAILED

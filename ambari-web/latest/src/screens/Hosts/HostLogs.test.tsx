@@ -66,7 +66,7 @@ function renderLogs() {
     <MemoryRouter>
       <AppContext.Provider value={{ clusterName: "c1" } as any}>
         <ServiceContext.Provider value={{
-          allServiceModels: [{ serviceName: "HDFS", displayName: "HDFS" }],
+          allServiceModels: { hdfs: { serviceName: "HDFS", displayName: "HDFS" } },
         } as any}>
           <HostLogs hostName="host1" />
         </ServiceContext.Provider>

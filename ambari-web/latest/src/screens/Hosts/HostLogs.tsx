@@ -72,7 +72,7 @@ export default function HostLogs({ hostName }: HostLogsProps) {
     setLoading(true);
     setError(null);
     const serviceNames = Object.fromEntries(
-      (allServiceModels || []).map((service: any) => [
+      Object.values(allServiceModels || {}).map((service: any) => [
         service.serviceName || service.ServiceInfo?.service_name,
         service.displayName || service.ServiceInfo?.service_name,
       ]),

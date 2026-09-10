@@ -221,7 +221,11 @@ Evidence: authoring tests, `TestMpackHost`, `TestRuntimeAdapter`, `TestActionQue
 `MpackManagerTest`, `MpackDAOTest`, metadata/Blueprint tests. These are local fixtures
 and integration components, not proof that Redis was installed on a live host.
 
-## Kyuubi walkthrough and exact breakpoints
+## Historical Kyuubi walkthrough and exact breakpoints
+
+This records the earlier audit only. The user removed the example and its dedicated
+integration work on 2026-09-10. The fixture path below belongs to the earlier Git
+revision; it is no longer a current example or acceptance requirement.
 
 1. `mpack-authoring/fixtures/kyuubi` provides host source, two config files, schema,
    SecretRef shape and Spark/Hadoop/Hive requirements. The common compiler can build
@@ -325,6 +329,67 @@ Quarantine is retained catalog evidence and needs operator storage/retention pol
 
 ## Authorized publication
 
+### Authoring examples, guide and validation delivery
+
+The subsequent authoring request is implemented independently of the proposed Store
+and platform work. `mpack-authoring/README.md` is the English development guide;
+At that delivery, HTTP, Redis and Kyuubi were canonical examples, with a new multi-service YAML example
+sharing one configuration schema. `mpack-authoring/validate.py` reuses the compiler,
+source verifier and host exporter for portable source, bundle and example-suite checks.
+It emits text/JSON and exit codes, uses temporary build products and an ephemeral
+host-export key, and never executes package software or echoes raw input exceptions.
+
+The completed implementation batch was followed by consolidated checks:
+
+- All 35 authoring tests passed, including seven new CLI/export regressions for paths
+  with spaces, unchanged inputs, diagnostic redaction, bundle tampering/malformed input,
+  missing tooling, expected Kyuubi rejection and distinct multi-service config defaults.
+- Five example expectations passed: HTTP/Redis/multi-service host export, Kyuubi source
+  build, and the expected `DEPENDENCY_UNRESOLVED` host-export rejection. The last result
+  remains invalid for deployment; it is not a fifth deployable example.
+- Guide source-check, source-export, digest-verification and signed host-export commands
+  passed against a copied HTTP source, with disposable output/key material. Bash syntax
+  checks passed for every guide command block.
+- Root `org.apache.rat:apache-rat-plugin:0.18:check`, Python syntax checks, active document
+  links/anchors/fences and `git diff --check` passed.
+
+Initial tests passed on system jsonschema 4.10.3, below requirements. Final acceptance
+repeated the authoring suite and example checks on Python 3.12.3 with isolated
+jsonschema 4.26.0 and PyYAML 6.0.3 installed from requirements.txt. System packages were
+not modified. The base interpreter lacks pip; the guide's venv/pip setup commands
+were not executed. Existing external pip tooling installed a temporary requirements
+target instead. Logs/reports are in `/tmp/mpack-authoring-user-validation-20260910/`:
+`tests.log`, `examples.json` and `guide-checks.json`.
+
+Final suite and example commands, from the repository root:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/tmp/mpack-authoring-user-validation-20260910/python-deps:mpack-authoring/src/main/python python3 -m unittest discover -s mpack-authoring/src/test/python -p 'test_*.py' -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/tmp/mpack-authoring-user-validation-20260910/python-deps python3 mpack-authoring/validate.py --json examples
+```
+
+No Java, Agent runtime or frontend implementation changed in this delivery, so their
+earlier builds were not repeated. No live systemd/Redis/Kyuubi, Server-Agent deployment,
+publisher public-key verification or Store acceptance is claimed. The earlier audit
+test count is historical and is not recomputed by adding repeated suite executions.
+
+### New proposals, not implementation evidence
+
+The user requested a standalone Store design and later implementation in a new
+repository. [store-design.md](store-design.md) is the sole Store design and S0-S4
+implementation plan. It will move to that repository when work starts. No Store page,
+backend or publishing infrastructure is part of Ambari implementation.
+
+Ambari architecture and the P0-P8 implementation plan retain file/URL import,
+existing-cluster package selection, uninstall and the remaining lifecycle/runtime
+roadmap. P3 now denotes the Ambari importer, not external Store work. README links
+both scopes. Only documentation changed for these requests; no new repository was
+created. The earlier test ledger does not prove any proposed feature. No new endpoint,
+uninstall, asymmetric publisher verification or independent package composition is
+reported as implemented by these documentation changes.
+
+### Completed audit delivery
+
 The user requested remote submission after the completed review, three inspections
 and consolidated validation, then explicitly requested a single commit instead of
 splitting the changes. This user instruction supersedes the default topic-commit
@@ -334,3 +399,96 @@ no remote tracking branch. The AMBARI-14714 commit contains the reviewed source,
 focused tests and consolidated documentation. Validation above applies to the final
 integrated source tree. No pull request, upstream push, force push or live deployment
 is included.
+
+
+## Authorized P0-P8 implementation in progress
+
+The user authorized completing the Ambari implementation batch before consolidated
+compilation, validation and tests. Historical results above apply only to their named
+earlier revisions. No tests, compilation, wheel installation or runtime acceptance have
+run for the current batch. No current milestone is declared fully accepted.
+
+| Work | Current source implementation | Still open |
+| --- | --- | --- |
+| P0-P4 | Publisher Ed25519 trust, signed release metadata, file/approved-URL import, existing-cluster service composition, durable uninstall/purge evidence, schema-driven install/config UI | Complete regression coverage, final source reconciliation and consolidated acceptance |
+| P5 | Opt-in disposable Server-Agent import/lifecycle/retention harness and standalone authoring packaging | Harness documentation/fault cases; actual native/production DB acceptance needs a supplied environment |
+| P6 upgrade | Stopped compatible vendored-artifact update; desired versus confirmed release references; old-package protection; API/UI and fault-path cases | Consolidated verification; a generic contract for package-owned data operations and shared-prerequisite changes remains open; no Redis-specific core implementation is planned |
+| P6 clients | `host.files/v1` shares task/receipt/staging/retention; multi-service YAML includes a CLIENT and executable CLI artifact | Consolidated compiler/Agent/Server acceptance; no live-secret or client upgrade promise |
+| P6 observability | Compiler projects fixed existing REST metrics and LogSearch metadata; numeric-only metric projection; existing RBAC/API reused | Projection/API tests and documentation closure; LogSearch collector and remote metric endpoint acceptance remain external |
+| P6 ownership | Stopped DETACH/ADOPT for the same verified service incarnation; resource protection and UI recovery actions | Remaining permission/task/DAO cases and documentation; no arbitrary foreign-unit adoption |
+| P8 authoring | Shared source review/diff for humans and AI; typed configuration UI; English guide and validation entry points | Final verification; no AI provider or autonomous execution added |
+| P8 runtimes | Local Docker/Podman and stateless Kubernetes adapter source, shared Script dispatch, runtime-specific absence projection and response fixtures added | OCI/Kubernetes integration and source closure plus consolidated verification; external database implementation remains open; no real runtime acceptance claimed |
+
+The user removed Kyuubi/P7 on 2026-09-10, rather than deferring it. The four fixture
+files and current guide/suite references are removed; the current examples are HTTP,
+Redis and multi-service YAML (now including a file-only client). Generic unresolved
+dependency rejection uses a temporary HTTP fixture. Historical Kyuubi evidence above
+does not reintroduce a requirement. The Store design remains a separate document;
+Store code belongs to a future independent repository and has not been implemented.
+
+The detailed sequence, decisions and external prerequisites remain in
+[implementation-plan.md](implementation-plan.md#active-implementation-ledger-verification-deferred).
+The current implementation is a work-in-progress checkpoint. Its publication does
+not establish compilation, test success or runtime acceptance.
+
+
+## Paused implementation checkpoint — 2026-09-10
+
+The user requested stopping implementation, collecting the current work within two
+minutes and pushing one progress commit to the existing remote branch because their
+remaining usage allowance is low. Resume only when the user asks. This instruction
+supersedes completing the full implementation batch before publication; it does not
+claim completion or authorize live deployment. No compilation, test suite, wheel
+installation or runtime acceptance was executed for this checkpoint. Publication
+hygiene checks are not functional validation. The prior audit results above remain
+historical.
+
+### Resume in this order
+
+1. Finish OCI/Kubernetes source integration. The latest files are `mpack_oci.py`,
+   `mpack_kubernetes.py`, their Agent tests, `ManifestService`, authoring schema/export
+   and `MpackTargetResourceDAO`. Both reuse the existing task receipt. Initial-plan
+   staleness now includes engine/namespace identity. Kubernetes uses namespace and
+   Deployment UID, resourceVersion updates, foreground UID-conditioned deletion and
+   remaining-Pod observation. These paths are incomplete and unverified; add exporter,
+   transport and Server resource-evidence cases, check actual API defaulting/rollout
+   behavior, and finish operator connection instructions. Do not claim fixture code
+   as real Docker/Podman/Kubernetes execution.
+2. Implement the remaining external database runtime contract. It currently remains
+   unsupported at execution. Define actual supported connection/observation semantics
+   and ownership before adding an executor; do not invent a dependency authority.
+3. Close the generic package-owned lifecycle extension contract for software-specific
+   upgrade/data migration/backup/restore. Product algorithms belong to signed Mpack
+   content, never Redis branches in core Java/Python/UI. The current core supports
+   stopped compatible vendored-artifact upgrades only. Shared OS packages are host
+   prerequisites, not exclusively owned per-deployment binaries.
+4. Finish P0-P6 integration coverage: compiler-to-import publisher trust, file/approved
+   URL transport and installed local URI, existing-cluster config/repository selection,
+   secret/task/config-generation alignment, lifecycle permissions, retained-resource
+   DAO reports for files/OCI/Kubernetes, and UI failure/refresh/recovery. Revisit the
+   UI selected-versus-materialized release choices and all profile capability gates.
+   Finish `dev-support/mpack` harness documentation and fault cases.
+5. Reconcile the original review, architecture/contracts/spec/English guide and active
+   P0-P8 rows. Older status sections describe earlier baselines and must not override
+   this checkpoint. Kyuubi is removed, not deferred. Store remains a separate design
+   only; its implementation belongs to a future independent repository.
+6. Once all implementation/source/documentation work is complete, run consolidated
+   authoring, Agent/common, Java/DAO/migration and React tests/builds plus packaging,
+   license and source checks. Regenerate producer/consumer fixtures; do not reuse
+   earlier digests or counts. Then perform the requested three inspections for
+   identity/permissions/data integrity, failure/recovery, and contract/document
+   consistency; fix findings and rerun affected checks only. Actual native/runtime,
+   production DB and live Server-Agent acceptance still require suitable environments.
+
+### Local validation environment references
+
+Previous tooling locations, to be rechecked at the consolidated phase:
+
+- Maven: `/jialiangc/bigdata/prjs/.codex-runs/ambari-mpack-v2/tools/apache-maven-3.9.16/bin/mvn`.
+- Python dependencies: `/tmp/mpack-authoring-user-validation-20260910/python-deps`;
+  the newly required cryptography dependency has not been installed/verified here.
+- Temporary pip bootstrap: `/tmp/mpack-final-validation-20260910/pip.pyz`.
+- Producer/consumer switches: `mpack.host.fixture`, `mpack.task.fixture` /
+  `MPACK_TASK_FIXTURE`, `mpack.publisher.fixture`, `mpack.secret.fixture` /
+  `MPACK_SECRET_FIXTURE`. Generate fresh artifacts outside the repository; never
+  commit signing keys or credential values.

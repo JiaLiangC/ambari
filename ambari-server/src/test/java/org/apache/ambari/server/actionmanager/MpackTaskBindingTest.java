@@ -54,6 +54,7 @@ public class MpackTaskBindingTest {
     accessor.mpackServiceDAO = mock(ClusterServiceDAO.class);
     accessor.mpackDAO = mock(MpackDAO.class);
     AmbariMetaInfo metaInfo = mock(AmbariMetaInfo.class);
+    when(metaInfo.getMpackManager()).thenReturn(mock(org.apache.ambari.server.mpack.MpackManager.class));
     accessor.mpackMetaInfo = () -> metaInfo;
     ConfigHelper configHelper = mock(ConfigHelper.class);
     accessor.mpackConfigHelper = () -> configHelper;
@@ -71,6 +72,9 @@ public class MpackTaskBindingTest {
     ClusterServiceEntity service = new ClusterServiceEntity();
     service.setServiceDesiredStateEntity(desired);
     MpackEntity pack = new MpackEntity();
+    pack.setId(4L);
+    pack.setMpackName("http-authoring-example");
+    pack.setMpackVersion("0.1.0");
     String digest = "a".repeat(64);
     String fixtureRoot = System.getProperty("mpack.host.fixture");
     if (fixtureRoot != null) {
@@ -119,6 +123,39 @@ public class MpackTaskBindingTest {
           "serviceMetadata", new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(metadata));
       java.nio.file.Files.writeString(java.nio.file.Path.of(output),
           new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(envelope));
+    }
+    command.setRoleCommand(RoleCommand.CUSTOM_COMMAND);
+    command.getCommandParams().put("custom_command", "PURGE");
+    assertThrows(org.apache.ambari.server.AmbariException.class, () -> accessor.pinMpackTask(command, 1L));
+    command.getCommandParams().put("expected_target_incarnation", "00000000-0000-0000-0000-000000000002");
+    assertThrows(org.apache.ambari.server.AmbariException.class, () -> accessor.pinMpackTask(command, 1L));
+    org.apache.ambari.server.state.Service current = mock(org.apache.ambari.server.state.Service.class);
+    when(cluster.getService("HTTP_ECHO")).thenReturn(current);
+    when(current.getDesiredState()).thenReturn(org.apache.ambari.server.state.State.INSTALLED);
+    command.getCommandParams().put("expected_target_incarnation", "00000000-0000-0000-0000-000000000001");
+    accessor.pinMpackTask(command, 1L);
+    Map<?, ?> purgeBinding = gson.fromJson(command.getCommandParams().get("mpack_task_binding"), Map.class);
+    assertEquals("PURGE", purgeBinding.get("operation"));
+    assertEquals("00000000-0000-0000-0000-000000000001", purgeBinding.get("targetIncarnation"));
+    command.getCommandParams().put("custom_command", "UPGRADE");
+    assertThrows(org.apache.ambari.server.AmbariException.class, () -> accessor.pinMpackTask(command, 1L));
+    command.getCommandParams().put("expected_package_digest", "c".repeat(64));
+    assertThrows(org.apache.ambari.server.AmbariException.class, () -> accessor.pinMpackTask(command, 1L));
+    command.getCommandParams().put("expected_package_digest", digest);
+    when(current.getDesiredState()).thenReturn(org.apache.ambari.server.state.State.STARTED);
+    assertThrows(org.apache.ambari.server.AmbariException.class, () -> accessor.pinMpackTask(command, 1L));
+    when(current.getDesiredState()).thenReturn(org.apache.ambari.server.state.State.INSTALLED);
+    accessor.pinMpackTask(command, 1L);
+    Map<?, ?> upgradeBinding = gson.fromJson(command.getCommandParams().get("mpack_task_binding"), Map.class);
+    assertEquals("UPGRADE", upgradeBinding.get("operation"));
+    assertEquals(digest, upgradeBinding.get("packageDigest"));
+    for (String handoff : new String[]{"DETACH", "ADOPT"}) {
+      command.getCommandParams().put("custom_command", handoff);
+      command.getCommandParams().put("expected_target_incarnation", "00000000-0000-0000-0000-000000000002");
+      assertThrows(org.apache.ambari.server.AmbariException.class, () -> accessor.pinMpackTask(command, 1L));
+      command.getCommandParams().put("expected_target_incarnation", "00000000-0000-0000-0000-000000000001");
+      accessor.pinMpackTask(command, 1L);
+      assertEquals(handoff, gson.fromJson(command.getCommandParams().get("mpack_task_binding"), Map.class).get("operation"));
     }
     command.setClusterId("2");
     assertThrows(org.apache.ambari.server.AmbariException.class, () -> accessor.pinMpackTask(command, 1L));

@@ -31,6 +31,9 @@ from resource_management.core.resources.accounts import Group, User
 from resource_management.core.resources.system import Directory
 from resource_management.core.resources.packaging import Package
 from resource_management.libraries.functions.mpack_host import HostDeployment, HostError
+from resource_management.libraries.functions.mpack_files import FilesDeployment
+from resource_management.libraries.functions.mpack_oci import OciDeployment
+from resource_management.libraries.functions.mpack_kubernetes import KubernetesDeployment
 from resource_management.libraries.script.script import Script
 
 
@@ -72,8 +75,23 @@ class ManifestService(Script):
   def _deployment(self, cancel=None, command=None):
     root = Path(self.basedir)
     descriptor = json.loads((root / "manifest-service.json").read_text())
-    return HostDeployment(descriptor, root / "payload", command or self.get_config(),
-                          cancel=cancel, provision=self._provision)
+    execution = command or self.get_config()
+    component = next((item for item in descriptor["service"]["components"] if item["name"] == execution.get("role")), None)
+    if str(execution.get("roleCommand", "")).endswith("SERVICE_CHECK") or str(execution.get("role", "")).endswith("_SERVICE_CHECK"):
+      local = [item for item in descriptor["service"]["components"] if item["name"] in execution.get("localComponents", [])]
+      component = local[0] if len(local) == 1 else None
+    adapters = {"host.systemd/v1": HostDeployment, "host.files/v1": FilesDeployment,
+                "oci.container/v1": OciDeployment, "kubernetes.workload/v1": KubernetesDeployment}
+    adapter = adapters.get(component["profiles"][0]["adapter"]) if component else None
+    if adapter is None:
+      raise HostError("CAPABILITY_UNSUPPORTED", "Component has no supported execution profile")
+    return adapter(descriptor, root / "payload", execution, cancel=cancel, provision=self._provision)
+
+  @staticmethod
+  def _ready(deployment, observation):
+    if observation.get("kind") in ("host.files/v1", "kubernetes.workload/v1"):
+      return observation.get("ready", False)
+    return observation["state"] == "active" and int(observation["pid"]) > 0 and deployment._healthy()
 
   def _run(self, operation):
     cancel = threading.Event()
@@ -104,6 +122,24 @@ class ManifestService(Script):
   def stop(self, env):
     self._run("stop")
 
+  def uninstall(self, env):
+    self._run("uninstall")
+
+  def purge(self, env):
+    self._run("purge")
+
+  def reload(self, env):
+    self._run("reload")
+
+  def detach(self, env):
+    self._run("detach")
+
+  def adopt(self, env):
+    self._run("adopt")
+
+  def upgrade(self, env):
+    self._run("upgrade")
+
   def restart(self, env):
     # One persisted task and one native intent, not stop/start with a reused task ID.
     if self.get_config().get("commandParams", {}).get("upgrade_type"):
@@ -116,7 +152,7 @@ class ManifestService(Script):
       deployment.validate_inputs(validate_config=False)
       observation = deployment.observe()
       self.put_structured_out({"mpackObservation": observation})
-      if observation["state"] != "active" or int(observation["pid"]) <= 0 or not deployment._healthy():
+      if not self._ready(deployment, observation):
         raise ComponentIsNotRunning()
     except HostError:
       raise ComponentIsNotRunning() from None
@@ -133,7 +169,7 @@ class ManifestService(Script):
       deployment = self._deployment(command=scoped)
       deployment.validate_inputs(validate_config=False)
       observation = deployment.observe()
-      if observation["state"] != "active" or int(observation["pid"]) <= 0 or not deployment._healthy():
+      if not self._ready(deployment, observation):
         raise Fail("Service check failed for a local managed component")
       observations[component["name"]] = observation
     if not observations:

@@ -418,6 +418,20 @@ public class AmbariCustomCommandExecutionHelper {
         }
       }
       commandParams.put(CUSTOM_COMMAND, commandName);
+      if (java.util.Set.of("PURGE", "UPGRADE", "DETACH", "ADOPT").contains(commandName)) {
+        String expected = actionExecutionContext.getParameters().get("expected_target_incarnation");
+        if (expected == null || !expected.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")) {
+          throw new AmbariException("Resource mutation requires the target incarnation from resource evidence");
+        }
+        commandParams.put("expected_target_incarnation", expected);
+        if (commandName.equals("UPGRADE")) {
+          String digest = actionExecutionContext.getParameters().get("expected_package_digest");
+          if (digest == null || !digest.matches("[a-f0-9]{64}")) {
+            throw new AmbariException("Artifact update requires the selected package digest");
+          }
+          commandParams.put("expected_package_digest", digest);
+        }
+      }
 
       boolean isInstallCommand = commandName.equals(RoleCommand.INSTALL.toString());
       int commandTimeout = Integer.valueOf(configs.getDefaultAgentTaskTimeout(isInstallCommand));

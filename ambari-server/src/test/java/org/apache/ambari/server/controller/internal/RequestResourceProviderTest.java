@@ -990,6 +990,39 @@ public class RequestResourceProviderTest {
   }
 
   private void testCreateResourcesForCommands(Authentication authentication) throws Exception {
+    testCreateResourcesForCommands(authentication, "HDFS_SERVICE_CHECK");
+  }
+
+  @Test
+  public void testPurgeRequiresSeparateDestructiveAuthorization() throws Exception {
+    for (Authentication authentication : Arrays.asList(
+        TestAuthenticationFactory.createClusterAdministrator(),
+        TestAuthenticationFactory.createServiceAdministrator(),
+        TestAuthenticationFactory.createServiceOperator())) {
+      Assert.assertThrows(AuthorizationException.class, () -> testCreateResourcesForCommands(authentication, "PURGE"));
+    }
+    testCreateResourcesForCommands(TestAuthenticationFactory.createAdministrator(), "PURGE");
+  }
+
+  @Test
+  public void testArtifactUpdateUsesExistingUpgradeAuthorization() throws Exception {
+    Assert.assertThrows(AuthorizationException.class,
+        () -> testCreateResourcesForCommands(TestAuthenticationFactory.createServiceOperator(), "UPGRADE"));
+    testCreateResourcesForCommands(TestAuthenticationFactory.createClusterAdministrator(), "UPGRADE");
+    testCreateResourcesForCommands(TestAuthenticationFactory.createAdministrator(), "UPGRADE");
+  }
+
+  @Test
+  public void testOwnershipHandoffRequiresServiceLifecycleAuthorization() throws Exception {
+    for (String command : new String[]{"DETACH", "ADOPT"}) {
+      Assert.assertThrows(AuthorizationException.class,
+          () -> testCreateResourcesForCommands(TestAuthenticationFactory.createServiceOperator(), command));
+      testCreateResourcesForCommands(TestAuthenticationFactory.createClusterAdministrator(), command);
+      testCreateResourcesForCommands(TestAuthenticationFactory.createAdministrator(), command);
+    }
+  }
+
+  private void testCreateResourcesForCommands(Authentication authentication, String command) throws Exception {
     Resource.Type type = Resource.Type.Request;
 
     Capture<ExecuteActionRequest> actionRequest = newCapture();
@@ -1032,7 +1065,7 @@ public class RequestResourceProviderTest {
     propertySet.add(properties);
 
     Map<String, String> requestInfoProperties = new HashMap<>();
-    requestInfoProperties.put(RequestResourceProvider.COMMAND_ID, "HDFS_SERVICE_CHECK");
+    requestInfoProperties.put(RequestResourceProvider.COMMAND_ID, command);
 
 
 
@@ -1042,13 +1075,18 @@ public class RequestResourceProviderTest {
       type,
       managementController);
 
-    provider.createResources(request);
+    try {
+      provider.createResources(request);
+    } catch (AuthorizationException denied) {
+      Assert.assertFalse("Rejected command must not reach scheduling", actionRequest.hasCaptured());
+      throw denied;
+    }
     ExecuteActionRequest capturedRequest = actionRequest.getValue();
 
     Assert.assertTrue(actionRequest.hasCaptured());
     Assert.assertTrue(capturedRequest.isCommand());
     Assert.assertEquals(null, capturedRequest.getActionName());
-    Assert.assertEquals("HDFS_SERVICE_CHECK", capturedRequest.getCommandName());
+    Assert.assertEquals(command, capturedRequest.getCommandName());
     Assert.assertNotNull(capturedRequest.getResourceFilters());
     Assert.assertEquals(1, capturedRequest.getResourceFilters().size());
     RequestResourceFilter capturedResourceFilter = capturedRequest.getResourceFilters().get(0);

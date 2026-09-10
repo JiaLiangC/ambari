@@ -131,6 +131,6 @@ class AuthoringSafetyTest(unittest.TestCase):
 
   def test_reference_packages_build_as_authoring_bundles(self):
     fixtures = Path(__file__).resolve().parents[3] / "fixtures"
-    for name in ("http", "redis", "kyuubi"):
-      result = build_package(str(fixtures / name / "manifest.json"), str(self.root / (name + ".zip")))
+    for name, manifest in (("http", "manifest.json"), ("redis", "manifest.json"), ("multi-service", "manifest.yaml")):
+      result = build_package(str(fixtures / name / manifest), str(self.root / (name + ".zip")))
       verify_package(result["path"], result["sha256"])

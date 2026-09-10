@@ -321,3 +321,44 @@ removed because its server API and service-target authorization do not exist.
 This is not a claim of generic runtime parity. Current Mpack implementation and
 verification are recorded in `docs/mpack-v2/status.md`; historical results above
 are not reclassified as acceptance of these changes.
+
+
+## Authorized package import extension (implementation in progress)
+
+The Classic catalog controller and template were inspected before these React edits.
+React intentionally adds a binary `.mpack` upload using the implemented
+`POST /mpacks/imports` endpoint and publisher/compatibility/software-version details
+from `MpackInfo`. URL registration retains the existing provider and authorization.
+Server-side source approval and trust verification apply independently of UI state.
+There are no third-party Store pages in this extension. Focused regressions and
+consolidated TypeScript/build checks are pending until the full authorized batch ends;
+previous verification totals above do not apply to these new changes.
+
+The new resource view uses server-provided current-incarnation and latest-operation
+fields. Historical rows do not offer service mutations. PURGE uses a separate
+SERVICE.PURGE_DATA permission, a typed service-name confirmation and a retained
+incarnation precondition checked by Server at task persistence. Partial purge offers
+explicit resume; ordinary start/stop/uninstall cannot replace that recovery intent.
+Classic has no corresponding retained-resource purge flow; this is the authorized
+Mpack extension, not a claim of Classic parity or executed browser acceptance.
+
+The package installation form now consumes existing StackConfigurations types,
+numeric bounds, enum entries and SECRET_REFERENCE, projected by the compiler from
+the package schema. This follows the Classic generic configuration-widget boundary
+documented in Module 04 and its service_config_category template. It uses no package
+JavaScript and introduces no schema authority in UI. Server/Agent validation remains
+mandatory; schema string-length constraints are shown as help and enforced there.
+Typed controls and rejection of literal/foreign-service credentials have new focused
+source tests; those tests have not run in this batch.
+
+### Declarative package release selection (source only)
+
+Classic `stack_and_upgrade_controller.js#installRepoVersion` submits
+`ClusterStackVersions` through `admin.stack_version.install.repo_version`; its upgrade
+permission and background requests remain the baseline. The new Mpack action is an
+intentional separate bounded flow using existing service repository selection and
+UPGRADE custom requests: stopped compatible vendored artifacts only, with incarnation
+and digest expectations. It is not Classic rolling upgrade parity or a data rollback.
+The UI never treats a failed selection response as permission to submit native work,
+and current resource pages cannot prove completion on hosts outside that page.
+Focused helper cases are added; compilation and test execution remain deferred.

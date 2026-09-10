@@ -37,7 +37,7 @@ handling; these mechanisms are implemented but require native acceptance. Comple
 is limited by removing unused simulators/facades instead of operating a second
 workflow, binding store or authorization system.
 
-Current executable contract: `host-service/v1` with one `host.systemd/v1` profile
+Verified audit baseline contract: `host-service/v1` with one `host.systemd/v1` profile
 per server component; install/configure/start/stop/restart/status/local service check;
 OS packages, users/groups, isolated directories, declared file artifacts, scalar
 multi-file configuration, foreground executable arguments and loopback TCP/HTTP
@@ -169,7 +169,7 @@ directories are never pruned; there is no generic purge authorization in this sl
 | --- | --- | --- | --- |
 | Keep existing service/Stack/task/config authority | Preserves RBAC, routing and audit | Add package digest and native incarnation metadata; nullable DDL migration | Two fields and one shared Script; a parallel Deployment/Operation DB is unnecessary |
 | Keep compiler + small profile-specific executor | New Redis/HTTP-like software changes source files only | Strict schema/inventory may reject previously ignored source fields | One schema and scalar runtime projection; copied lifecycle scripts multiply fixes |
-| Emit actual legacy modules and authenticate import | Reuses existing registration/Agent resource delivery | Explicit external HMAC key on builder and Server; rebuild old alpha bundles | One versioned export format; source ZIP remains separate; asymmetric trust can wait |
+| Emit actual legacy modules and authenticate import | Reuses existing registration/Agent resource delivery | Explicit external HMAC key on builder and Server; rebuild old alpha bundles | One versioned export format; source ZIP remains separate; asymmetric publisher trust is required before public Store imports |
 | Remove parameter dispatcher and simulation execution models | Closes root-command authority hole and duplicate recovery | Queued alpha runtime commands fail; external alpha library consumers must migrate | No command forwarding facades; retain only static capability declarations and ServiceRef |
 | Remove unconsumed Java lifecycle/config facades | Blueprint stops pretending to be live state | Old fields ignored when read; new assertions rejected | Existing task/config models suffice until a concrete new consumer exists |
 | Keep registry/catalog; transactional deletion + reconciliation | Recoverable file/DB ordering | Existing reference constraints and two pending markers | Bounded publication critical section; operator quarantine retention remains necessary |
@@ -188,16 +188,93 @@ plugin sandbox or generic hook runner is required by the present consumers.
 
 The shared reference commit `8bf556b6ce94b350b3c3b12e15a7882d07bd19f7` is read-only and
 not integrated here. Its managed dependency type enumeration has HDFS and ZOOKEEPER;
-it does not implement Spark/Hadoop/Hive contracts for Kyuubi. The authoring client
-boundary delegates to an injected real client and fails when absent. Expanding that
-platform and accepting cross-cluster approval/config propagation is prerequisite to
-Kyuubi deployment, not something a local UUID or mock can replace.
+the authoring client boundary delegates to an injected real client and fails when
+absent. Cross-cluster approval/config propagation requires a real shared platform,
+not a local UUID or mock. The user removed the Kyuubi example and its dedicated
+integration work from the current scope on 2026-09-10.
 
 OCI needs engine/resource identity and volume/postcondition handling; Kubernetes
 needs API-server/namespace/UID/revision and rollout evidence; external databases need
-scoped credentials/connections and observation contracts. These implementations,
-secret resolution, generic metrics/log routing, service-scoped runtime UI, data
-migration/upgrade/adoption/uninstall/purge and multi-package composition are explicit
-roadmap gaps. They are not all current M2 blockers, and are not marked completed by
+scoped credentials/connections and observation contracts. The active P0-P8 batch adds publisher trust, service-scoped package selection,
+uninstall retention, import/lifecycle UI and scoped secrets; these source changes
+are not yet verified. Generic metrics/log routing, full data lifecycle and further
+runtimes remain required work. They are not all current M2 blockers, and are not marked completed by
 retiring unsafe prototypes. Real systemd/Redis, production DB migration and live
 server-Agent acceptance still require appropriate environments.
+
+## Package import and lifecycle extension (proposed)
+
+Status: proposed work, not current implementation. The independent third-party Store
+has its own [design and future-repository plan](store-design.md). Its website/backend
+will be implemented later in a new repository, never in Ambari. Ambari owns only
+package import and installed software management. The [delivery plan](implementation-plan.md#package-import-and-lifecycle-delivery-plan)
+tracks that work without depending on a running Store.
+
+A user downloads a deployable package or copies its artifact URL from any compatible
+source, then imports it into Ambari. Use one bounded, staged importer for both paths.
+Verify immutable release identity, content inventory, signature, compatibility and
+prerequisites before publication to the local catalog. Public publisher trust requires
+asymmetric verification and configured trust; alpha HMAC remains an explicit local
+compatibility mode without downgrade. Remote imports restrict destinations/redirects
+and credential forwarding; credentials are external references, never package content.
+The versioned artifact contract is shared with the Store; publication accounts and
+Store discovery APIs are not prerequisites for import or execution.
+
+Import registers a definition without deploying native resources. Installation selects
+an imported package for an existing cluster/service. Native uninstall removes owned
+resources with default data retention; catalog removal deletes only unreferenced
+package definitions. Detach and separately authorized purge remain distinct operations.
+
+
+Extend MpackManager and the `ManagementPacks` screen for file/URL import and management
+of already imported package versions, trust and compatibility. Reuse service configuration
+and request/task screens. Existing Registry integration may remain compatible; this
+proposal adds no Store browsing, search, publisher/upload portal or embedded third-party
+pages to Ambari. External publisher upload is distinct from uploading a downloaded file
+to Ambari for import. No proposed endpoint is an implemented API until its resource
+provider, authorization and tests exist.
+
+Independent packages in existing clusters need service-scoped definition resolution.
+Start with service/component desired repository relationships and trace metadata,
+configuration, scripts, upgrade selection and Agent delivery through one pinned package.
+Preserve cluster Stack and ServiceRef identity. Reject conflicting service names,
+configuration types, component definitions and shared host prerequisites before creation;
+do not invent service aliases. Add a nullable package-selection FK to existing service
+state only if a documented use case cannot be represented by the existing relationship.
+This integration is required even when the Store website is already usable.
+
+Add provenance/version/signature metadata to existing catalog release state as needed;
+preserve its primary key and references. Ambari DB remains authority for imported
+packages, service selection, configuration and operations. Store DB owns publication
+only; Agent receipts contain native evidence, not permissions or global lifecycle state.
+
+Uninstall persists intent in existing workflows, stops/verifies the workload, deletes
+only exact owned units and ephemeral config/artifacts, then verifies absence. Shared OS
+packages/users and persistent data are retained. Multi-host partial failure keeps service
+identity and per-target recovery results; it cannot appear fully removed. Serialize with
+other service mutations and retain evidence for interrupted/UNKNOWN work.
+
+Before deleting service identity, persist retained-resource descriptors containing
+ServiceRef/incarnation, host, exact native identities/paths, ownership proof and package
+digest. They must survive task-log expiry. Prefer existing durable service audit storage;
+if it cascades with service deletion, add a narrowly scoped retained-resource tombstone
+table in the same Ambari DB. This is retention evidence, not another deployment/workflow
+authority. Keep necessary package/recovery references until retention obligations are
+discharged. Missing ownership proof requires investigation, never name-based deletion.
+
+Detach releases management without native deletion; adoption validates identity and
+ownership explicitly. Purge targets retained resources with a separately audited
+authorization. Reuse existing RBAC, adding a specific authorization only if existing
+permissions cannot express the distinction. Consumer uninstall never deletes shared
+provider-owned data. Upgrade pins old/new digests, config compatibility, dependency
+snapshots and native identity. Code rollback differs from data recovery; irreversible
+migrations require declared preconditions and appropriate backup/restore evidence.
+
+Runtime adapters declare unsupported actions and implement native identity, discovery,
+postconditions and recovery for each supported action. Secret resolution, dependencies,
+metrics/log access and other runtimes remain required roadmap work with separate gates.
+The standard publisher path is manifest/schema/templates/artifacts -> validate/build/sign
+-> upload/publish -> import -> existing service deployment. New software in an implemented
+profile requires no software-name Java/Python branches or copied lifecycle scripts.
+AI follows the same validation, signing and human/publisher approval boundaries and cannot
+grant itself publishing, migration or deployment authority.

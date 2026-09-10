@@ -204,3 +204,10 @@ Focused coverage includes:
 22. Enter Add Host and Logs through both menus and direct URLs to confirm the documented classic and intentional React authorization boundaries.
 
 No `NEEDS_RUNTIME_VALIDATION` item may be changed to `COVERED` until its applicable matrix cases pass against a real Ambari Server.
+
+
+Mpack integration source update (verification deferred): HostLogs now consumes the
+ServiceContext model dictionary via Object.values, matching the actual provider and
+retaining service-name fallback for arbitrary packages. The fixture now uses that
+provider shape. Compared with Classic logs_view.js/logs.hbs and HOST-LOG-001; existing
+Log Search and SERVICE.VIEW_OPERATIONAL_LOGS boundaries remain the access path.

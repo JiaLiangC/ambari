@@ -425,3 +425,15 @@ Final local evidence from `ambari-web/latest`:
 | `git diff --check` | `PASS` |
 
 The build warnings and full-lint baseline are not caused by Module 04 and are not refactored in this branch. Live Ambari Server scenarios remain explicitly `PENDING`; automated evidence does not replace the runtime acceptance matrix. No JIRA issue, commit, push, or pull request has been created.
+
+
+## Independent package configuration metadata (implementation in progress)
+
+The Classic config controller resolves per-service config types through StackService
+(`main/service/info/configs.js`, `onLoadOverrides`); baseline SVC-CONFIG-001/003 retains
+server-defined config metadata and existing save authorization. For independent package
+composition, React now selects definition metadata from the installed service's existing
+repository selection, exposed as ServiceInfo.definition_stack_name/version. It no longer
+assumes every installed service uses the cluster's base Stack. Older servers without
+these additive fields retain the existing fallback. Existing config version/save and
+permission flows remain in use. Consolidated tests/build are deferred with P0-P8.

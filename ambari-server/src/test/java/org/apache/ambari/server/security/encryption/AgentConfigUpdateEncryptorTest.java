@@ -66,7 +66,7 @@ public class AgentConfigUpdateEncryptorTest {
     Map<PropertyInfo.PropertyType, Set<String>> propertyTypes =
         new EnumMap<>(PropertyInfo.PropertyType.class);
     propertyTypes.put(PropertyInfo.PropertyType.PASSWORD, Collections.singleton("password"));
-    when(cluster.getConfigPropertiesTypes("core-site", stackId)).thenReturn(propertyTypes);
+    when(cluster.getConfigPropertiesTypes("core-site")).thenReturn(propertyTypes);
 
     Clusters clusters = mock(Clusters.class);
     when(clusters.getCluster(1L)).thenReturn(cluster);

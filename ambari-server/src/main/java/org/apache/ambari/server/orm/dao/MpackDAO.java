@@ -27,6 +27,9 @@ import jakarta.persistence.TypedQuery;
 import org.apache.ambari.server.orm.RequiresSession;
 import org.apache.ambari.server.orm.entities.BlueprintSettingEntity;
 import org.apache.ambari.server.orm.entities.MpackEntity;
+import org.apache.ambari.server.orm.entities.MpackTargetResourceEntity;
+import org.apache.ambari.server.orm.entities.RepositoryVersionEntity;
+import org.apache.ambari.server.orm.entities.StackEntity;
 import org.apache.ambari.server.topology.MpackReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,6 +63,38 @@ public class MpackDAO {
   public Long create(MpackEntity mpackEntity) {
     m_entityManagerProvider.get().persist(mpackEntity);
     return mpackEntity.getId();
+  }
+
+  /** Give authenticated definitions a selectable repository using the existing service FK. */
+  @Transactional
+  public Long ensureDefaultRepository(Long mpackId) {
+    EntityManager manager = m_entityManagerProvider.get();
+    MpackEntity pack = manager.find(MpackEntity.class, mpackId, LockModeType.PESSIMISTIC_WRITE);
+    if (pack == null || pack.getContentDigest() == null) {
+      throw new IllegalStateException("A registered authored package is required");
+    }
+    StackEntity stack = manager.createQuery("SELECT s FROM StackEntity s WHERE s.mpackId = :id", StackEntity.class)
+        .setParameter("id", mpackId).getSingleResult();
+    String projection = "MPACK_" + org.apache.commons.codec.digest.DigestUtils.sha256Hex(pack.getMpackName());
+    if (!projection.equals(stack.getStackName())) {
+      // Preserve the Stack PK and all repository/config/service FKs. Only the
+      // compatibility name changes; authored names could not round-trip StackId.
+      stack.setStackName(projection);
+      manager.flush();
+    }
+    List<RepositoryVersionEntity> repositories = manager.createQuery(
+        "SELECT r FROM RepositoryVersionEntity r WHERE r.stack = :stack AND r.version = :version",
+        RepositoryVersionEntity.class).setParameter("stack", stack)
+        .setParameter("version", pack.getMpackVersion()).getResultList();
+    if (!repositories.isEmpty()) {
+      return repositories.get(0).getId();
+    }
+    // This selects immutable service definitions. Declared host OS packages continue
+    // to use existing host repositories; no fictitious OS download URL is created.
+    RepositoryVersionEntity repository = new RepositoryVersionEntity(stack, pack.getMpackVersion(),
+        pack.getMpackName() + "-" + pack.getMpackVersion(), java.util.Collections.emptyList());
+    manager.persist(repository);
+    return repository.getId();
   }
 
   /**
@@ -127,6 +162,26 @@ public class MpackDAO {
     if (entity == null) {
       return;
     }
+    Long retained = entityManager.createQuery("SELECT COUNT(r) FROM MpackTargetResourceEntity r WHERE (r.mpackId = :id OR r.materializedMpackId = :id) AND r.resourceState NOT IN ('PURGED', 'DETACHED')",
+        Long.class).setParameter("id", id).getSingleResult();
+    if (retained != 0) {
+      throw new IllegalStateException("Managed or retained resources reference this mpack");
+    }
+    // Update managed entities so callers holding a retention row cannot flush a stale FK.
+    // The package lock prevents any new intent from acquiring a reference during deletion.
+    while (true) {
+      List<MpackTargetResourceEntity> purged = entityManager.createQuery(
+          "SELECT r FROM MpackTargetResourceEntity r WHERE (r.mpackId = :id OR r.materializedMpackId = :id) AND r.resourceState IN ('PURGED', 'DETACHED') ORDER BY r.targetKey",
+          MpackTargetResourceEntity.class).setParameter("id", id).setMaxResults(256).getResultList();
+      if (purged.isEmpty()) {
+        break;
+      }
+      purged.forEach(resource -> {
+        if (id.equals(resource.getMpackId())) { resource.setMpackId(null); }
+        if (id.equals(resource.getMaterializedMpackId())) { resource.setMaterializedMpackId(null); }
+      });
+      entityManager.flush();
+    }
     List<BlueprintSettingEntity> settings = entityManager.createQuery(
         "SELECT s FROM BlueprintSettingEntity s WHERE s.settingName = :name", BlueprintSettingEntity.class)
         .setParameter("name", MpackReference.SETTING_NAME).getResultList();
@@ -159,6 +214,7 @@ public class MpackDAO {
     repositories.forEach(entityManager::detach);
     entityManager.getEntityManagerFactory().getCache().evict(org.apache.ambari.server.orm.entities.StackEntity.class);
     entityManager.getEntityManagerFactory().getCache().evict(org.apache.ambari.server.orm.entities.RepositoryVersionEntity.class);
+    entityManager.getEntityManagerFactory().getCache().evict(org.apache.ambari.server.orm.entities.MpackTargetResourceEntity.class);
   }
 
 }
