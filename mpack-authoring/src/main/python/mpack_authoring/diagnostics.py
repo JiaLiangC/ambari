@@ -8,11 +8,13 @@ this file except in compliance with the License.
 
 from dataclasses import asdict, dataclass
 
+from .compiler import CompileError, compile_manifest
 from .manifest import ManifestError, validate_manifest
 
 DIAGNOSTIC_CODES = {
   "CAPABILITY_UNSUPPORTED", "DEPENDENCY_UNRESOLVED", "PLAN_STALE",
   "TARGET_CONFLICT", "AUTHORIZATION_DENIED", "OUTCOME_UNKNOWN", "SCHEMA_INVALID",
+  "PACKAGE_CONTENT_CONFLICT",
 }
 
 
@@ -46,4 +48,19 @@ def validate_with_diagnostics(manifest, package_root=None):
     path = message.split(" must ", 1)[0] if " must " in message else ""
     diagnostic = make_diagnostic("SCHEMA_INVALID", message, path=path,
                                  correction="Correct the manifest field and validate again.")
+    return {"valid": False, "diagnostics": [diagnostic.as_dict()]}
+
+
+def compile_with_diagnostics(path):
+  """Compile a source manifest while preserving stable machine diagnostics."""
+  try:
+    result = compile_manifest(path)
+    return {"valid": True, "diagnostics": [], **result}
+  except (CompileError, ManifestError, OSError, ValueError) as error:
+    code = getattr(error, "code", "SCHEMA_INVALID")
+    if code not in DIAGNOSTIC_CODES:
+      code = "SCHEMA_INVALID"
+    diagnostic = make_diagnostic(
+        code, str(error), path=getattr(error, "path", ""),
+        correction="Correct the source field and compile again.")
     return {"valid": False, "diagnostics": [diagnostic.as_dict()]}

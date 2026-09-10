@@ -9,7 +9,8 @@ this file except in compliance with the License.
 from .manifest import ManifestError, load_manifest, validate_manifest
 from .build import build_lock, write_lock
 from .runtime import PackageRef, RuntimeContext, ServiceRef
-from .diagnostics import Diagnostic, make_diagnostic, validate_with_diagnostics
+from .diagnostics import (Diagnostic, compile_with_diagnostics, make_diagnostic,
+                          validate_with_diagnostics)
 from .operation import PlanStep, plan_operation
 from .config import ConfigValue, SecretRef, effective_config
 from .dependency import BindingSnapshot, DependencyAdapter, DependencyRequirement
@@ -19,6 +20,8 @@ from .adapters import (ExternalDatabaseAdapter, HostSystemdAdapter,
 from .executor import CommandSpec, DryRunExecutor, InjectedExecutor
 from .journal import OperationJournal
 from .conformance import validate_fixture_directory
+from .compiler import (CompileError, build_package, compile_manifest, load_source,
+                       legacy_projection, sign_bytes)
 
 __all__ = ["BindingSnapshot", "CommandSpec", "ConfigValue", "DependencyAdapter", "DependencyRequirement",
            "Diagnostic", "ManifestError", "OperationRecord", "PackageRef", "PlanStep",
@@ -27,4 +30,7 @@ __all__ = ["BindingSnapshot", "CommandSpec", "ConfigValue", "DependencyAdapter",
            "DryRunExecutor", "InjectedExecutor", "OperationJournal", "make_diagnostic",
            "validate_fixture_directory",
            "build_lock", "load_manifest", "validate_manifest", "validate_with_diagnostics",
+           "compile_with_diagnostics",
+           "CompileError", "build_package", "compile_manifest", "load_source",
+           "legacy_projection", "sign_bytes",
            "effective_config", "plan_operation", "write_lock"]

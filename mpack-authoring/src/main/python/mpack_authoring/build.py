@@ -10,7 +10,7 @@ import hashlib
 import json
 import os
 
-from .manifest import load_manifest
+from .manifest import validate_manifest
 
 
 def _sha256(path):
@@ -23,7 +23,9 @@ def _sha256(path):
 
 def build_lock(manifest_path):
   """Return a deterministic offline lock for the manifest package directory."""
-  result = load_manifest(manifest_path)
+  from .compiler import load_source
+  document, _ = load_source(manifest_path)
+  result = validate_manifest(document, os.path.dirname(os.path.realpath(manifest_path)))
   root = os.path.dirname(os.path.realpath(manifest_path))
   files = []
   for directory, _, names in os.walk(root):

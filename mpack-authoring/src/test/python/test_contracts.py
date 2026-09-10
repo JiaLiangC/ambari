@@ -28,8 +28,21 @@ class ContractTest(unittest.TestCase):
     requirement = DependencyRequirement("database", "jdbc", ">=1")
     provider = ServiceRef(9, "DATABASE")
     preview = adapter.preview(requirement, provider)
-    snapshot = BindingSnapshot("binding-1", provider, 3, {"url": "redacted"})
+    snapshot = BindingSnapshot(preview["bindingId"], provider, 3,
+                               {"url": "redacted"}, authorized=True)
     self.assertEqual(snapshot, adapter.approve(preview, snapshot))
+
+  def test_dependency_adapter_enforces_revision_and_fencing(self):
+    adapter = DependencyAdapter()
+    provider = ServiceRef(9, "DATABASE")
+    requirement = DependencyRequirement("database", "jdbc", ">=1")
+    preview = adapter.preview(requirement, provider)
+    snapshot = BindingSnapshot(preview["bindingId"], provider, 3, {}, authorized=True)
+    envelope = adapter.apply(snapshot, 3)
+    self.assertEqual(4, envelope["fence"])
+    with self.assertRaisesRegex(RuntimeError, "TARGET_CONFLICT"):
+      adapter.apply(snapshot, 2)
+    self.assertEqual("FENCED", adapter.fence(snapshot, 4)["state"])
 
   def test_recovery_requires_real_state_transition(self):
     record = OperationRecord("op-1", 2, "PENDING", "key-1")

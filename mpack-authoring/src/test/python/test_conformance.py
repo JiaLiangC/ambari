@@ -14,7 +14,7 @@ from mpack_authoring.conformance import validate_fixture_directory
 
 class ConformanceTest(unittest.TestCase):
   def test_reference_fixtures_are_valid(self):
-    directory = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "fixtures", "conformance")
+    directory = os.path.join(os.path.dirname(__file__), "..", "..", "..", "fixtures", "conformance")
     summaries = validate_fixture_directory(os.path.realpath(directory))
     self.assertEqual(5, len(summaries))
     self.assertTrue(all(item["valid"] for item in summaries))
