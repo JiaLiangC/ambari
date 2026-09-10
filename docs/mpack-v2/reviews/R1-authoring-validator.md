@@ -7,7 +7,8 @@ Base: local M2 candidate `b72ade8fcfd553ff182f3d34fe63c0903616005a`.
 The new `mpack-authoring` module implements the first machine-readable authoring
 boundary from `manifest-spec.md`: v2alpha1/kind detection, package and runtime
 identity validation, artifact source/path containment, duplicate service and
-component rejection, and deterministic canonical SHA-256 content identity. A
+component rejection, runtime adapter/version and capability declarations,
+cardinality checks, and deterministic canonical SHA-256 content identity. A
 small CLI emits a machine-readable validity/digest result and performs no
 deployment or registration.
 

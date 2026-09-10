@@ -29,7 +29,10 @@ class ManifestTest(unittest.TestCase):
       "metadata": {"name": "echo", "version": "1.0.0"},
       "spec": {
         "artifacts": [{"id": "server", "source": {"kind": "file", "path": "server.py"}}],
-        "services": [{"name": "ECHO", "components": [{"name": "SERVER"}]}],
+        "services": [{"name": "ECHO", "components": [{
+          "name": "SERVER",
+          "profiles": [{"id": "linux", "adapter": "host.systemd/v1", "capabilities": ["observe"]}],
+        }]}],
       },
     }
 
@@ -41,6 +44,17 @@ class ManifestTest(unittest.TestCase):
   def test_rejects_traversal_and_duplicate_identity(self):
     manifest = self.manifest()
     manifest["spec"]["artifacts"][0]["source"]["path"] = "../secret"
+    with self.assertRaises(ManifestError):
+      validate_manifest(manifest, self.root.name)
+
+  def test_rejects_unversioned_adapter_or_invalid_cardinality(self):
+    manifest = self.manifest()
+    manifest["spec"]["services"][0]["components"][0]["profiles"][0]["adapter"] = "host.systemd"
+    with self.assertRaises(ManifestError):
+      validate_manifest(manifest, self.root.name)
+    manifest = self.manifest()
+    component = manifest["spec"]["services"][0]["components"][0]
+    component["cardinality"] = {"min": 2, "max": 1}
     with self.assertRaises(ManifestError):
       validate_manifest(manifest, self.root.name)
     manifest = self.manifest()

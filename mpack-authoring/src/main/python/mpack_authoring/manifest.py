@@ -44,6 +44,41 @@ def _within(root, relative, path):
   return candidate
 
 
+def _profiles(component, component_path):
+  profiles = component.get("profiles", [])
+  if not isinstance(profiles, list) or not profiles:
+    raise ManifestError(component_path + ".profiles must be a non-empty list")
+  profile_ids = set()
+  for index, profile in enumerate(profiles):
+    path = "{}.profiles[{}]".format(component_path, index)
+    if not isinstance(profile, dict):
+      raise ManifestError(path + " must be an object")
+    profile_id = _required(profile, path + ".id")
+    _identifier(profile_id, path + ".id")
+    if profile_id in profile_ids:
+      raise ManifestError("duplicate profile {}".format(profile_id))
+    profile_ids.add(profile_id)
+    adapter = _required(profile, path + ".adapter")
+    if "/" not in adapter or adapter.endswith("/"):
+      raise ManifestError(path + ".adapter must include a version")
+    capabilities = profile.get("capabilities")
+    if not isinstance(capabilities, list) or not capabilities:
+      raise ManifestError(path + ".capabilities must be a non-empty list")
+    if any(not isinstance(capability, str) or not capability.strip()
+           for capability in capabilities):
+      raise ManifestError(path + ".capabilities must contain non-empty strings")
+    cardinality = component.get("cardinality")
+    if cardinality is not None:
+      if not isinstance(cardinality, dict):
+        raise ManifestError(component_path + ".cardinality must be an object")
+      minimum = cardinality.get("min", 0)
+      maximum = cardinality.get("max")
+      if not isinstance(minimum, int) or minimum < 0:
+        raise ManifestError(component_path + ".cardinality.min must be a non-negative integer")
+      if maximum != "*" and (not isinstance(maximum, int) or maximum < minimum):
+        raise ManifestError(component_path + ".cardinality.max must be '*' or >= min")
+
+
 def validate_manifest(manifest, package_root=None):
   """Validate and return a normalized manifest plus its canonical digest."""
   if not isinstance(manifest, dict):
@@ -113,6 +148,7 @@ def validate_manifest(manifest, package_root=None):
       if component_key in component_ids:
         raise ManifestError("duplicate component {}".format(component_key))
       component_ids.add(component_key)
+      _profiles(component, component_path)
 
   canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
   digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
