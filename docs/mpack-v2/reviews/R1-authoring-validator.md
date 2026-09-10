@@ -21,6 +21,12 @@ The runtime module defines additive `ServiceRef`, `PackageRef` and
 adapter, target and policy declarations; unsupported requests fail explicitly.
 The context keeps numeric cluster and service-name identity as the authority.
 
+Validation failures are also exposed as structured diagnostics with stable
+category, severity, path, retryability and correction fields. The current
+authoring categories begin with `SCHEMA_INVALID`; later adapter and dependency
+layers can add the categories defined by `contracts.md` without changing the
+manifest reader API.
+
 Focused tests are included under `mpack-authoring/src/test/python`. Validation
 will be run with the rest of the local improvement batch after the current
 implementation topics are complete.
