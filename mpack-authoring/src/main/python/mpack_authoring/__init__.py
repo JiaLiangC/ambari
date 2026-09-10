@@ -10,7 +10,8 @@ from .manifest import ManifestError, load_manifest, validate_manifest
 from .build import build_lock, write_lock
 from .runtime import PackageRef, RuntimeContext, ServiceRef
 from .diagnostics import Diagnostic, validate_with_diagnostics
+from .operation import PlanStep, plan_operation
 
-__all__ = ["Diagnostic", "ManifestError", "PackageRef", "RuntimeContext", "ServiceRef",
+__all__ = ["Diagnostic", "ManifestError", "PackageRef", "PlanStep", "RuntimeContext", "ServiceRef",
            "build_lock", "load_manifest", "validate_manifest", "validate_with_diagnostics",
-           "write_lock"]
+           "plan_operation", "write_lock"]

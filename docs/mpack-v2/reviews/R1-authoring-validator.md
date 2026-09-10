@@ -27,6 +27,10 @@ authoring categories begin with `SCHEMA_INVALID`; later adapter and dependency
 layers can add the categories defined by `contracts.md` without changing the
 manifest reader API.
 
+The operation module adds a non-mutating plan layer. It validates each requested
+capability against the scoped runtime context and emits ordered steps with
+preconditions and effects; it does not execute commands or claim readiness.
+
 Focused tests are included under `mpack-authoring/src/test/python`. Validation
 will be run with the rest of the local improvement batch after the current
 implementation topics are complete.
