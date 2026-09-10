@@ -19,6 +19,7 @@ package org.apache.ambari.server.stack;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -61,12 +62,14 @@ public class RepoUtil {
   /**
    * repository directory name
    */
-  final static String REPOSITORY_FOLDER_NAME = "repos";
+  public static final String REPOSITORY_FOLDER_NAME = "repos";
 
   /**
    * repository file name
    */
-  final static String REPOSITORY_FILE_NAME = "repoinfo.xml";
+  public static final String REPOSITORY_FILE_NAME = "repoinfo.xml";
+
+  private static final ModuleFileUnmarshaller UNMARSHALLER = new ModuleFileUnmarshaller();
 
   private static final Function<RepoDefinitionEntity, String> REPO_ENTITY_TO_NAME = new Function<RepoDefinitionEntity, String>() {
     @Override
@@ -74,6 +77,20 @@ public class RepoUtil {
       return input.getRepoName();
     }
   };
+
+  /**
+   * Reads repository metadata from a stack or mpack directory.
+   *
+   * @param directory root directory containing the optional {@code repos} folder
+   * @return parsed repository metadata, or {@code null} when none is present
+   */
+  public static RepositoryXml getRepositoryXml(File directory) {
+    String[] children = directory.list();
+    if (children == null) {
+      return null;
+    }
+    return parseRepoFile(directory, Arrays.asList(children), UNMARSHALLER).repoXml.orNull();
+  }
 
 
   /**

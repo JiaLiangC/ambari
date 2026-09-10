@@ -20,9 +20,10 @@ package org.apache.ambari.server.state;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.ambari.server.state.stack.RepositoryXml;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 
 import com.google.gson.annotations.SerializedName;
@@ -58,6 +59,9 @@ public class Mpack {
   @SerializedName("modules")
   private List<Module> modules;
 
+  @SerializedName("osSpecifics")
+  private List<MpackOsSpecific> osSpecifics;
+
   @SerializedName("definition")
   private String definition;
 
@@ -68,6 +72,10 @@ public class Mpack {
   private String displayName;
 
   private String mpackUri;
+
+  private transient RepositoryXml repositoryXml;
+
+  private transient Map<String, Module> moduleMap = new HashMap<>();
 
   public Long getResourceId() {
     return resourceId;
@@ -139,6 +147,23 @@ public class Mpack {
 
   public void setModules(List<Module> modules) {
     this.modules = modules;
+    populateModuleMap();
+  }
+
+  public List<MpackOsSpecific> getOsSpecifics() {
+    return osSpecifics;
+  }
+
+  public void setOsSpecifics(List<MpackOsSpecific> osSpecifics) {
+    this.osSpecifics = osSpecifics;
+  }
+
+  public RepositoryXml getRepositoryXml() {
+    return repositoryXml;
+  }
+
+  public void setRepositoryXml(RepositoryXml repositoryXml) {
+    this.repositoryXml = repositoryXml;
   }
 
   public String getDefinition() {
@@ -165,13 +190,8 @@ public class Mpack {
    * @return the module or {@code null}.
    */
   public Module getModule(String moduleName) {
-    for (Module module : modules) {
-      if (StringUtils.equals(moduleName, module.getName())) {
-        return module;
-      }
-    }
-
-    return null;
+    ensureModuleMap();
+    return moduleMap.get(moduleName);
   }
 
   /**
@@ -184,14 +204,8 @@ public class Mpack {
    * @return the component or {@code null}.
    */
   public ModuleComponent getModuleComponent(String moduleName, String moduleComponentName) {
-    for (Module module : modules) {
-      ModuleComponent moduleComponent = module.getModuleComponent(moduleComponentName);
-      if (null != moduleComponent) {
-        return moduleComponent;
-      }
-    }
-
-    return null;
+    Module module = getModule(moduleName);
+    return module == null ? null : module.getModuleComponent(moduleComponentName);
   }
 
   /**
@@ -202,8 +216,6 @@ public class Mpack {
     if (this == o) return true;
     if (o == null || getClass() != o.getClass()) return false;
 
-    Mpack mpack = (Mpack) o;
-
     Mpack that = (Mpack) o;
     EqualsBuilder equalsBuilder = new EqualsBuilder();
     equalsBuilder.append(resourceId, that.resourceId);
@@ -213,6 +225,7 @@ public class Mpack {
     equalsBuilder.append(version, that.version);
     equalsBuilder.append(prerequisites, that.prerequisites);
     equalsBuilder.append(modules, that.modules);
+    equalsBuilder.append(osSpecifics, that.osSpecifics);
     equalsBuilder.append(definition, that.definition);
     equalsBuilder.append(description, that.description);
     equalsBuilder.append(mpackUri, that.mpackUri);
@@ -224,7 +237,7 @@ public class Mpack {
   @Override
   public int hashCode() {
     return Objects.hash(resourceId, registryId, mpackId, name, version, prerequisites, modules,
-        definition, description, mpackUri, displayName);
+        osSpecifics, definition, description, mpackUri, displayName);
   }
 
   @Override
@@ -237,10 +250,10 @@ public class Mpack {
             ", version='" + version + '\'' +
             ", prerequisites=" + prerequisites +
             ", modules=" + modules +
+            ", osSpecifics=" + osSpecifics +
             ", definition='" + definition + '\'' +
             ", description='" + description + '\'' +
-            ", mpackUri='" + mpackUri + '\'' +
-            ", displayName='" + mpackUri + '\'' +
+            ", displayName='" + displayName + '\'' +
             '}';
   }
 
@@ -250,27 +263,58 @@ public class Mpack {
     }
     if (this.name == null) {
       this.name = mpack.getName();
+    }
     if (this.mpackId == null)
       this.mpackId = mpack.getMpackId();
     if (this.version == null)
       this.version = mpack.getVersion();
-    }
     if (this.registryId == null) {
       this.registryId = mpack.getRegistryId();
+    }
     if (this.description == null)
       this.description = mpack.getDescription();
-    }
     if (this.modules == null) {
-      this.modules = mpack.getModules();
+      setModules(mpack.getModules());
     }
     if (this.prerequisites == null) {
       this.prerequisites = mpack.getPrerequisites();
+    }
+    if (this.osSpecifics == null) {
+      this.osSpecifics = mpack.getOsSpecifics();
+    }
+    if (this.repositoryXml == null) {
+      this.repositoryXml = mpack.getRepositoryXml();
     }
     if (this.definition == null) {
       this.definition = mpack.getDefinition();
     }
     if (displayName == null) {
       displayName = mpack.getDisplayName();
+    }
+    if (mpackUri == null) {
+      mpackUri = mpack.getMpackUri();
+    }
+  }
+
+  /**
+   * Builds deterministic lookup maps after JSON deserialization.
+   */
+  public void populateModuleMap() {
+    moduleMap = new HashMap<>();
+    if (modules == null) {
+      return;
+    }
+    for (Module module : modules) {
+      if (module != null) {
+        module.populateComponentMap();
+        moduleMap.put(module.getName(), module);
+      }
+    }
+  }
+
+  private void ensureModuleMap() {
+    if (moduleMap == null || (moduleMap.isEmpty() && modules != null && !modules.isEmpty())) {
+      populateModuleMap();
     }
   }
 }

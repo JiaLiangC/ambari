@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -95,10 +96,7 @@ public class StackAdvisorHelper {
       throws StackAdvisorException {
       requestId = generateRequestId();
 
-    // TODO, need frontend to pass the Service Name that was modified.
-    // For now, hardcode.
-    // Once fixed, change StackAdvisorHelperTest.java to use the actual service name.
-    String serviceName = "ZOOKEEPER";
+    String serviceName = resolveServiceName(request);
     ServiceInfo.ServiceAdvisorType serviceAdvisorType = getServiceAdvisorType(request.getStackName(), request.getStackVersion(), serviceName);
     StackAdvisorCommand<ValidationResponse> command = createValidationCommand(serviceName, request);
 
@@ -136,9 +134,7 @@ public class StackAdvisorHelper {
       throws StackAdvisorException, AmbariException {
       requestId = generateRequestId();
 
-    // TODO, need to pass the service Name that was modified.
-    // For now, hardcode
-    String serviceName = "ZOOKEEPER";
+    String serviceName = resolveServiceName(request);
 
     ServiceInfo.ServiceAdvisorType serviceAdvisorType = getServiceAdvisorType(request.getStackName(), request.getStackVersion(), serviceName);
     StackAdvisorCommand<RecommendationResponse> command = createRecommendationCommand(serviceName, request);
@@ -227,6 +223,19 @@ public class StackAdvisorHelper {
       ;
     }
     return null;
+  }
+
+  private String resolveServiceName(StackAdvisorRequest request) throws StackAdvisorRequestException {
+    if (request.getServiceName() != null && !request.getServiceName().trim().isEmpty()) {
+      return request.getServiceName();
+    }
+
+    return request.getServices().stream()
+        .filter(service -> service != null && !service.trim().isEmpty())
+        .filter(service -> !service.endsWith("_CLIENTS"))
+        .min(Comparator.naturalOrder())
+        .orElseThrow(() -> new StackAdvisorRequestException(
+            "A non-client service is required to select the service advisor"));
   }
 
   /**

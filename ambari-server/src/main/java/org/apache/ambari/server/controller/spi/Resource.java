@@ -161,7 +161,16 @@ public interface Resource {
     ClusterKerberosDescriptor,
     LoggingQuery,
     RemoteCluster,
-    Auth;
+    Auth,
+    Registry,
+    RegistryRecommendation,
+    RegistryValidation,
+    RegistryScenario,
+    RegistryMpack,
+    RegistryMpackVersion,
+    MpackOperatingSystem,
+    MpackRecommendation,
+    MpackValidation;
 
     /**
      * Get the {@link Type} that corresponds to this InternalType.
@@ -284,6 +293,15 @@ public interface Resource {
     public static final Type LoggingQuery = InternalType.LoggingQuery.getType();
     public static final Type RemoteCluster = InternalType.RemoteCluster.getType();
     public static final Type Auth = InternalType.Auth.getType();
+    public static final Type Registry = InternalType.Registry.getType();
+    public static final Type RegistryRecommendation = InternalType.RegistryRecommendation.getType();
+    public static final Type RegistryValidation = InternalType.RegistryValidation.getType();
+    public static final Type RegistryScenario = InternalType.RegistryScenario.getType();
+    public static final Type RegistryMpack = InternalType.RegistryMpack.getType();
+    public static final Type RegistryMpackVersion = InternalType.RegistryMpackVersion.getType();
+    public static final Type MpackOperatingSystem = InternalType.MpackOperatingSystem.getType();
+    public static final Type MpackRecommendation = InternalType.MpackRecommendation.getType();
+    public static final Type MpackValidation = InternalType.MpackValidation.getType();
 
 
     /**

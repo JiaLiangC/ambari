@@ -23,6 +23,8 @@ public class ComponentVersionReport {
   private String serviceName;
   private String version;
   private Long clusterId;
+  private Long mpackId;
+  private String mpackVersion;
 
   public ComponentVersionReport() {
   }
@@ -64,5 +66,21 @@ public class ComponentVersionReport {
 
   public void setClusterId(Long clusterId) {
     this.clusterId = clusterId;
+  }
+
+  public Long getMpackId() {
+    return mpackId;
+  }
+
+  public void setMpackId(Long mpackId) {
+    this.mpackId = mpackId;
+  }
+
+  public String getMpackVersion() {
+    return mpackVersion;
+  }
+
+  public void setMpackVersion(String mpackVersion) {
+    this.mpackVersion = mpackVersion;
   }
 }

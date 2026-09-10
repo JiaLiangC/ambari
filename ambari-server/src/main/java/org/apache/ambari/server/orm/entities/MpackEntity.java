@@ -44,6 +44,7 @@ import org.slf4j.LoggerFactory;
 @NamedQueries({
         @NamedQuery(name = "MpackEntity.findById", query = "SELECT mpack FROM MpackEntity mpack where mpack.id = :id"),
         @NamedQuery(name = "MpackEntity.findAll", query = "SELECT mpack FROM MpackEntity mpack"),
+        @NamedQuery(name = "MpackEntity.findByRegistryId", query = "SELECT mpack FROM MpackEntity mpack where mpack.registryId = :registryId"),
         @NamedQuery(name = "MpackEntity.findByNameVersion", query = "SELECT mpack FROM MpackEntity mpack where mpack.mpackName = :mpackName and mpack.mpackVersion = :mpackVersion")})
 
 public class MpackEntity {
@@ -154,9 +155,7 @@ public class MpackEntity {
     }
     buffer.append(", mpackName=").append(mpackName);
     buffer.append(", mpackVersion=").append(mpackVersion);
-    buffer.append(", mpackUri=").append(mpackUri);
     buffer.append("}");
     return buffer.toString();
   }
 }
-

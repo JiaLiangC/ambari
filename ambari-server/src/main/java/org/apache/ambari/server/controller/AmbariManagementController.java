@@ -46,6 +46,7 @@ import org.apache.ambari.server.metadata.RoleCommandOrder;
 import org.apache.ambari.server.orm.entities.ExtensionLinkEntity;
 import org.apache.ambari.server.orm.entities.MpackEntity;
 import org.apache.ambari.server.orm.entities.StackEntity;
+import org.apache.ambari.server.registry.Registry;
 import org.apache.ambari.server.scheduler.ExecutionScheduleManager;
 import org.apache.ambari.server.security.authorization.AuthorizationException;
 import org.apache.ambari.server.security.encryption.CredentialStoreService;
@@ -184,6 +185,27 @@ public interface AmbariManagementController {
    * @throws AuthorizationException thrown if the authenticated user is not authorized to perform this operation
    */
   MpackResponse registerMpack(MpackRequest request) throws IOException, AuthorizationException, ResourceAlreadyExistsException;
+
+  /**
+   * Adds a software registry to the server-wide catalog.
+   */
+  RegistryResponse addRegistry(RegistryRequest request) throws AmbariException;
+
+  /** Updates an existing software registry after validating its catalog. */
+  RegistryResponse updateRegistry(RegistryRequest request) throws AmbariException;
+
+  /** Removes an unreferenced software registry. */
+  void removeRegistry(Long registryId) throws AmbariException;
+
+  /**
+   * Gets the software registries selected by the supplied requests.
+   */
+  Set<RegistryResponse> getRegistries(Set<RegistryRequest> requests) throws AmbariException;
+
+  /**
+   * Gets a software registry by its persistent identifier.
+   */
+  Registry getRegistry(Long registryId) throws AmbariException;
 
 
   // ----- Read -------------------------------------------------------------

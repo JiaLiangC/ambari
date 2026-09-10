@@ -38,10 +38,11 @@ DEALLOCATE PREPARE statement;
 
 CREATE TABLE registries(
  id BIGINT NOT NULL,
- registy_name VARCHAR(255) NOT NULL,
+ registry_name VARCHAR(255) NOT NULL,
  registry_type VARCHAR(255) NOT NULL,
  registry_uri VARCHAR(255) NOT NULL,
- CONSTRAINT PK_registries PRIMARY KEY (id));
+ CONSTRAINT PK_registries PRIMARY KEY (id),
+ CONSTRAINT UQ_registry_name UNIQUE (registry_name));
 
 CREATE TABLE mpacks(
  id BIGINT NOT NULL,
@@ -1221,6 +1222,7 @@ INSERT INTO ambari_sequences(sequence_name, sequence_value) VALUES
   ('upgrade_item_id_seq', 0),
   ('stack_id_seq', 0),
   ('mpack_id_seq', 0),
+  ('registry_id_seq', 0),
   ('extension_id_seq', 0),
   ('link_id_seq', 0),
   ('datasource_id_seq', 0),

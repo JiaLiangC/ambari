@@ -128,6 +128,7 @@ public class Module {
 
   public void setComponents(List<ModuleComponent> components) {
     this.components = components;
+    populateComponentMap();
   }
 
   /**
@@ -136,6 +137,7 @@ public class Module {
    * @return
    */
   public ModuleComponent getModuleComponent(String moduleComponentName) {
+    ensureComponentMap();
     return componentHashMap.get(moduleComponentName);
   }
 
@@ -178,11 +180,24 @@ public class Module {
    */
   public void populateComponentMap() {
     componentHashMap = new HashMap<>();
-    for (ModuleComponent moduleComponent : getComponents()){
+    if (components == null) {
+      return;
+    }
+    for (ModuleComponent moduleComponent : components) {
+      if (moduleComponent == null) {
+        continue;
+      }
       // set reverse lookup
       moduleComponent.setModule(this);
 
       componentHashMap.put(moduleComponent.getName(), moduleComponent);
+    }
+  }
+
+  private void ensureComponentMap() {
+    if (componentHashMap == null
+        || (componentHashMap.isEmpty() && components != null && !components.isEmpty())) {
+      populateComponentMap();
     }
   }
 }

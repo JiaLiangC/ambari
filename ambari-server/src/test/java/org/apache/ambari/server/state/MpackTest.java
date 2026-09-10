@@ -123,6 +123,32 @@ public class MpackTest {
     Assert.assertEquals("Hortonworks Data Platform Core", mpack.getDescription());
     Assert.assertEquals(expectedPrereq, mpack.getPrerequisites());
     Assert.assertEquals(expectedModules.toString(), mpack.getModules().toString());
+    Assert.assertEquals("zookeeper", mpack.getModule("ZOOKEEPER").getId());
+    Assert.assertEquals("zookeeper_server",
+        mpack.getModuleComponent("ZOOKEEPER", "ZOOKEEPER_SERVER").getId());
+    Assert.assertNull(mpack.getModuleComponent("OTHER", "ZOOKEEPER_SERVER"));
+  }
+
+  @Test
+  public void testCopyFromFillsEachMissingProperty() {
+    Mpack source = new Mpack();
+    source.setMpackId("source-id");
+    source.setName("source-name");
+    source.setVersion("1.0");
+    source.setRegistryId(7L);
+    source.setDescription("description");
+    source.setDisplayName("display name");
+
+    Mpack target = new Mpack();
+    target.setName("retained-name");
+    target.copyFrom(source);
+
+    Assert.assertEquals("retained-name", target.getName());
+    Assert.assertEquals("source-id", target.getMpackId());
+    Assert.assertEquals("1.0", target.getVersion());
+    Assert.assertEquals(Long.valueOf(7), target.getRegistryId());
+    Assert.assertEquals("description", target.getDescription());
+    Assert.assertEquals("display name", target.getDisplayName());
   }
 
 }

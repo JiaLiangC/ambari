@@ -44,6 +44,9 @@ import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.JCE_NAME;
 import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.JDK_LOCATION;
 import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.JDK_NAME;
 import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.MAX_DURATION_OF_RETRIES;
+import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.MPACK_ID;
+import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.MPACK_NAME;
+import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.MPACK_VERSION;
 import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.MYSQL_JDBC_URL;
 import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.NOT_MANAGED_HDFS_PATH_LIST;
 import static org.apache.ambari.server.agent.ExecutionCommand.KeyNames.ORACLE_JDBC_URL;
@@ -166,6 +169,8 @@ import org.apache.ambari.server.orm.entities.RepositoryVersionEntity;
 import org.apache.ambari.server.orm.entities.ServiceComponentDesiredStateEntity;
 import org.apache.ambari.server.orm.entities.SettingEntity;
 import org.apache.ambari.server.orm.entities.StackEntity;
+import org.apache.ambari.server.registry.Registry;
+import org.apache.ambari.server.registry.RegistryManager;
 import org.apache.ambari.server.resources.ResourceManager;
 import org.apache.ambari.server.scheduler.ExecutionScheduleManager;
 import org.apache.ambari.server.security.authorization.AuthorizationException;
@@ -317,6 +322,8 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
   private ActionMetadata actionMetadata;
   @Inject
   private AmbariMetaInfo ambariMetaInfo;
+  @Inject
+  private RegistryManager registryManager;
   @Inject
   private Users users;
   @Inject
@@ -566,6 +573,45 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
       throws AmbariException, AuthorizationException {
 
     createHostComponents(requests, false);
+  }
+
+  @Override
+  public RegistryResponse addRegistry(RegistryRequest request) throws AmbariException {
+    Registry registry = registryManager.addRegistry(
+        request.getRegistryName(), request.getRegistryType(), request.getRegistryUri());
+    return new RegistryResponse(registry);
+  }
+
+  @Override
+  public RegistryResponse updateRegistry(RegistryRequest request) throws AmbariException {
+    Registry registry = registryManager.updateRegistry(request.getRegistryId(),
+        request.getRegistryName(), request.getRegistryType(), request.getRegistryUri());
+    return new RegistryResponse(registry);
+  }
+
+  @Override
+  public void removeRegistry(Long registryId) throws AmbariException {
+    registryManager.removeRegistry(registryId);
+  }
+
+  @Override
+  public Set<RegistryResponse> getRegistries(Set<RegistryRequest> requests) throws AmbariException {
+    Set<RegistryResponse> responses = new HashSet<>();
+    for (RegistryRequest request : requests) {
+      if (request.getRegistryId() == null) {
+        for (Registry registry : registryManager.getRegistries().values()) {
+          responses.add(new RegistryResponse(registry));
+        }
+      } else {
+        responses.add(new RegistryResponse(registryManager.getRegistry(request.getRegistryId())));
+      }
+    }
+    return responses;
+  }
+
+  @Override
+  public Registry getRegistry(Long registryId) throws AmbariException {
+    return registryManager.getRegistry(registryId);
   }
 
   /**
@@ -5727,6 +5773,12 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
           serviceName, componentName);
 
       commandParams.put(SERVICE_PACKAGE_FOLDER, serviceInfo.getServicePackageFolder());
+      StackEntity stackEntity = stackDAO.find(stackId);
+      if (stackEntity != null && stackEntity.getMpackId() != null) {
+        commandParams.put(MPACK_ID, String.valueOf(stackEntity.getMpackId()));
+        commandParams.put(MPACK_NAME, stackId.getStackName());
+        commandParams.put(MPACK_VERSION, stackId.getStackVersion());
+      }
       String scriptName = null;
       String scriptCommandTimeout = "";
       CommandScriptDefinition script = componentInfo.getCommandScript();
@@ -5778,6 +5830,12 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
     TreeMap<String, String> clusterLevelParams = new TreeMap<>();
     clusterLevelParams.put(STACK_NAME, stackId.getStackName());
     clusterLevelParams.put(STACK_VERSION, stackId.getStackVersion());
+    StackEntity stackEntity = stackDAO.find(stackId);
+    if (stackEntity != null && stackEntity.getMpackId() != null) {
+      clusterLevelParams.put(MPACK_ID, String.valueOf(stackEntity.getMpackId()));
+      clusterLevelParams.put(MPACK_NAME, stackId.getStackName());
+      clusterLevelParams.put(MPACK_VERSION, stackId.getStackVersion());
+    }
 
     clusterLevelParams.putAll(getMetadataClusterLevelConfigsParams(cluster, stackId));
     clusterLevelParams.put(CLUSTER_NAME, cluster.getClusterName());

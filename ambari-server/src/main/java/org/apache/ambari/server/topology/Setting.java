@@ -45,6 +45,8 @@ public class Setting {
 
   public static final String SETTING_NAME_REPOSITORY_SETTINGS = "repository_settings";
 
+  public static final String SETTING_NAME_MPACK_INSTANCES = MpackReference.SETTING_NAME;
+
   /**
    * When specified under the "service_settings" section, it indicates whether credential store
    * use is enabled for that service. Value is "true" or "false". Specify a value of "true"

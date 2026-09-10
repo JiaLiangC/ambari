@@ -182,6 +182,12 @@ public class ExecutionCommand extends AgentCommand {
   @SerializedName("componentVersionMap")
   private Map<String, Map<String, String>> componentVersionMap = new HashMap<>();
 
+  @SerializedName("mpackId")
+  private Long mpackId;
+
+  @SerializedName("mpack")
+  private Map<String, Object> mpackContext = new HashMap<>();
+
   @SerializedName("upgradeSummary")
   private UpgradeSummary upgradeSummary;
 
@@ -312,6 +318,7 @@ public class ExecutionCommand extends AgentCommand {
 
   public void setClusterLevelParams(Map<String, String> clusterLevelParams) {
     this.clusterLevelParams = clusterLevelParams;
+    refreshMpackContext();
   }
 
   public Map<String, Set<String>> getClusterHostInfo() {
@@ -356,6 +363,7 @@ public class ExecutionCommand extends AgentCommand {
 
   public void setCommandParams(Map<String, String> commandParams) {
     this.commandParams = commandParams;
+    refreshMpackContext();
   }
 
   public String getServiceName() {
@@ -364,6 +372,7 @@ public class ExecutionCommand extends AgentCommand {
 
   public void setServiceName(String serviceName) {
     this.serviceName = serviceName;
+    refreshMpackContext();
   }
 
   public String getServiceType() {
@@ -500,6 +509,9 @@ public class ExecutionCommand extends AgentCommand {
     String STACK_NAME = "stack_name";
     String SERVICE_TYPE = "service_type";
     String STACK_VERSION = "stack_version";
+    String MPACK_ID = "mpack_id";
+    String MPACK_NAME = "mpack_name";
+    String MPACK_VERSION = "mpack_version";
     @Deprecated
     @Experimental(feature=ExperimentalFeature.PATCH_UPGRADES)
     String SERVICE_REPO_INFO = "service_repo_info";
@@ -617,6 +629,50 @@ public class ExecutionCommand extends AgentCommand {
    */
   public void setComponentVersions(Cluster cluster) throws AmbariException {
     componentVersionMap = cluster.getComponentVersionMap();
+  }
+
+  public Long getMpackId() {
+    return mpackId;
+  }
+
+  public Map<String, Object> getMpackContext() {
+    return mpackContext;
+  }
+
+  private void refreshMpackContext() {
+    String id = commandParams.get(KeyNames.MPACK_ID);
+    if (id == null) {
+      id = clusterLevelParams.get(KeyNames.MPACK_ID);
+    }
+    if (id != null) {
+      try {
+        mpackId = Long.valueOf(id);
+      } catch (NumberFormatException ignored) {
+        mpackId = null;
+      }
+    }
+
+    String name = commandParams.get(KeyNames.MPACK_NAME);
+    if (name == null) {
+      name = clusterLevelParams.get(KeyNames.STACK_NAME);
+    }
+    String version = commandParams.get(KeyNames.MPACK_VERSION);
+    if (version == null) {
+      version = clusterLevelParams.get(KeyNames.STACK_VERSION);
+    }
+    mpackContext.clear();
+    if (mpackId != null) {
+      mpackContext.put("id", mpackId);
+    }
+    if (name != null) {
+      mpackContext.put("name", name);
+    }
+    if (version != null) {
+      mpackContext.put("version", version);
+    }
+    if (serviceName != null && !serviceName.isEmpty()) {
+      mpackContext.put("service_name", serviceName);
+    }
   }
 
   /**

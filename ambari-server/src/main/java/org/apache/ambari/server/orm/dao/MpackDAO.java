@@ -96,6 +96,14 @@ public class MpackDAO {
     return m_daoUtils.selectList(query);
   }
 
+  @RequiresSession
+  public List<MpackEntity> findByRegistryId(Long registryId) {
+    TypedQuery<MpackEntity> query = m_entityManagerProvider.get().createNamedQuery(
+        "MpackEntity.findByRegistryId", MpackEntity.class);
+    query.setParameter("registryId", registryId);
+    return m_daoUtils.selectList(query);
+  }
+
   @Transactional
   public void removeById(Long id) {
     m_entityManagerProvider.get().remove(findById(id));

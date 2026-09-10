@@ -176,4 +176,12 @@ public interface Blueprint {
   BlueprintEntity toEntity();
 
   List<RepositorySetting> getRepositorySettings();
+
+  /**
+   * Exact registered packages selected by this Blueprint. An empty list marks
+   * a legacy stack-only Blueprint.
+   *
+   * @return immutable package references
+   */
+  List<MpackReference> getMpackReferences();
 }

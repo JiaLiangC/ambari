@@ -24,6 +24,18 @@ import com.google.gson.annotations.SerializedName;
  * service source and target versions during an upgrade.
  */
 public class UpgradeServiceSummary {
+  @SerializedName("sourceMpackId")
+  public Long sourceMpackId;
+
+  @SerializedName("targetMpackId")
+  public Long targetMpackId;
+
+  @SerializedName("sourceMpackVersion")
+  public String sourceMpackVersion;
+
+  @SerializedName("targetMpackVersion")
+  public String targetMpackVersion;
+
   @SerializedName("sourceRepositoryId")
   public long sourceRepositoryId;
 

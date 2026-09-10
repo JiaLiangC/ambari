@@ -26,9 +26,11 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.DuplicateResourceException;
@@ -55,12 +57,14 @@ import org.apache.ambari.server.orm.entities.HostGroupEntity;
 import org.apache.ambari.server.orm.entities.StackEntity;
 import org.apache.ambari.server.orm.entities.TopologyRequestEntity;
 import org.apache.ambari.server.stack.NoSuchStackException;
+import org.apache.ambari.server.state.Mpack;
 import org.apache.ambari.server.state.SecurityType;
 import org.apache.ambari.server.state.StackInfo;
 import org.apache.ambari.server.topology.Blueprint;
 import org.apache.ambari.server.topology.BlueprintFactory;
 import org.apache.ambari.server.topology.GPLLicenseNotAcceptedException;
 import org.apache.ambari.server.topology.InvalidTopologyException;
+import org.apache.ambari.server.topology.MpackReference;
 import org.apache.ambari.server.topology.SecurityConfiguration;
 import org.apache.ambari.server.topology.SecurityConfigurationFactory;
 import org.apache.ambari.server.utils.SecretReference;
@@ -112,6 +116,8 @@ public class BlueprintResourceProvider extends AbstractControllerResourceProvide
   // Setting
   public static final String SETTING_PROPERTY_ID = "settings";
 
+  public static final String MPACK_INSTANCES_PROPERTY_ID = "mpack_instances";
+
   public static final String PROPERTIES_PROPERTY_ID = "properties";
   public static final String PROPERTIES_ATTRIBUTES_PROPERTY_ID = "properties_attributes";
   public static final String SCHEMA_IS_NOT_SUPPORTED_MESSAGE =
@@ -142,6 +148,7 @@ public class BlueprintResourceProvider extends AbstractControllerResourceProvide
       BLUEPRINT_SECURITY_PROPERTY_ID,
       HOST_GROUP_PROPERTY_ID,
       CONFIGURATION_PROPERTY_ID,
+      MPACK_INSTANCES_PROPERTY_ID,
       SETTING_PROPERTY_ID);
 
   /**
@@ -356,6 +363,8 @@ public class BlueprintResourceProvider extends AbstractControllerResourceProvide
       populateConfigurationList(entity.getConfigurations()), requestedIds);
     setResourceProperty(resource, SETTING_PROPERTY_ID,
       populateSettingList(entity.getSettings()), requestedIds);
+    setResourceProperty(resource, MPACK_INSTANCES_PROPERTY_ID,
+      populateMpackInstances(entity.getSettings()), requestedIds);
 
     if (entity.getSecurityType() != null) {
       Map<String, String> securityConfigMap = new LinkedHashMap<>();
@@ -435,6 +444,9 @@ public class BlueprintResourceProvider extends AbstractControllerResourceProvide
 
     if (settings != null) {
       for (BlueprintSettingEntity setting : settings) {
+        if (MpackReference.SETTING_NAME.equals(setting.getSettingName())) {
+          continue;
+        }
         List<Map<String, String>> propertiesList = jsonSerializer.<List<Map<String, String>>>fromJson(
                 setting.getSettingData(), List.class);
         Map<String, Object> settingMap = new HashMap<>();
@@ -528,12 +540,15 @@ public class BlueprintResourceProvider extends AbstractControllerResourceProvide
         SecurityConfiguration securityConfiguration = securityConfigurationFactory
           .createSecurityConfigurationFromRequest((Map<String, Object>) rawBodyMap.get(BLUEPRINTS_PROPERTY_ID), true);
 
+        prepareMpackReferences(properties);
+
         Blueprint blueprint;
         try {
           blueprint = blueprintFactory.createBlueprint(properties, securityConfiguration);
         } catch (NoSuchStackException e) {
           throw new IllegalArgumentException("Specified stack doesn't exist: " + e, e);
         }
+        validateMpackServiceCoverage(blueprint);
 
         if (blueprintDAO.findByName(blueprint.getName()) != null) {
           throw new DuplicateResourceException(
@@ -569,6 +584,120 @@ public class BlueprintResourceProvider extends AbstractControllerResourceProvide
         return null;
       }
     };
+  }
+
+  private static List<Map<String, Object>> populateMpackInstances(
+      Collection<? extends BlueprintSettingEntity> settings) {
+    List<Map<String, Object>> result = new ArrayList<>();
+    if (settings == null) {
+      return result;
+    }
+    for (BlueprintSettingEntity setting : settings) {
+      if (!MpackReference.SETTING_NAME.equals(setting.getSettingName())) {
+        continue;
+      }
+      List<Map<String, String>> values = jsonSerializer.fromJson(setting.getSettingData(), List.class);
+      for (Map<String, String> value : values) {
+        result.add(MpackReference.fromSettingMap(value).toApiMap());
+      }
+    }
+    return result;
+  }
+
+  @SuppressWarnings("unchecked")
+  private void prepareMpackReferences(Map<String, Object> properties) {
+    Object rawReferences = properties.get(MPACK_INSTANCES_PROPERTY_ID);
+    if (rawReferences == null) {
+      return;
+    }
+    Preconditions.checkArgument(rawReferences instanceof Collection,
+        "mpack_instances must be a list");
+
+    Collection<Map<String, Object>> rawSettings =
+        (Collection<Map<String, Object>>) properties.get(SETTING_PROPERTY_ID);
+    if (rawSettings != null) {
+      for (Map<String, Object> setting : rawSettings) {
+        Preconditions.checkArgument(!setting.containsKey(MpackReference.SETTING_NAME),
+            "mpack_instances must use the top-level Blueprint property");
+      }
+    }
+
+    List<MpackReference> references = new ArrayList<>();
+    for (Object rawReference : (Collection<?>) rawReferences) {
+      Preconditions.checkArgument(rawReference instanceof Map,
+          "mpack_instances entries must be objects");
+      references.add(MpackReference.fromApiMap((Map<String, Object>) rawReference));
+    }
+    Preconditions.checkArgument(!references.isEmpty(),
+        "mpack_instances must not be empty when present");
+
+    Set<String> instanceNames = new HashSet<>();
+    Set<String> serviceNames = new HashSet<>();
+    List<MpackReference> resolved = new ArrayList<>();
+    String stackName = String.valueOf(properties.get(STACK_NAME_PROPERTY_ID));
+    String stackVersion = String.valueOf(properties.get(STACK_VERSION_PROPERTY_ID));
+    boolean stackPackageFound = false;
+
+    for (MpackReference reference : references) {
+      Preconditions.checkArgument(instanceNames.add(reference.getInstanceName()),
+          "Duplicate mpack instance %s", reference.getInstanceName());
+      Mpack mpack = findRegisteredMpack(reference.getMpackName(), reference.getVersion());
+      Preconditions.checkArgument(mpack != null,
+          "Mpack %s-%s is not registered; register it with mpack administration permission before creating the Blueprint",
+          reference.getMpackName(), reference.getVersion());
+      if (reference.getMpackId() != null) {
+        Preconditions.checkArgument(reference.getMpackId().equals(mpack.getResourceId()),
+            "Mpack id %s does not identify %s-%s", reference.getMpackId(),
+            reference.getMpackName(), reference.getVersion());
+      }
+      if (reference.getRegistryId() != null) {
+        Preconditions.checkArgument(reference.getRegistryId().equals(mpack.getRegistryId()),
+            "Registry id %s does not match registered mpack %s-%s",
+            reference.getRegistryId(), reference.getMpackName(), reference.getVersion());
+      }
+      for (Map.Entry<String, String> service : reference.getServices().entrySet()) {
+        Preconditions.checkArgument(serviceNames.add(service.getKey()),
+            "Service %s is mapped by more than one mpack instance", service.getKey());
+        Preconditions.checkArgument(mpack.getModule(service.getValue()) != null,
+            "Service %s is not provided by mpack %s-%s", service.getValue(),
+            reference.getMpackName(), reference.getVersion());
+      }
+      stackPackageFound |= stackName.equals(reference.getMpackName())
+          && stackVersion.equals(reference.getVersion());
+      resolved.add(reference.resolved(mpack.getResourceId(), mpack.getRegistryId()));
+    }
+    Preconditions.checkArgument(stackPackageFound,
+        "One mpack instance must match the Blueprint stack %s-%s", stackName, stackVersion);
+
+    Set<HashMap<String, String>> storedReferences = new LinkedHashSet<>();
+    resolved.forEach(reference -> storedReferences.add(
+        new LinkedHashMap<>(reference.toSettingMap())));
+    List<Map<String, Object>> settings = rawSettings == null
+        ? new ArrayList<>() : new ArrayList<>(rawSettings);
+    Map<String, Object> mpackSetting = new HashMap<>();
+    mpackSetting.put(MpackReference.SETTING_NAME, storedReferences);
+    settings.add(mpackSetting);
+    properties.put(SETTING_PROPERTY_ID, settings);
+  }
+
+  private void validateMpackServiceCoverage(Blueprint blueprint) {
+    if (blueprint.getMpackReferences().isEmpty()) {
+      return;
+    }
+    Set<String> mappedServices = blueprint.getMpackReferences().stream()
+        .flatMap(reference -> reference.getServices().keySet().stream())
+        .collect(Collectors.toCollection(LinkedHashSet::new));
+    Set<String> blueprintServices = new LinkedHashSet<>(blueprint.getServices());
+    Preconditions.checkArgument(mappedServices.equals(blueprintServices),
+        "Mpack service mappings %s must exactly cover Blueprint services %s",
+        mappedServices, blueprintServices);
+  }
+
+  private Mpack findRegisteredMpack(String name, String version) {
+    return ambariMetaInfo.getMpackManager().getMpackMap().values().stream()
+        .filter(mpack -> name.equals(mpack.getName()) && version.equals(mpack.getVersion()))
+        .findFirst()
+        .orElse(null);
   }
 
   /**

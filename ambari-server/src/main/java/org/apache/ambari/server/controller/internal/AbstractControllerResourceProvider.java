@@ -165,8 +165,26 @@ public abstract class AbstractControllerResourceProvider extends AbstractAuthori
         return resourceProviderFactory.getUpgradeResourceProvider(managementController);
       case Stack:
         return new StackResourceProvider(managementController);
+      case Registry:
+        return new RegistryResourceProvider(managementController);
+      case RegistryRecommendation:
+        return new RegistryRecommendationResourceProvider(managementController);
+      case RegistryValidation:
+        return new RegistryValidationResourceProvider(managementController);
+      case RegistryScenario:
+        return new RegistryScenarioResourceProvider(managementController);
+      case RegistryMpack:
+        return new RegistryMpackResourceProvider(managementController);
+      case RegistryMpackVersion:
+        return new RegistryMpackVersionResourceProvider(managementController);
       case Mpack:
         return new MpackResourceProvider(managementController);
+      case MpackOperatingSystem:
+        return new MpackOperatingSystemResourceProvider(managementController);
+      case MpackRecommendation:
+        return new MpackRecommendationResourceProvider(managementController);
+      case MpackValidation:
+        return new MpackValidationResourceProvider(managementController);
       case StackVersion:
         return new StackVersionResourceProvider(managementController);
       case ClusterStackVersion:

@@ -31,10 +31,11 @@ sqlcmd -S localhost\SQLEXPRESS -i C:\app\ambari-server-1.3.0-SNAPSHOT\resources\
 ------create tables and grant privileges to db user---------
 CREATE TABLE registries(
  id BIGINT NOT NULL,
- registy_name VARCHAR(255) NOT NULL,
+ registry_name VARCHAR(255) NOT NULL,
  registry_type VARCHAR(255) NOT NULL,
  registry_uri VARCHAR(255) NOT NULL,
- CONSTRAINT PK_registries PRIMARY KEY (id));
+ CONSTRAINT PK_registries PRIMARY KEY (id),
+ CONSTRAINT UQ_registry_name UNIQUE (registry_name));
 
 CREATE TABLE mpacks(
  id BIGINT NOT NULL,
@@ -1230,6 +1231,7 @@ BEGIN TRANSACTION
     ('upgrade_item_id_seq', 0),
     ('stack_id_seq', 0),
     ('mpack_id_seq', 0),
+    ('registry_id_seq', 0),
     ('extension_id_seq', 0),
     ('link_id_seq', 0),
     ('topology_host_info_id_seq', 0),

@@ -148,6 +148,15 @@ public class MpacksService extends BaseService {
     return handleRequest(headers, null, ui, Request.Type.GET, createMpackResource(id));
   }
 
+  /**
+   * Handles requests for immutable repository metadata shipped by an mpack.
+   * Mutable repository settings remain owned by the repository-version API.
+   */
+  @Path("{id}/operating_systems")
+  public MpackOperatingSystemService getOperatingSystemsHandler(@PathParam("id") String id) {
+    return new MpackOperatingSystemService(id);
+  }
+
   @DELETE
   @Path("{id}")
   @Produces(MediaType.TEXT_PLAIN)

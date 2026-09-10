@@ -56,7 +56,10 @@ import org.apache.ambari.server.events.publishers.VersionEventPublisher;
 import org.apache.ambari.server.metadata.ActionMetadata;
 import org.apache.ambari.server.orm.dao.KerberosKeytabDAO;
 import org.apache.ambari.server.orm.dao.KerberosKeytabPrincipalDAO;
+import org.apache.ambari.server.orm.dao.StackDAO;
 import org.apache.ambari.server.orm.entities.KerberosKeytabPrincipalEntity;
+import org.apache.ambari.server.orm.entities.RepositoryVersionEntity;
+import org.apache.ambari.server.orm.entities.StackEntity;
 import org.apache.ambari.server.stack.upgrade.Direction;
 import org.apache.ambari.server.state.Alert;
 import org.apache.ambari.server.state.Cluster;
@@ -140,6 +143,9 @@ public class HeartbeatProcessor extends AbstractService{
 
   @Inject
   KerberosKeytabDAO kerberosKeytabDAO;
+
+  @Inject
+  StackDAO stackDAO;
 
   @Inject
   Gson gson;
@@ -580,6 +586,29 @@ public class HeartbeatProcessor extends AbstractService{
                     hostname);
 
                 String version = versionReport.getVersion();
+
+                RepositoryVersionEntity desiredRepositoryVersion = svcComp.getDesiredRepositoryVersion();
+                StackEntity stack = desiredRepositoryVersion == null ? null
+                    : stackDAO.find(desiredRepositoryVersion.getStackId());
+                if (versionReport.getMpackId() != null
+                    && (stack == null || !versionReport.getMpackId().equals(stack.getMpackId()))) {
+                  LOG.warn("Ignoring component version report with mismatched mpack id"
+                      + ", clusterId=" + versionReport.getClusterId()
+                      + ", serviceName=" + versionReport.getServiceName()
+                      + ", componentName=" + versionReport.getComponentName()
+                      + ", reportedMpackId=" + versionReport.getMpackId());
+                  continue;
+                }
+                if (versionReport.getMpackVersion() != null
+                    && (stack == null || stack.getMpackId() == null
+                        || !versionReport.getMpackVersion().equals(stack.getStackVersion()))) {
+                  LOG.warn("Ignoring component version report with mismatched mpack version"
+                      + ", clusterId=" + versionReport.getClusterId()
+                      + ", serviceName=" + versionReport.getServiceName()
+                      + ", componentName=" + versionReport.getComponentName()
+                      + ", reportedMpackVersion=" + versionReport.getMpackVersion());
+                  continue;
+                }
 
                 HostComponentVersionAdvertisedEvent event = new HostComponentVersionAdvertisedEvent(cl,
                     scHost, version);

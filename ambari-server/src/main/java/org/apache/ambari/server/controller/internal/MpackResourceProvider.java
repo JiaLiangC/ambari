@@ -21,9 +21,9 @@ package org.apache.ambari.server.controller.internal;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.URL;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -48,15 +48,28 @@ import org.apache.ambari.server.controller.spi.SystemException;
 import org.apache.ambari.server.controller.spi.UnsupportedPropertyException;
 import org.apache.ambari.server.controller.utilities.PredicateHelper;
 import org.apache.ambari.server.controller.utilities.PropertyHelper;
+import org.apache.ambari.server.orm.dao.BlueprintDAO;
 import org.apache.ambari.server.orm.dao.MpackDAO;
 import org.apache.ambari.server.orm.dao.RepositoryVersionDAO;
 import org.apache.ambari.server.orm.dao.StackDAO;
+import org.apache.ambari.server.orm.entities.BlueprintEntity;
+import org.apache.ambari.server.orm.entities.BlueprintSettingEntity;
 import org.apache.ambari.server.orm.entities.MpackEntity;
+import org.apache.ambari.server.orm.entities.RepositoryVersionEntity;
 import org.apache.ambari.server.orm.entities.StackEntity;
+import org.apache.ambari.server.registry.Registry;
+import org.apache.ambari.server.registry.RegistryMpack;
+import org.apache.ambari.server.registry.RegistryMpackVersion;
+import org.apache.ambari.server.security.authorization.RoleAuthorization;
+import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Module;
+import org.apache.ambari.server.state.Service;
+import org.apache.ambari.server.state.ServiceComponent;
 import org.apache.ambari.server.state.StackId;
+import org.apache.ambari.server.topology.MpackReference;
 import org.apache.commons.lang3.Validate;
 
+import com.google.gson.Gson;
 import com.google.inject.Inject;
 
 
@@ -98,10 +111,16 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
   protected static MpackDAO mpackDAO;
 
   @Inject
+  protected static BlueprintDAO blueprintDAO;
+
+  @Inject
   protected static StackDAO stackDAO;
 
   @Inject
   protected static RepositoryVersionDAO repositoryVersionDAO;
+
+  @Inject
+  protected static Gson gson;
 
   static {
     // properties
@@ -126,6 +145,14 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
 
   MpackResourceProvider(AmbariManagementController controller) {
     super(Resource.Type.Mpack, PROPERTY_IDS, KEY_PROPERTY_IDS, controller);
+
+    setRequiredCreateAuthorizations(EnumSet.of(RoleAuthorization.AMBARI_MANAGE_STACK_VERSIONS));
+    setRequiredDeleteAuthorizations(EnumSet.of(RoleAuthorization.AMBARI_MANAGE_STACK_VERSIONS));
+    setRequiredGetAuthorizations(EnumSet.of(
+        RoleAuthorization.AMBARI_MANAGE_STACK_VERSIONS,
+        RoleAuthorization.AMBARI_EDIT_STACK_REPOS,
+        RoleAuthorization.CLUSTER_VIEW_STACK_DETAILS,
+        RoleAuthorization.CLUSTER_UPGRADE_DOWNGRADE_STACK));
   }
 
   @Override
@@ -134,7 +161,7 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
   }
 
   @Override
-  public RequestStatus createResources(final Request request)
+  protected RequestStatus createResourcesAuthorized(final Request request)
           throws SystemException, UnsupportedPropertyException,
           ResourceAlreadyExistsException, NoSuchParentResourceException, IllegalArgumentException {
     Set<Resource> associatedResources = new HashSet<>();
@@ -145,26 +172,26 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
       }
       validateCreateRequest(mpackRequest);
       MpackResponse response = getManagementController().registerMpack(mpackRequest);
-      if (response != null) {
-        notifyCreate(Resource.Type.Mpack, request);
-        Resource resource = new ResourceImpl(Resource.Type.Mpack);
-        resource.setProperty(MPACK_RESOURCE_ID, response.getId());
-        resource.setProperty(MPACK_ID, response.getMpackId());
-        resource.setProperty(MPACK_NAME, response.getMpackName());
-        resource.setProperty(MPACK_VERSION, response.getMpackVersion());
-        resource.setProperty(MPACK_URI, response.getMpackUri());
-        resource.setProperty(MPACK_DESCRIPTION, response.getDescription());
-        resource.setProperty(REGISTRY_ID, response.getRegistryId());
-        resource.setProperty(MPACK_DISPLAY_NAME, response.getDisplayName());
-        associatedResources.add(resource);
-        return getRequestStatus(null, associatedResources);
+      if (response == null) {
+        throw new SystemException("Mpack registration returned no response");
       }
+      notifyCreate(Resource.Type.Mpack, request);
+      Resource resource = new ResourceImpl(Resource.Type.Mpack);
+      resource.setProperty(MPACK_RESOURCE_ID, response.getId());
+      resource.setProperty(MPACK_ID, response.getMpackId());
+      resource.setProperty(MPACK_NAME, response.getMpackName());
+      resource.setProperty(MPACK_VERSION, response.getMpackVersion());
+      resource.setProperty(MPACK_URI, response.getMpackUri());
+      resource.setProperty(MPACK_DESCRIPTION, response.getDescription());
+      resource.setProperty(REGISTRY_ID, response.getRegistryId());
+      resource.setProperty(MPACK_DISPLAY_NAME, response.getDisplayName());
+      associatedResources.add(resource);
+      return getRequestStatus(null, associatedResources);
     } catch (IOException e) {
-      e.printStackTrace();
-    } catch (BodyParseException e1) {
-      e1.printStackTrace();
+      throw new SystemException("Unable to register mpack: " + e.getMessage(), e);
+    } catch (BodyParseException e) {
+      throw new IllegalArgumentException(e.getMessage(), e);
     }
-    return null;
   }
 
   /***
@@ -178,10 +205,11 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
     final Long registryId = mpackRequest.getRegistryId();
     final String mpackVersion = mpackRequest.getMpackVersion();
 
+    Validate.notBlank(mpackUrl, registryId == null
+        ? "Mpack URI should not be empty"
+        : "Registry-backed mpack URI was not resolved");
     if (registryId == null) {
-      Validate.isTrue(mpackUrl != null);
-      LOG.info("Received a createMpack request"
-        + ", mpackUrl=" + mpackUrl);
+      LOG.info("Received a direct createMpack request");
     } else {
       Validate.notNull(mpackName, "MpackName should not be null");
       Validate.notNull(mpackVersion, "MpackVersion should not be null");
@@ -192,37 +220,52 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
     }
     try {
       URI uri = new URI(mpackUrl);
-      URL url = uri.toURL();
+      Validate.isTrue(uri.isAbsolute(), "Mpack URI must be absolute");
     } catch (Exception e) {
-      Validate.isTrue(e == null,
-        e.getMessage() + " is an invalid mpack uri. Please check the download link for the mpack again.");
+      throw new IllegalArgumentException(
+          mpackUrl + " is an invalid mpack URI. Please check the download link.", e);
     }
   }
 
   public MpackRequest getRequest(Request request) throws AmbariException {
-     MpackRequest mpackRequest = new MpackRequest();
+    MpackRequest mpackRequest = new MpackRequest();
     Set<Map<String, Object>> properties = request.getProperties();
+    if (properties.size() != 1) {
+      throw new IllegalArgumentException("Exactly one mpack may be registered per request");
+    }
     for (Map propertyMap : properties) {
-      //Mpack Download url is either given in the request body or is fetched using the registry id
-      if (!propertyMap.containsKey(MPACK_URI) && !propertyMap.containsKey(REGISTRY_ID)) {
+      boolean hasUri = propertyMap.containsKey(MPACK_URI);
+      boolean hasRegistry = propertyMap.containsKey(REGISTRY_ID);
+      if (!hasUri && !hasRegistry) {
         return null;
-      } else if (!propertyMap.containsKey(MPACK_URI)) {
-        // Retrieve mpack download url using the given registry id
-        mpackRequest.setRegistryId(Long.valueOf((String) propertyMap.get(REGISTRY_ID)));
+      }
+      if (hasUri && hasRegistry) {
+        throw new IllegalArgumentException("Specify either an mpack URI or a registry ID, not both");
+      }
+      if (hasRegistry) {
+        mpackRequest.setRegistryId(Long.valueOf(String.valueOf(propertyMap.get(REGISTRY_ID))));
         mpackRequest.setMpackName((String) propertyMap.get(MPACK_NAME));
         mpackRequest.setMpackVersion((String) propertyMap.get(MPACK_VERSION));
-      }
-      else {
-        //Directly download the mpack using the given url
+        mpackRequest.setMpackUri(resolveRegistryMpackUri(mpackRequest));
+      } else {
         mpackRequest.setMpackUri((String) propertyMap.get(MPACK_URI));
       }
     }
     return mpackRequest;
   }
 
+  private String resolveRegistryMpackUri(MpackRequest request) throws AmbariException {
+    Validate.notBlank(request.getMpackName(), "Mpack name is required for registry registration");
+    Validate.notBlank(request.getMpackVersion(), "Mpack version is required for registry registration");
+    Registry registry = getManagementController().getRegistry(request.getRegistryId());
+    RegistryMpack registryMpack = registry.getRegistryMpack(request.getMpackName());
+    RegistryMpackVersion registryMpackVersion = registryMpack.getMpackVersion(request.getMpackVersion());
+    return registryMpackVersion.getMpackUri();
+  }
+
 
   @Override
-  public Set<Resource> getResources(Request request, Predicate predicate)
+  protected Set<Resource> getResourcesAuthorized(Request request, Predicate predicate)
     throws SystemException, UnsupportedPropertyException,
     NoSuchResourceException, NoSuchParentResourceException {
 
@@ -250,9 +293,10 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
       Map<String, Object> propertyMap = new HashMap<>(PredicateHelper.getProperties(predicate));
       if (propertyMap.containsKey(MPACK_RESOURCE_ID)) {
         Object objMpackId = propertyMap.get(MPACK_RESOURCE_ID);
-        if (objMpackId != null) {
-          mpackId = Long.valueOf((String) objMpackId);
+        if (objMpackId == null) {
+          throw new IllegalArgumentException("Mpack ID must not be null");
         }
+        mpackId = Long.valueOf(String.valueOf(objMpackId));
         MpackResponse response = getManagementController().getMpack(mpackId);
 
         if (null != response) {
@@ -267,7 +311,15 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
         String stackName = (String) propertyMap.get(STACK_NAME_PROPERTY_ID);
         String stackVersion = (String) propertyMap.get(STACK_VERSION_PROPERTY_ID);
         StackEntity stackEntity = stackDAO.find(stackName, stackVersion);
+        if (stackEntity == null) {
+          throw new NoSuchResourceException("The requested stack does not exist: "
+              + stackName + "-" + stackVersion);
+        }
         mpackId = stackEntity.getMpackId();
+        if (mpackId == null) {
+          throw new NoSuchResourceException("The requested stack has no registered mpack: "
+              + stackName + "-" + stackVersion);
+        }
         MpackResponse response = getManagementController().getMpack(mpackId);
 
         if (null != response) {
@@ -310,54 +362,120 @@ public class MpackResourceProvider extends AbstractControllerResourceProvider {
     Map<String, Object> propertyMap = new HashMap<>(PredicateHelper.getProperties(predicate));
     DeleteStatusMetaData deleteStatusMetaData = null;
 
-    // Allow deleting mpack only if there are no cluster services deploying using this mpack.
-    // Support deleting mpacks only if no cluster has been deployed
-    // (i.e. you should be able to delete an mpack during install wizard only).
-    // TODO : Relax the rule
-    if (getManagementController().getClusters().getClusters().size() > 0) {
-      throw new SystemException("Delete request cannot be completed since there is a cluster deployed");
-    } else {
-      if (propertyMap.containsKey(MPACK_RESOURCE_ID)) {
-        Object objMpackId = propertyMap.get(MPACK_RESOURCE_ID);
-        if (objMpackId != null) {
-          mpackId = Long.valueOf((String) objMpackId);
-          LOG.info("Deleting Mpack, id = " + mpackId.toString());
+    if (propertyMap.containsKey(MPACK_RESOURCE_ID)) {
+      Object objMpackId = propertyMap.get(MPACK_RESOURCE_ID);
+      if (objMpackId == null) {
+        throw new IllegalArgumentException("Mpack ID must not be null");
+      }
+      mpackId = Long.valueOf(String.valueOf(objMpackId));
+      LOG.info("Deleting Mpack, id = " + mpackId);
 
-          MpackEntity mpackEntity = mpackDAO.findById(mpackId);
-          StackEntity stackEntity = stackDAO.findByMpack(mpackId);
-
-          try {
-            getManagementController().removeMpack(mpackEntity, stackEntity);
-            if (mpackEntity != null) {
-              deleteStatusMetaData = modifyResources(new Command<DeleteStatusMetaData>() {
-                @Override
-                public DeleteStatusMetaData invoke() throws AmbariException {
-                  if (stackEntity != null) {
-                    repositoryVersionDAO
-                      .removeByStack(new StackId(stackEntity.getStackName() + "-" + stackEntity.getStackVersion()));
-                    stackDAO.removeByMpack(mpackId);
-                    notifyDelete(Resource.Type.Stack, predicate);
-                  }
-                  mpackDAO.removeById(mpackId);
-
-                  return new DeleteStatusMetaData();
-                }
-              });
-              notifyDelete(Resource.Type.Mpack, predicate);
-              deleteStatusMetaData.addDeletedKey(mpackId.toString());
-            } else {
-              throw new NoSuchResourceException("The requested resource doesn't exist: " + predicate);
-            }
-          } catch (IOException e) {
-            throw new SystemException("There is an issue with the Files");
-          }
-        }
-      } else {
-        throw new UnsupportedPropertyException(Resource.Type.Mpack, null);
+      MpackEntity mpackEntity = mpackDAO.findById(mpackId);
+      StackEntity stackEntity = stackDAO.findByMpack(mpackId);
+      if (mpackEntity == null) {
+        throw new NoSuchResourceException("The requested resource doesn't exist: " + predicate);
+      }
+      if (isReferenced(stackEntity, mpackId)) {
+        throw new SystemException("Mpack " + mpackId
+            + " cannot be deleted while it is referenced by a cluster or Blueprint");
       }
 
-      return getRequestStatus(null, null, deleteStatusMetaData);
+      try {
+        getManagementController().removeMpack(mpackEntity, stackEntity);
+        deleteStatusMetaData = modifyResources(new Command<DeleteStatusMetaData>() {
+          @Override
+          public DeleteStatusMetaData invoke() throws AmbariException {
+            if (stackEntity != null) {
+              repositoryVersionDAO.removeByStack(new StackId(
+                  stackEntity.getStackName() + "-" + stackEntity.getStackVersion()));
+              stackDAO.removeByMpack(mpackId);
+              notifyDelete(Resource.Type.Stack, predicate);
+            }
+            mpackDAO.removeById(mpackId);
+
+            return new DeleteStatusMetaData();
+          }
+        });
+        notifyDelete(Resource.Type.Mpack, predicate);
+        deleteStatusMetaData.addDeletedKey(mpackId.toString());
+      } catch (IOException e) {
+        throw new SystemException("Unable to remove mpack files: " + e.getMessage(), e);
+      }
+    } else {
+      throw new UnsupportedPropertyException(Resource.Type.Mpack, null);
     }
+
+    return getRequestStatus(null, null, deleteStatusMetaData);
+  }
+
+  private boolean isReferenced(StackEntity stackEntity, Long mpackId) {
+    if (stackEntity != null) {
+      for (Cluster cluster : getManagementController().getClusters().getClusters().values()) {
+        if (matches(stackEntity, cluster.getCurrentStackVersion())
+            || matches(stackEntity, cluster.getDesiredStackVersion())) {
+          return true;
+        }
+        for (Service service : cluster.getServices().values()) {
+          if (matches(stackEntity, service.getDesiredRepositoryVersion())) {
+            return true;
+          }
+          for (ServiceComponent component : service.getServiceComponents().values()) {
+            if (matches(stackEntity, component.getDesiredRepositoryVersion())) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+
+    for (BlueprintEntity blueprint : blueprintDAO.findAll()) {
+      if (blueprint.getSettings() == null) {
+        continue;
+      }
+      for (BlueprintSettingEntity setting : blueprint.getSettings()) {
+        if (!MpackReference.SETTING_NAME.equals(setting.getSettingName())) {
+          continue;
+        }
+        final List<Map<String, String>> references;
+        try {
+          references = gson.fromJson(setting.getSettingData(), List.class);
+        } catch (RuntimeException e) {
+          LOG.warn("Blocking mpack deletion because Blueprint {} contains malformed persisted "
+              + "mpack reference data", blueprint.getBlueprintName(), e);
+          return true;
+        }
+        if (references == null) {
+          LOG.warn("Blocking mpack deletion because Blueprint {} contains an empty persisted "
+              + "mpack reference setting", blueprint.getBlueprintName());
+          return true;
+        }
+        for (Map<String, String> reference : references) {
+          if (reference == null) {
+            LOG.warn("Blocking mpack deletion because Blueprint {} contains a null persisted "
+                + "mpack reference", blueprint.getBlueprintName());
+            return true;
+          }
+          try {
+            if (mpackId.equals(MpackReference.fromSettingMap(reference).getMpackId())) {
+              return true;
+            }
+          } catch (RuntimeException e) {
+            LOG.warn("Blocking mpack deletion because Blueprint {} contains an invalid persisted "
+                + "mpack reference", blueprint.getBlueprintName(), e);
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  private boolean matches(StackEntity expected, RepositoryVersionEntity repositoryVersion) {
+    return repositoryVersion != null && matches(expected, repositoryVersion.getStackId());
+  }
+
+  private boolean matches(StackEntity expected, StackId actual) {
+    return actual != null && expected.getStackName().equals(actual.getStackName())
+        && expected.getStackVersion().equals(actual.getStackVersion());
   }
 }
-

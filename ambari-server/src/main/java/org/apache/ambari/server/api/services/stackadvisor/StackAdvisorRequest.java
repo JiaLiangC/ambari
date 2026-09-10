@@ -169,7 +169,10 @@ public class StackAdvisorRequest {
       .withConfigGroups(configGroups)
       .withUserContext(userContext)
       .withGPLLicenseAccepted(gplLicenseAccepted)
-      .withLdapConfig(ldapConfig);
+      .withLdapConfig(ldapConfig)
+      .withClusterId(clusterId)
+      .withServiceName(serviceName)
+      .withConfigsResponse(configsResponse);
   }
 
   public static class StackAdvisorRequestBuilder {

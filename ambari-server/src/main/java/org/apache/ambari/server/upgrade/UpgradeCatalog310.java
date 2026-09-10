@@ -43,6 +43,15 @@ public class UpgradeCatalog310 extends AbstractUpgradeCatalog {
   static final String DATASOURCE_SEQUENCE = "datasource_id_seq";
   static final String BOARD_SEQUENCE = "board_id_seq";
   static final String CHART_SHARE_SEQUENCE = "chart_share_id_seq";
+  static final String REGISTRY_TABLE = "registries";
+  static final String MPACK_TABLE = "mpacks";
+  static final String STACK_TABLE = "stack";
+  static final String REGISTRY_SEQUENCE = "registry_id_seq";
+  static final String MPACK_SEQUENCE = "mpack_id_seq";
+  static final String REGISTRY_NAME_CONSTRAINT = "UQ_registry_name";
+  static final String MPACK_NAME_VERSION_CONSTRAINT = "uni_mpack_name_version";
+  static final String MPACK_REGISTRY_FOREIGN_KEY = "FK_registries";
+  static final String STACK_MPACK_FOREIGN_KEY = "FK_mpacks";
 
   @Inject
   public UpgradeCatalog310(Injector injector) {
@@ -61,6 +70,7 @@ public class UpgradeCatalog310 extends AbstractUpgradeCatalog {
 
   @Override
   protected void executeDDLUpdates() throws AmbariException, SQLException {
+    reconcileMpackCatalogSchema();
     createDatasourceTable();
     createBoardTable();
     createBoardPayloadTable();
@@ -180,6 +190,63 @@ public class UpgradeCatalog310 extends AbstractUpgradeCatalog {
     addSequence(DATASOURCE_SEQUENCE, fetchMaxId(DATASOURCE_TABLE, "id") + 1, false);
     addSequence(BOARD_SEQUENCE, fetchMaxId(BOARD_TABLE, "id") + 1, false);
     addSequence(CHART_SHARE_SEQUENCE, fetchMaxId(CHART_SHARE_TABLE, "id") + 1, false);
+  }
+
+  protected void reconcileMpackCatalogSchema() throws SQLException {
+    reconcileRegistryTable();
+    reconcileMpackTable();
+    reconcileStackMpackColumn();
+    addSequence(REGISTRY_SEQUENCE, fetchMaxId(REGISTRY_TABLE, "id") + 1, false);
+    addSequence(MPACK_SEQUENCE, fetchMaxId(MPACK_TABLE, "id") + 1, false);
+  }
+
+  private void reconcileRegistryTable() throws SQLException {
+    if (!dbAccessor.tableExists(REGISTRY_TABLE)) {
+      List<DBAccessor.DBColumnInfo> columns = new ArrayList<>();
+      columns.add(column("id", Long.class, null, null, false));
+      columns.add(column("registry_name", String.class, 255, null, false));
+      columns.add(column("registry_type", String.class, 255, null, false));
+      columns.add(column("registry_uri", String.class, 255, null, false));
+      dbAccessor.createTable(REGISTRY_TABLE, columns, "id");
+    } else if (dbAccessor.tableHasColumn(REGISTRY_TABLE, "registy_name")
+        && !dbAccessor.tableHasColumn(REGISTRY_TABLE, "registry_name")) {
+      dbAccessor.renameColumn(REGISTRY_TABLE, "registy_name",
+          column("registry_name", String.class, 255, null, false));
+    }
+
+    dbAccessor.dropUniqueConstraint(REGISTRY_TABLE, REGISTRY_NAME_CONSTRAINT, true);
+    dbAccessor.addUniqueConstraint(REGISTRY_TABLE, REGISTRY_NAME_CONSTRAINT, "registry_name");
+  }
+
+  private void reconcileMpackTable() throws SQLException {
+    if (!dbAccessor.tableExists(MPACK_TABLE)) {
+      List<DBAccessor.DBColumnInfo> columns = new ArrayList<>();
+      columns.add(column("id", Long.class, null, null, false));
+      columns.add(column("mpack_name", String.class, 255, null, false));
+      columns.add(column("mpack_version", String.class, 255, null, false));
+      columns.add(column("mpack_uri", String.class, 255, null, true));
+      columns.add(column("registry_id", Long.class, null, null, true));
+      dbAccessor.createTable(MPACK_TABLE, columns, "id");
+      dbAccessor.addUniqueConstraint(MPACK_TABLE, MPACK_NAME_VERSION_CONSTRAINT,
+          "mpack_name", "mpack_version");
+    } else if (!dbAccessor.tableHasColumn(MPACK_TABLE, "registry_id")) {
+      dbAccessor.addColumn(MPACK_TABLE, column("registry_id", Long.class, null, null, true));
+    }
+
+    if (!dbAccessor.tableHasForeignKey(MPACK_TABLE, REGISTRY_TABLE, "registry_id", "id")) {
+      dbAccessor.addFKConstraint(MPACK_TABLE, MPACK_REGISTRY_FOREIGN_KEY, "registry_id",
+          REGISTRY_TABLE, "id", false);
+    }
+  }
+
+  private void reconcileStackMpackColumn() throws SQLException {
+    if (!dbAccessor.tableHasColumn(STACK_TABLE, "mpack_id")) {
+      dbAccessor.addColumn(STACK_TABLE, column("mpack_id", Long.class, null, null, true));
+    }
+    if (!dbAccessor.tableHasForeignKey(STACK_TABLE, MPACK_TABLE, "mpack_id", "id")) {
+      dbAccessor.addFKConstraint(STACK_TABLE, STACK_MPACK_FOREIGN_KEY, "mpack_id",
+          MPACK_TABLE, "id", false);
+    }
   }
 
   private DBAccessor.DBColumnInfo column(String name, Class<?> type, Integer length,

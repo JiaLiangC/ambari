@@ -20,6 +20,7 @@ package org.apache.ambari.server.topology;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -60,6 +61,7 @@ public class BlueprintImpl implements Blueprint {
   private SecurityConfiguration security;
   private Setting setting;
   private List<RepositorySetting> repoSettings;
+  private List<MpackReference> mpackReferences = Collections.emptyList();
 
   public BlueprintImpl(BlueprintEntity entity) throws NoSuchStackException {
     this.name = entity.getBlueprintName();
@@ -76,6 +78,7 @@ public class BlueprintImpl implements Blueprint {
     validator = new BlueprintValidatorImpl(this);
     processSetting(entity.getSettings());
     processRepoSettings();
+    processMpackReferences();
   }
 
   public BlueprintImpl(String name, Collection<HostGroup> groups, Stack stack, Configuration configuration,
@@ -100,6 +103,8 @@ public class BlueprintImpl implements Blueprint {
     }
     validator = new BlueprintValidatorImpl(this);
     this.setting = setting;
+    processRepoSettings();
+    processMpackReferences();
   }
 
   @Override
@@ -655,5 +660,14 @@ public class BlueprintImpl implements Blueprint {
   @Override
   public List<RepositorySetting> getRepositorySettings(){
     return repoSettings;
+  }
+
+  private void processMpackReferences() {
+    mpackReferences = MpackReference.fromSetting(setting);
+  }
+
+  @Override
+  public List<MpackReference> getMpackReferences() {
+    return mpackReferences;
   }
 }

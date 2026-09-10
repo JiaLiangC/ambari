@@ -1009,10 +1009,16 @@ public class UpgradeContext {
       serviceSummary.sourceRepositoryId = sourceRepositoryVersion.getId();
       serviceSummary.sourceStackId = sourceRepositoryVersion.getStackId().getStackId();
       serviceSummary.sourceVersion = sourceRepositoryVersion.getVersion();
+      serviceSummary.sourceMpackId = sourceRepositoryVersion.getStack().getMpackId();
+      serviceSummary.sourceMpackVersion = serviceSummary.sourceMpackId == null
+          ? null : sourceRepositoryVersion.getStackVersion();
 
       serviceSummary.targetRepositoryId = targetRepositoryVersion.getId();
       serviceSummary.targetStackId = targetRepositoryVersion.getStackId().getStackId();
       serviceSummary.targetVersion = targetRepositoryVersion.getVersion();
+      serviceSummary.targetMpackId = targetRepositoryVersion.getStack().getMpackId();
+      serviceSummary.targetMpackVersion = serviceSummary.targetMpackId == null
+          ? null : targetRepositoryVersion.getStackVersion();
 
       summary.services.put(serviceName, serviceSummary);
     }
