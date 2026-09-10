@@ -26,8 +26,8 @@ def main(argv=None):
   if args.diagnostics:
     try:
       with open(args.manifest, "r", encoding="utf-8") as stream:
-      result = validate_with_diagnostics(json.load(stream),
-                                        os.path.dirname(os.path.realpath(args.manifest)))
+        result = validate_with_diagnostics(json.load(stream),
+                                          os.path.dirname(os.path.realpath(args.manifest)))
     except (OSError, ValueError, json.JSONDecodeError) as error:
       result = {"valid": False, "diagnostics": [{"code": "SCHEMA_INVALID",
         "severity": "ERROR", "message": str(error), "path": "", "retryable": False,
