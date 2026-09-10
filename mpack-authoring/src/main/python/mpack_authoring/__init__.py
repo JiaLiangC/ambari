@@ -11,7 +11,12 @@ from .build import build_lock, write_lock
 from .runtime import PackageRef, RuntimeContext, ServiceRef
 from .diagnostics import Diagnostic, validate_with_diagnostics
 from .operation import PlanStep, plan_operation
+from .config import ConfigValue, SecretRef, effective_config
+from .dependency import BindingSnapshot, DependencyAdapter, DependencyRequirement
+from .recovery import OperationRecord
 
-__all__ = ["Diagnostic", "ManifestError", "PackageRef", "PlanStep", "RuntimeContext", "ServiceRef",
+__all__ = ["BindingSnapshot", "ConfigValue", "DependencyAdapter", "DependencyRequirement",
+           "Diagnostic", "ManifestError", "OperationRecord", "PackageRef", "PlanStep",
+           "RuntimeContext", "SecretRef", "ServiceRef",
            "build_lock", "load_manifest", "validate_manifest", "validate_with_diagnostics",
-           "plan_operation", "write_lock"]
+           "effective_config", "plan_operation", "write_lock"]

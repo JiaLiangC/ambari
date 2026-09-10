@@ -31,6 +31,12 @@ The operation module adds a non-mutating plan layer. It validates each requested
 capability against the scoped runtime context and emits ordered steps with
 preconditions and effects; it does not execute commands or claim readiness.
 
+The same local module now includes configuration provenance and redacted
+`SecretRef` values, a versioned dependency adapter boundary using the existing
+`ServiceRef`, explicit operation recovery transitions including `UNKNOWN`, and
+runtime profile capability declarations. These are additive contracts and do
+not create a second cluster, service, host-ownership, or dependency authority.
+
 Focused tests are included under `mpack-authoring/src/test/python`. Validation
 will be run with the rest of the local improvement batch after the current
 implementation topics are complete.
