@@ -157,3 +157,9 @@ files with 1075 tests, and the four-test management-pack model regression also
 passed. The active plan now continues local improvement work from this exact
 candidate. Remote publication and a remote-derived worktree are removed from
 the delivery sequence.
+
+R1 local commits now extend the candidate through manifest validation, runtime
+profiles, deterministic package locks, structured diagnostics, scoped operation
+planning, configuration provenance, dependency binding interfaces, recovery
+transitions, and the machine-readable schema/fixture. Final R1 validation is
+deferred until the implementation topics are complete.
