@@ -14,9 +14,12 @@ from .operation import PlanStep, plan_operation
 from .config import ConfigValue, SecretRef, effective_config
 from .dependency import BindingSnapshot, DependencyAdapter, DependencyRequirement
 from .recovery import OperationRecord
+from .adapters import (ExternalDatabaseAdapter, HostSystemdAdapter,
+                       KubernetesWorkloadAdapter, OciContainerAdapter)
 
 __all__ = ["BindingSnapshot", "ConfigValue", "DependencyAdapter", "DependencyRequirement",
            "Diagnostic", "ManifestError", "OperationRecord", "PackageRef", "PlanStep",
-           "RuntimeContext", "SecretRef", "ServiceRef",
+           "RuntimeContext", "SecretRef", "ServiceRef", "ExternalDatabaseAdapter",
+           "HostSystemdAdapter", "KubernetesWorkloadAdapter", "OciContainerAdapter",
            "build_lock", "load_manifest", "validate_manifest", "validate_with_diagnostics",
            "effective_config", "plan_operation", "write_lock"]
