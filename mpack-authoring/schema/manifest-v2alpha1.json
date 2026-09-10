@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ambari.apache.org/mpack/v2alpha1/manifest.schema.json",
+  "title": "Ambari Mpack v2alpha1",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {"const": "mpack.ambari.apache.org/v2alpha1"},
+    "kind": {"const": "Mpack"},
+    "metadata": {"type": "object", "required": ["name", "version"], "properties": {"name": {"type": "string"}, "version": {"type": "string"}}, "additionalProperties": false},
+    "spec": {"type": "object", "required": ["services"], "properties": {"compatibility": {"type": "object"}, "artifacts": {"type": "array"}, "services": {"type": "array", "minItems": 1}}, "additionalProperties": false}
+  }
+}

@@ -14,3 +14,6 @@ src/main/python/mpack_authoring/validate_manifest.py path/to/manifest.json`.
 `mpack_authoring.build.build_lock()` emits a deterministic offline lock with
 the manifest digest and sorted file inventory. It records content hashes; it
 does not fetch remote sources or execute package hooks.
+
+The machine-readable schema is under `schema/manifest-v2alpha1.json`, with a
+minimal offline fixture under `fixtures/minimal/manifest.json`.

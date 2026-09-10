@@ -1,0 +1,6 @@
+{
+  "apiVersion": "mpack.ambari.apache.org/v2alpha1",
+  "kind": "Mpack",
+  "metadata": {"name": "http-echo", "version": "0.1.0"},
+  "spec": {"artifacts": [], "services": [{"name": "HTTP_ECHO", "components": [{"name": "ECHO_SERVER", "profiles": [{"id": "host", "adapter": "host.systemd/v1", "capabilities": ["observe"]}]}]}]}
+}
