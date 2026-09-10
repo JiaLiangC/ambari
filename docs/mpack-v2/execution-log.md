@@ -163,3 +163,6 @@ profiles, deterministic package locks, structured diagnostics, scoped operation
 planning, configuration provenance, dependency binding interfaces, recovery
 transitions, and the machine-readable schema/fixture. Final R1 validation is
 deferred until the implementation topics are complete.
+
+The consolidated requirement matrix is in `reviews/R1-status.md`; it is the
+authoritative local view of partial and remaining R1 work.
