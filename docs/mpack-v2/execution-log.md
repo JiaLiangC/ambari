@@ -166,3 +166,24 @@ deferred until the implementation topics are complete.
 
 The consolidated requirement matrix is in `reviews/R1-status.md`; it is the
 authoritative local view of partial and remaining R1 work.
+
+## R1 Local Implementation Checkpoint
+
+The local improvement batches are now present in commits `281afcf831`
+(`AMBARI-14714: Integrate runtime adapters and mpack lifecycle`), `5854d98a88`
+(`AMBARI-14714: Complete mpack authoring compiler and dependency protocol`),
+`b2c67459df` (`AMBARI-14714: Add generic mpack runtime observability UI`) and
+`0203baf86b` (runtime model normalization fixes). The batches preserve the
+existing cluster/service identity and use controlled Agent argv execution for
+host, OCI, Kubernetes and external-database profiles.
+
+Validation completed after implementation: the authoring suite passed 25 tests,
+all authoring modules compiled, the instance-manager suite passed 23 tests, the
+server Maven compile/Checkstyle/RAT run passed with six focused mpack tests, the
+React runtime-model suite passed four tests, and the React production build
+passed. The full React suite passed 210 files and 1083 tests. The instance-manager
+tarball and DEB package both built successfully; `rpmbuild`/`rpm` are not
+installed in the environment, so RPM creation remains an environment limit. The
+generic Agent discovery/operation boundary is covered; live systemd/OCI/
+Kubernetes/database targets and shared-platform provider persistence remain
+external acceptance limits.
