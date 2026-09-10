@@ -56,6 +56,7 @@ export const AdminRouteGuard: React.FC<AdminRouteGuardProps> = ({ children }) =>
     'SERVICE.SET_SERVICE_USERS_GROUPS',
     'CLUSTER.UPGRADE_DOWNGRADE_STACK',
     'CLUSTER.VIEW_STACK_DETAILS',
+    'AMBARI.MANAGE_STACK_VERSIONS',
     'SERVICE.MANAGE_AUTO_START',
     'CLUSTER.MANAGE_AUTO_START',
   ].join(', '));

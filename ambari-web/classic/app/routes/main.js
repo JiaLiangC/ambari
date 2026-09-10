@@ -631,6 +631,25 @@ module.exports = Em.Route.extend(App.RouterRedirections, {
     }),
     stackUpgrade: require('routes/stack_upgrade_routes'),
 
+    adminMpack: Em.Route.extend({
+      breadcrumbs: {
+        label: Em.I18n.t('admin.managementPacks.title')
+      },
+
+      route: '/mpacks',
+      enter: function (router) {
+        if (router.get('loggedIn')
+            && !App.isAuthorized('CLUSTER.VIEW_STACK_DETAILS, AMBARI.MANAGE_STACK_VERSIONS')) {
+          router.transitionTo('main.dashboard.index');
+        }
+      },
+      connectOutlets: function (router) {
+        router.set('mainAdminController.category', 'managementPacks');
+        router.set('mainAdminController.categoryLabel', Em.I18n.t('admin.managementPacks.title'));
+        router.get('mainAdminController').connectOutlet('mainAdminManagementPacks');
+      }
+    }),
+
     adminAdvanced: Em.Route.extend({
       route: '/advanced',
       connectOutlets: function (router) {

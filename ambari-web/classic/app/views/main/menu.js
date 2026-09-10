@@ -115,6 +115,15 @@ App.MainSideMenuView = Em.CollectionView.extend({
             href: router.urlFor('main.admin.adminServiceAccounts')
           });
         }
+        if (App.isAuthorized('CLUSTER.VIEW_STACK_DETAILS, AMBARI.MANAGE_STACK_VERSIONS')) {
+          categories.push({
+            name: 'managementPacks',
+            url: 'mpacks',
+            label: Em.I18n.t('admin.managementPacks.title'),
+            disabled: App.get('upgradeInProgress') || App.get('upgradeHolding'),
+            href: router.urlFor('main.admin.adminMpack')
+          });
+        }
         if (!App.get('isHadoopWindowsStack') && App.isAuthorized('CLUSTER.TOGGLE_KERBEROS') || upg) {
           if (App.supports.enableToggleKerberos) {
             categories.push({

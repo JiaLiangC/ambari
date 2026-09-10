@@ -40,6 +40,7 @@ enum SideItemLabels {
   SERVICE_ACCOUNTS = "Service Accounts",
   KERBEROS = "kerberos",
   SERVICE_AUTO_START = "Service Auto Start",
+  MANAGEMENT_PACKS = "Management Packs",
 }
 /**
  * Generate sidebar items with authorization checks
@@ -74,6 +75,17 @@ const getSideItemList = (
       path: "/main/admin/serviceAccounts",
       children: [],
       style: {}
+    });
+  }
+
+  if (havePermissions('CLUSTER.VIEW_STACK_DETAILS, AMBARI.MANAGE_STACK_VERSIONS')) {
+    adminChildren.push({
+      id: SideItemLabels.MANAGEMENT_PACKS,
+      icon: <></>,
+      name: translate("admin.managementPacks.title", "Management Packs"),
+      path: "/main/admin/mpacks",
+      children: [],
+      style: {},
     });
   }
   
@@ -189,7 +201,7 @@ const getSideItemList = (
   const hasAnyAdminPermissions = havePermissions(
     'CLUSTER.TOGGLE_KERBEROS, CLUSTER.MODIFY_CONFIGS, SERVICE.START_STOP, '
       + 'SERVICE.SET_SERVICE_USERS_GROUPS, CLUSTER.UPGRADE_DOWNGRADE_STACK, '
-      + 'CLUSTER.VIEW_STACK_DETAILS',
+      + 'CLUSTER.VIEW_STACK_DETAILS, AMBARI.MANAGE_STACK_VERSIONS',
   );
 
   if (hasAnyAdminPermissions && adminChildren.length > 0) {
@@ -287,6 +299,14 @@ const SideItemList: SideItem[] = [
         path: "/main/admin/serviceAccounts",
         children: [],
         style: {}
+      },
+      {
+        id: SideItemLabels.MANAGEMENT_PACKS,
+        icon: <></>,
+        name: "Management Packs",
+        path: "/main/admin/mpacks",
+        children: [],
+        style: {},
       },
       {
         id: SideItemLabels.KERBEROS,

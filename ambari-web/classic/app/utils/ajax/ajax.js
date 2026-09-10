@@ -1892,6 +1892,54 @@ var urls = {
     'real': '/clusters/{clusterName}/stack_versions?fields=ClusterStackVersions/*,repository_versions/RepositoryVersions/*&minimal_response=true',
     'mock': '/data/stack_versions/stack_version_all.json'
   },
+
+  'admin.mpacks.all': {
+    'real': '/mpacks?fields=MpackInfo/*',
+    'mock': ''
+  },
+  'admin.mpacks.registries': {
+    'real': '/registries?fields=RegistryInfo/*,mpacks/RegistryMpackInfo/*,mpacks/versions/RegistryMpackVersionInfo/*,scenarios/RegistryScenarioInfo/*',
+    'mock': ''
+  },
+  'admin.mpacks.register.uri': {
+    'real': '/mpacks',
+    'mock': '',
+    'type': 'POST',
+    'format': function (data) {
+      return {
+        data: JSON.stringify({
+          Body: {
+            MpackInfo: {
+              mpack_uri: data.mpackUri
+            }
+          }
+        })
+      };
+    }
+  },
+  'admin.mpacks.register.registry': {
+    'real': '/mpacks',
+    'mock': '',
+    'type': 'POST',
+    'format': function (data) {
+      return {
+        data: JSON.stringify({
+          Body: {
+            MpackInfo: {
+              registry_id: data.registryId,
+              mpack_name: data.mpackName,
+              mpack_version: data.mpackVersion
+            }
+          }
+        })
+      };
+    }
+  },
+  'admin.mpacks.remove': {
+    'real': '/mpacks/{mpackId}',
+    'mock': '',
+    'type': 'DELETE'
+  },
   'admin.stack_version.install.repo_version': {
     'real': '/clusters/{clusterName}/stack_versions',
     'format': function (data) {

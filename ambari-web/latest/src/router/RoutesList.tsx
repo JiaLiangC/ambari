@@ -48,6 +48,7 @@ import AddWizardUrlMapping from "../screens/Services/AddWizardUrlMapping";
 import ViewDetails from "../screens/Views/ViewDetails";
 import ViewsListPage from "../screens/Views/ViewsListPage";
 import StackAndVersions from "../screens/ClusterAdmin/StackAndVersions/StackAndVersions";
+import ManagementPacks from "../screens/ManagementPacks";
 import Dashboard from "../screens/Dashboard/Index";
 import AdminViewRedirect from "../screens/Authentication/AdminViewRedirect";
 import Experimental from "../screens/Experimental";
@@ -401,6 +402,17 @@ const RoutesList: RouteObject[] = [
                         redirectTo="/main/dashboard/metrics"
                       >
                         <StackAndVersions />
+                      </ProtectedRoute>
+                    ),
+                  },
+                  {
+                    path: "mpacks",
+                    element: (
+                      <ProtectedRoute
+                        requireAuthorization="CLUSTER.VIEW_STACK_DETAILS, AMBARI.MANAGE_STACK_VERSIONS"
+                        redirectTo="/main/dashboard/metrics"
+                      >
+                        <ManagementPacks />
                       </ProtectedRoute>
                     ),
                   },

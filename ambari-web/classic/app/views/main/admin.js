@@ -38,6 +38,14 @@ App.MainAdminView = Em.View.extend({
         disabled: App.get('upgradeInProgress') || App.get('upgradeHolding')
       });
     }
+    if (App.isAuthorized('CLUSTER.VIEW_STACK_DETAILS, AMBARI.MANAGE_STACK_VERSIONS')) {
+      items.push({
+        name: 'managementPacks',
+        url: 'adminMpack',
+        label: Em.I18n.t('admin.managementPacks.title'),
+        disabled: App.get('upgradeInProgress') || App.get('upgradeHolding')
+      });
+    }
     if (!App.get('isHadoopWindowsStack') && App.isAuthorized('CLUSTER.TOGGLE_KERBEROS') || (App.get('upgradeInProgress') || App.get('upgradeHolding')) ) {
       if (App.supports.enableToggleKerberos) {
         items.push({
@@ -75,4 +83,3 @@ App.MainAdminView = Em.View.extend({
     this.set('controller.category', null);
   }
 });
-
