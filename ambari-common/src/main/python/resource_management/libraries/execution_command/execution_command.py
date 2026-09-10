@@ -282,14 +282,22 @@ class ExecutionCommand(object):
     Retrieve mpack name from command.json, i.e "stack_name": "HDPCORE"
     :return: mpack name string
     """
-    return self.__get_value("clusterLevelParams/stack_name")
+    return self.__get_value(
+      "mpack/name", self.__get_value("clusterLevelParams/stack_name")
+    )
 
   def get_mpack_version(self):
     """
     Retrieve mpack version from command.json, i.e "stack_version": "1.0.0-b224"
     :return: mpack version string
     """
-    return self.__get_value("clusterLevelParams/stack_version")
+    return self.__get_value(
+      "mpack/version", self.__get_value("clusterLevelParams/stack_version")
+    )
+
+  def get_mpack_id(self):
+    """Return the exact registered mpack ID when supplied by the server."""
+    return self.__get_value("mpack/id", self.__get_value("mpackId"))
 
   def get_user_groups(self):
     """

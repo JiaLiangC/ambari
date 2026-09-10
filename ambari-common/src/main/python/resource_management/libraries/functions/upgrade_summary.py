@@ -28,7 +28,7 @@ UpgradeSummary = namedtuple(
 )
 UpgradeServiceSummary = namedtuple(
   "UpgradeServiceSummary",
-  "service_name source_stack source_version target_stack target_version",
+  "service_name source_stack source_version target_stack target_version source_mpack_id source_mpack_version target_mpack_id target_mpack_version",
 )
 
 
@@ -101,6 +101,10 @@ def get_upgrade_summary():
       source_version=service_summary_json["sourceVersion"],
       target_stack=service_summary_json["targetStackId"],
       target_version=service_summary_json["targetVersion"],
+      source_mpack_id=service_summary_json.get("sourceMpackId"),
+      source_mpack_version=service_summary_json.get("sourceMpackVersion"),
+      target_mpack_id=service_summary_json.get("targetMpackId"),
+      target_mpack_version=service_summary_json.get("targetMpackVersion"),
     )
 
     service_summary_dict[service_name] = service_summary

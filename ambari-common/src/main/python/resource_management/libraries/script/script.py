@@ -230,6 +230,24 @@ class Script(object):
     repository_version = default("repositoryFile/repoVersion", None)
     is_install_command = command_name is not None and command_name.lower() == "install"
 
+    mpack_id = Script.execution_command.get_mpack_id()
+    if mpack_id is not None and not self.is_hook():
+      try:
+        from resource_management.libraries.functions import mpack_manager_helper
+
+        mpack_version, component_version = mpack_manager_helper.get_versions(
+          Script.execution_command.get_mpack_name(),
+          Script.execution_command.get_module_name(),
+          Script.execution_command.get_module_name(),
+          Script.execution_command.get_component_type(),
+        )
+        self.put_structured_out(
+          {"version": component_version, "mpackVersion": mpack_version}
+        )
+        return
+      except (ImportError, ValueError, OSError):
+        Logger.exception("Unable to report the mpack-managed component version")
+
     # start out with no version
     component_version = None
 
@@ -387,6 +405,13 @@ class Script(object):
 
         method(env)
 
+        if (
+          self.command_name == "install"
+          and not self.is_hook()
+          and Script.execution_command.get_mpack_id() is not None
+        ):
+          self.create_mpack_component_instance()
+
         if not self.is_hook():
           self.execute_prefix_function(self.command_name, "post", env)
 
@@ -406,6 +431,32 @@ class Script(object):
 
   def get_version(self, env):
     pass
+
+  def create_mpack_component_instance(self):
+    """Create the filesystem projection for a registered mpack component."""
+    from resource_management.libraries.functions import mpack_manager_helper
+
+    command = Script.execution_command
+    mpack_manager_helper.create_component_instance(
+      command.get_mpack_name(),
+      command.get_mpack_version(),
+      command.get_module_name(),
+      command.get_module_name(),
+      command.get_component_type(),
+    )
+
+  def switch_mpack_component_instance_version(self):
+    """Switch the current component projection to the command's target mpack."""
+    from resource_management.libraries.functions import mpack_manager_helper
+
+    command = Script.execution_command
+    mpack_manager_helper.set_component_instance_version(
+      command.get_mpack_name(),
+      command.get_mpack_version(),
+      command.get_module_name(),
+      command.get_module_name(),
+      command.get_component_type(),
+    )
 
   def execute_prefix_function(self, command_name, afix, env):
     """
@@ -1093,6 +1144,9 @@ class Script(object):
 
     if componentCategory and componentCategory.strip().lower() == "CLIENT".lower():
       if is_stack_upgrade:
+        if Script.execution_command.get_mpack_id() is not None:
+          self.switch_mpack_component_instance_version()
+
         # Remain backward compatible with the rest of the services that haven't switched to using
         # the pre_upgrade_restart method. Once done. remove the else-block.
         if "pre_upgrade_restart" in dir(self):
@@ -1113,6 +1167,9 @@ class Script(object):
           self.stop(env)
 
       if is_stack_upgrade:
+        if Script.execution_command.get_mpack_id() is not None:
+          self.switch_mpack_component_instance_version()
+
         # Remain backward compatible with the rest of the services that haven't switched to using
         # the pre_upgrade_restart method. Once done. remove the else-block.
         if "pre_upgrade_restart" in dir(self):

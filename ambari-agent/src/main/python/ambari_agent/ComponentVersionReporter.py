@@ -116,6 +116,17 @@ class ComponentVersionReporter(threading.Thread):
       "version": version_result["structuredOut"]["version"],
       "clusterId": cluster_id,
     }
+    component = self.topology_cache.get_component_info_by_key(
+      cluster_id, service_name, component_name
+    )
+    mpack_id = component.commandParams.get("mpack_id")
+    mpack_version = version_result["structuredOut"].get(
+      "mpackVersion", component.commandParams.get("mpack_version")
+    )
+    if mpack_id is not None:
+      result["mpackId"] = int(mpack_id)
+    if mpack_version is not None:
+      result["mpackVersion"] = mpack_version
 
     return result
 

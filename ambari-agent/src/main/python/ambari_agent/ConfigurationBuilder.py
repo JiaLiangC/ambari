@@ -81,6 +81,21 @@ class ConfigurationBuilder:
             "commandParams": component_dict.commandParams,
           }
         )
+        mpack_id = component_dict.commandParams.get("mpack_id")
+        mpack_name = component_dict.commandParams.get(
+          "mpack_name", metadata_cache.clusterLevelParams.get("stack_name")
+        )
+        mpack_version = component_dict.commandParams.get(
+          "mpack_version", metadata_cache.clusterLevelParams.get("stack_version")
+        )
+        command_dict["mpack"] = {
+          "id": int(mpack_id) if mpack_id is not None else None,
+          "name": mpack_name,
+          "version": mpack_version,
+          "service_name": service_name,
+        }
+        if mpack_id is not None:
+          command_dict["mpackId"] = int(mpack_id)
 
       command_dict.update(configurations_cache)
     else:
