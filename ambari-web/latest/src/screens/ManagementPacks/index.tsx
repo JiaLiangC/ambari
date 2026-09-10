@@ -37,6 +37,7 @@ import {
   faArrowLeft,
   faCheck,
   faDownload,
+  faGaugeHigh,
   faHardDrive,
   faLink,
   faPen,
@@ -723,6 +724,11 @@ export default function ManagementPacks() {
                         icon={faHardDrive}
                         label={`Repository metadata for ${mpack.name}`}
                         onClick={() => void showOperatingSystems(mpack)}
+                      />
+                      <ActionButton
+                        icon={faGaugeHigh}
+                        label={`Runtime details for ${mpack.name}`}
+                        onClick={() => navigate(`/main/admin/mpacks/${mpack.id}/runtime`)}
                       />
                       {canManage && (
                         <ActionButton
