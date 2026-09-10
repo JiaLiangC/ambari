@@ -10,6 +10,11 @@ from dataclasses import asdict, dataclass
 
 from .manifest import ManifestError, validate_manifest
 
+DIAGNOSTIC_CODES = {
+  "CAPABILITY_UNSUPPORTED", "DEPENDENCY_UNRESOLVED", "PLAN_STALE",
+  "TARGET_CONFLICT", "AUTHORIZATION_DENIED", "OUTCOME_UNKNOWN", "SCHEMA_INVALID",
+}
+
 
 @dataclass(frozen=True)
 class Diagnostic:
@@ -24,6 +29,13 @@ class Diagnostic:
     return asdict(self)
 
 
+def make_diagnostic(code, message, path="", severity="ERROR", retryable=False,
+                    correction=""):
+  if code not in DIAGNOSTIC_CODES:
+    raise ValueError("Unknown diagnostic code {}".format(code))
+  return Diagnostic(code, severity, message, path, retryable, correction)
+
+
 def validate_with_diagnostics(manifest, package_root=None):
   """Return a validation result with stable structured diagnostics."""
   try:
@@ -32,11 +44,6 @@ def validate_with_diagnostics(manifest, package_root=None):
   except ManifestError as error:
     message = str(error)
     path = message.split(" must ", 1)[0] if " must " in message else ""
-    diagnostic = Diagnostic(
-      code="SCHEMA_INVALID",
-      severity="ERROR",
-      message=message,
-      path=path,
-      correction="Correct the manifest field and validate again.",
-    )
+    diagnostic = make_diagnostic("SCHEMA_INVALID", message, path=path,
+                                 correction="Correct the manifest field and validate again.")
     return {"valid": False, "diagnostics": [diagnostic.as_dict()]}

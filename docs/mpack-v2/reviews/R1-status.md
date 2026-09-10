@@ -11,12 +11,12 @@ It distinguishes contract/tooling work from a real Ambari runtime integration.
 | Community V2 registry, package metadata, Blueprint projection, Agent context and administration UI | Complete | W1 batch reports and M2 candidate |
 | Manifest v2alpha1 identity, package-boundary and profile validation | Complete for local tooling | `mpack-authoring` validator, schema and fixtures |
 | Deterministic content lock and package digest | Complete for local tooling | `mpack_authoring.build` lock output |
-| Structured authoring diagnostics | Partial | `SCHEMA_INVALID` exists; runtime/dependency/authorization categories still need server integration |
+| Structured authoring diagnostics | Partial | Stable schema, capability, dependency, plan, target, authorization and outcome codes exist locally; server integration remains |
 | Scoped runtime context and capability intersection | Complete for local contract | `RuntimeContext`; no real adapter execution yet |
 | Non-mutating operation planning | Complete for local contract | `plan_operation`; no persisted Ambari operation yet |
 | Configuration provenance and secret references | Partial | Local `ConfigValue`/`SecretRef`; server persistence and effective-generation flow remain |
 | Dependency adapter and binding snapshots | Partial | Local protocol boundary; shared platform UUID/revision/authorization/fencing integration remains |
-| Operation recovery and UNKNOWN outcomes | Partial | Local transition model; request/task/workflow persistence and replay remain |
+| Operation recovery and UNKNOWN outcomes | Partial | Local transition model, injected executor and idempotent journal; request/task/workflow persistence and replay remain |
 | Host/systemd runtime adapter | Partial | Offline capability description and non-mutating plan exist; real target execution, observation and fencing remain |
 | OCI/container runtime adapter | Partial | Offline capability description and non-mutating plan exist; isolated runtime implementation and evidence remain |
 | Kubernetes workload adapter | Partial | Offline capability description and non-mutating plan exist; Kubernetes client/runtime and conformance fixtures remain |
