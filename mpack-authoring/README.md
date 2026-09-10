@@ -10,3 +10,7 @@ execute hooks, or grant a cluster target.
 
 Run the CLI with `PYTHONPATH=src/main/python python3
 src/main/python/mpack_authoring/validate_manifest.py path/to/manifest.json`.
+
+`mpack_authoring.build.build_lock()` emits a deterministic offline lock with
+the manifest digest and sorted file inventory. It records content hashes; it
+does not fetch remote sources or execute package hooks.

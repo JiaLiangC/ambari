@@ -7,5 +7,6 @@ this file except in compliance with the License.
 """
 
 from .manifest import ManifestError, load_manifest, validate_manifest
+from .build import build_lock, write_lock
 
-__all__ = ["ManifestError", "load_manifest", "validate_manifest"]
+__all__ = ["ManifestError", "build_lock", "load_manifest", "validate_manifest", "write_lock"]

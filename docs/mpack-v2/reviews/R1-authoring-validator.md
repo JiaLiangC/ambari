@@ -12,6 +12,10 @@ cardinality checks, and deterministic canonical SHA-256 content identity. A
 small CLI emits a machine-readable validity/digest result and performs no
 deployment or registration.
 
+The module also emits a deterministic offline file lock containing the
+manifest digest, sorted inventory, sizes and SHA-256 content hashes. Remote
+sources are not fetched and package hooks are never executed.
+
 Focused tests are included under `mpack-authoring/src/test/python`. Validation
 will be run with the rest of the local improvement batch after the current
 implementation topics are complete.
