@@ -40,7 +40,7 @@ describe("management pack runtime normalization", () => {
     expect(normalizeObservations({ observations: [
       { kind: "health", name: "ready", state: "HEALTHY", value: "true", timestamp: "2026-09-10T00:00:00Z" },
       { type: "metric", metric: "requests", status: "UNKNOWN" },
-    ] )).toEqual([
+    ] })).toEqual([
       expect.objectContaining({ kind: "health", name: "ready", stale: false }),
       expect.objectContaining({ kind: "metric", name: "requests", state: "UNKNOWN", stale: true }),
     ]);

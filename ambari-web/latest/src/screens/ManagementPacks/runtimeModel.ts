@@ -98,11 +98,15 @@ export function normalizeCapabilities(value: unknown): RuntimeCapability[] {
 
 export function normalizeObservations(value: unknown): RuntimeObservation[] {
   const source = record(value);
-  const values = array(source.observations).length
-    ? array(source.observations)
-    : ["health", "metrics", "logs", "alerts"].flatMap((kind) => (
+  let values: unknown[];
+  if (array(source.observations).length) {
+    values = array(source.observations);
+  } else {
+    values = ["health", "metrics", "logs", "alerts"].flatMap((kind) => (
       array(source[kind]).map((item) => ({ ...record(item), kind }))
-    )).concat(resources(value));
+    ));
+    values = values.concat(resources(value));
+  }
   return values.map((item) => {
     const observation = record(record(item).Observation || item);
     const state = string(observation.state || observation.status || "UNKNOWN").toUpperCase();
@@ -143,7 +147,7 @@ export function normalizePlan(value: unknown): RuntimePlan {
   const steps = array(plan.steps).map((item, index) => {
     const step = record(item);
     return {
-      id: string(step.id || step.stepId || `step-${index + 1}`),
+      id: string(step.id || step.stepId || step.step_id || `step-${index + 1}`),
       action: string(step.action || step.capability || step.name),
       status: string(step.status) || undefined,
       effect: string(step.effect || step.effects) || undefined,
@@ -159,7 +163,7 @@ export function normalizePlan(value: unknown): RuntimePlan {
     };
   }).filter((diagnostic) => diagnostic.message);
   return {
-    id: string(plan.id || plan.planId) || undefined,
+    id: string(plan.id || plan.planId || plan.plan_id) || undefined,
     generation: number(plan.generation || plan.expectedGeneration),
     steps,
     diagnostics,
