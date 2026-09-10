@@ -78,20 +78,16 @@ file selection. Keep temporary logs and host-specific launch artifacts outside
 tracked source. Write `reviews/M2-candidate.md` with exact candidate SHA, test
 results, feature accounting and remaining risks.
 
-Pause publication at this checkpoint for the parent's exact-commit review. User
-authorization to push is already recorded; the pending gate is technical review,
-not a repeated permission request. Perform independent safe review/cleanup work
-while awaiting the review; do not push a moving target.
+Keep the exact candidate locally as the M3 baseline. Remote publication is not
+part of the active plan; continue local development from this candidate.
 
-## Order W3: Publication and New Worktree
+## Order W3: Local Baseline Transition
 
-Only after the parent's recorded acceptance of the exact candidate:
+After M2 candidate preparation:
 
-1. Verify the `apache/ambari` trunk target and check for remote advancement.
-2. Push the accepted commit normally; no force push or protection changes.
-3. Verify remote SHA and record it in the execution log.
-4. Create a new improvement worktree from that verified trunk revision.
-5. Continue W4 there, keeping the integration worktree as an auditable checkpoint.
+1. Record the exact local candidate SHA in the execution log.
+2. Create a local improvement worktree if isolation is useful.
+3. Continue W4 from that local candidate without changing remote state.
 
 The parent can communicate review through the tmux terminal or a clearly
 identified review document. The implementation worker must not self-author the

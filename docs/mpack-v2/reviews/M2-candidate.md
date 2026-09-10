@@ -66,7 +66,7 @@ server validation used the available local Maven 3.9.16 binary.
 
 This is a local exact candidate. No remote trunk write, force push, branch
 protection change, live-cluster deployment, or credential-bearing operation was
-performed. Parent technical review is required before any publication step.
+performed. The active plan continues local development from this candidate;
+remote publication is removed from the delivery sequence.
 
 Final candidate tip after this record is committed: **pending commit**.
-

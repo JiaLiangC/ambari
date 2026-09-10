@@ -142,7 +142,7 @@ results. After publishing, record the verified remote trunk tip and the new
 improvement worktree base. Do not describe a local staged merge as a remote
 integration or treat conflict count reduction as feature acceptance.
 
-## Active Remote W1 Checkpoint
+## Active Local M3 Checkpoint
 
 The active worktree is `/jialiangc/bigdata/prjs/ambari-mpack-v2` on branch
 `AMBARI-14714-mpack-v2-remote`. The explicit two-parent provenance merge is
@@ -150,10 +150,10 @@ The active worktree is `/jialiangc/bigdata/prjs/ambari-mpack-v2` on branch
 stages. W1-B2 through W1-B6 compatibility batches are implemented and recorded
 under `reviews/W1-*.md`.
 
-One early server command used Maven 3.9.16, compiled successfully, and ran six
-mpack tests successfully before Checkstyle stopped on twelve import findings.
-Those findings were corrected. Per the current execution direction, the
-command has not been rerun; Python, frontend, migration, packaging, and
-runtime checks are deferred until the implementation phase is complete. No
-candidate commit, parent acceptance, remote publication, or improvement
-worktree exists at this checkpoint.
+The M2 candidate is `b72ade8fcfd553ff182f3d34fe63c0903616005a`. Maven 3.9.16
+server compilation, Checkstyle, RAT and six mpack tests passed; instance-manager
+Python tests, Python syntax checks, the React production build, 208 React test
+files with 1075 tests, and the four-test management-pack model regression also
+passed. The active plan now continues local improvement work from this exact
+candidate. Remote publication and a remote-derived worktree are removed from
+the delivery sequence.

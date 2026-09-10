@@ -39,9 +39,9 @@ ownership/identity/protocol boundaries cannot be changed by the worker.
 
 1. M0: record actual baseline, capability mapping and shared contract availability.
 2. M1: incorporate community V2 and necessary compatibility corrections.
-3. M2: verify and prepare exact candidate commits for parent review.
-4. M3: publish the reviewed integration to remote trunk and verify it.
-5. M4: create a new improvement worktree from that published trunk.
+3. M2: verify and prepare exact candidate commits locally.
+4. M3: record the local candidate as the improvement baseline.
+5. M4: continue in a local improvement worktree or the authorized worktree.
 6. R1+: implement reliability, runtime, schema, UI and authoring improvements.
 
 Do not implement every future authoring feature before community integration.

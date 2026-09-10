@@ -102,18 +102,14 @@ work-order template. Distinguish tests actually run from planned checks, source
 inspection from runtime evidence, and existing failures from new regressions.
 Continue independent reversible work while feedback is pending.
 
-At the integration publication boundary, prepare exact candidate commits and
-`reviews/M2-candidate.md`, then display `READY_FOR_PARENT_REVIEW` with the SHA and
-report path. Do not push until the parent has reviewed that exact candidate.
-The worker cannot author its own parent-acceptance record. This is the agreed
-technical review gate; user authorization for publication already exists.
+At the integration boundary, prepare exact candidate commits and
+`reviews/M2-candidate.md`, then record the local candidate SHA and continue into
+the improvement topics. Remote publication and remote advancement checks are
+removed from the active runbook.
 
-Do not invent parent feedback or use a timeout as acceptance. If the parent
-requests changes, apply them and update the candidate evidence. If remote trunk
-advances, the changed candidate needs affected checks and another parent review.
-
-After publication, create the separate improvement worktree from verified remote
-trunk and continue the R1+ topics there. Parent reviews meaningful checkpoints.
+Create a separate local improvement worktree only when it helps isolate the
+next topic. Otherwise continue in the authorized dedicated worktree and record
+the exact base commit. Preserve the candidate as an auditable local checkpoint.
 
 ## Interactive Session Requirement
 

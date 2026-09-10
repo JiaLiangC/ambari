@@ -117,29 +117,23 @@ Exit: exact candidate commit, complete capability ledger, change summary, comman
 and results, limitations and reviewer findings. Prepare this before requesting
 the parent's publication review.
 
-## M3: Reviewed Remote Trunk Publication
+## M3: Local Improvement Baseline
 
-The user has authorized direct publication to remote trunk. The parent reviews
-the exact candidate before the worker pushes. No repeat user permission question
-is needed for the already authorized action.
+Remote trunk publication is removed from the active plan. Keep the exact M2
+candidate locally as the integration baseline and continue development in this
+worktree. Do not push, modify remote branches, or make remote state a required
+dependency for the next phase.
 
-The remote host's `origin` is the personal fork; its `apache` remote is upstream.
-The publication target resolved in this session is `apache/ambari` trunk. Verify
-host/repository/ref without printing credentials before any write. Never infer
-the target solely from a remote name.
+Exit: record the local candidate SHA, preserve the passing M2 evidence, and
+start the improvement topics from that immutable local commit.
 
-After parent acceptance, recheck upstream trunk, integrate any advancement, repeat
-affected checks/review, and use a normal fast-forward push with an explicit refspec.
-Never force-push, alter protection, or self-approve a PR. If the server rejects
-direct publication, preserve the candidate and report the actual rejection.
+## M4: Local Improvement Worktree
 
-Exit: read the remote ref and record the verified published commit.
-
-## M4: New Improvement Worktree
-
-Create a distinct branch/worktree from the verified published trunk. Carry the
-architecture, decisions, tests and work orders into it. Do not reuse the old
-local conflicted tree or treat its state as the new baseline.
+Create a local improvement branch/worktree from the verified M2 candidate when
+the implementation scope needs isolation. If the current dedicated worktree is
+the authorized improvement location, continue there and record the exact base
+SHA. Carry the architecture, decisions, tests and work orders into it; no
+remote publication is required.
 
 ## R1+: Architecture and Authoring Improvements
 
