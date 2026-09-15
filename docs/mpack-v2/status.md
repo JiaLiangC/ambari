@@ -34,7 +34,12 @@ The current change set converges the design around supported host software:
 | Removal evidence | Typed, profile-independent management/runtime/data/ownership dispositions implemented and consumed by Server. |
 | Installation UX | React dialog submits a stable UUID install plan; Server validates and coordinates service/component/host/config/install writes. |
 | Cohesion | Artifact fetching, install coordination and removal evidence extracted; file/external profiles no longer initialize systemd units; readiness is polymorphic. |
-| Store | Independent future system; Ambari retains signed registry/file/approved-URL import and cluster authority. |
+| Distribution | Local independent source repository builds each package and a deterministic full collection. Ambari accepts a bounded collection file and independently registers each signed package. No hosted Store or approved ASF release. |
+
+The intended package model is broader than the current declarative compiler: a trusted
+Mpack may own software-specific lifecycle scripts and may embed or externally resolve a
+digest-pinned binary. That authoring/build path and its install-time artifact selection
+are planned, not implemented in this status snapshot.
 
 ## Runtime matrix
 
@@ -59,12 +64,15 @@ Executed in this workspace after the convergence changes:
 | React | package lifecycle and install dialog target tests | 12 passed |
 | React build | TypeScript project build and Vite production bundle | passed; existing Sass and bundle-size warnings remain |
 | Server target tests | fetch/import, install coordination, removal evidence, Mpack DAO, task binding, cluster API and request/service authorization | 111 passed, 3 fixture-dependent tests skipped; RAT/checkstyle passed |
+| Offline collection (new local checks) | Independent source repository unit tests, user CLI, all-four-example repeatable build and failure path | 5 passed; signed real Server import not attempted |
+| Collection Server/API (new local checks) | `MpacksServiceTest`, `MpackCollectionReaderTest` through Maven with `skipUiBuild=true`, `skipPythonTests=true` | 11 passed; RAT/checkstyle passed |
+| Collection React (new local checks) | Management Packs package lifecycle API tests and TypeScript/Vite build | 11 passed; existing Sass/bundle-size warnings remain |
 
 The skipped Agent/Server cases require root/non-root process, Java-generated secrets or
 an externally generated signed package fixture. An unfiltered Maven lifecycle also ran
 1,194 Server Python tests and stopped on one pre-existing Python 3.12 import error:
 `VICTORIAMETRICS/service_advisor.py` imports the removed standard-library `imp` module.
-No live browser, Store, Redis, PostgreSQL, systemd Agent deployment, multi-server setup
+No live browser, real signed collection import, Kyuubi, Redis, PostgreSQL, systemd Agent deployment, multi-server setup
 or production DB migration was used for these local results.
 
 ## Implemented safety properties
@@ -82,15 +90,16 @@ or production DB migration was used for these local results.
 
 ## Open gates
 
-1. Exercise `MpackInstallCoordinator` with real resource providers and injected failure
-   after each intermediate record, including concurrent multi-server submission.
-2. Execute a signed HTTP and Redis golden path on disposable Ambari Server/Agent/systemd
-   hosts with authorization denial and lost-response cases.
-3. Verify fresh and upgraded supported production database schemas and catalog/resource
-   reference behavior.
-4. Deliver installed authoring commands and a clean-environment CI example.
-5. Design and implement publisher governance and the signed registry index in the
-   independent Store repository.
+1. Build Server and Agent RPMs, deploy a disposable Ambari cluster and record the
+   reproducible environment and artifact digests.
+2. Add the generic package-owned lifecycle and embedded/URL/target-path artifact source
+   contract to the independent builder and the minimum required Ambari integration.
+3. Implement the Kyuubi Mpack from an official digest-pinned binary and complete the UI,
+   Agent lifecycle and JDBC/SQL golden path in [the plan](implementation-plan.md).
+4. Exercise `MpackInstallCoordinator` with real resource providers and failures after
+   intermediate records, including concurrent multi-server submission.
+5. Verify fresh and upgraded supported production database schemas, deliver installed
+   authoring commands/CI, and exercise trust revocation and collection partial retry.
 
-No Store availability, AI output, manifest field or operator confirmation can replace
+No offline collection, AI output, manifest field or operator confirmation can replace
 Ambari authorization, Server task identity or Agent-observed native evidence.

@@ -42,14 +42,29 @@ that identity is not owned and cannot be adopted or deleted.
 
 ## Authoring and import
 
-The source schema is closed. Unknown fields, unsupported profiles/capabilities,
-undeclared references, unsafe paths, symlinks and mutable input bytes fail validation.
-Compilation captures a deterministic inventory and produces reproducible source and
-legacy exports. Compilation does not download software, execute hooks, contact a
-cluster or grant deployment approval.
+The source schema is closed. Unknown fields, undeclared references, unsafe paths,
+symlinks and mutable input bytes fail validation. A package may contain custom Ambari
+service definitions and lifecycle scripts. Those scripts and every embedded payload
+are part of the signed inventory. Building does not execute package lifecycle code,
+contact a cluster or grant deployment approval.
 
-The deployable `.mpack` contains exactly `mpack.json` and its referenced definition
-archive. Import applies entry, byte and expansion limits, verifies metadata and
+Software artifacts have immutable identity independent of transport: logical name,
+software version, size and cryptographic digest. A package may offer an embedded blob,
+approved network locations and an operator-supplied target-host path. Installation
+chooses a transport, resolves it to a regular file and verifies the pinned digest before
+package code receives the immutable local path. A URL or path never overrides artifact
+identity. Credentials remain in Ambari's credential store. Local paths are absolute,
+must fall under administrator-approved roots and refer to each selected Agent host.
+
+The current `v2alpha1` compiler implements only local vendored artifacts and reusable
+profiles. Optional payloads and package-owned command scripts are an open implementation
+item, not current schema behavior.
+
+The current deployable `.mpack` contains `mpack.json` and its referenced definition
+archive. The planned carrier may additionally include content-addressed blobs declared
+by signed metadata. Thin and embedded carriers may resolve the same software artifact,
+but their immutable Mpack release identities must distinguish different carrier bytes.
+Import applies entry, byte and expansion limits, verifies metadata and
 signature before publication, and uses pending markers to reconcile filesystem/DB
 crash windows. DB catalog state is authoritative; files and Stack links are required
 projections.
@@ -165,7 +180,7 @@ while retained resources reference the release. There is no force-abandon API: w
 the Agent or receipt is unavailable, the target remains blocked until evidence can be
 recovered or the installation is repaired under an operator-controlled procedure.
 
-## Catalog and Store
+## Catalog and offline distribution
 
 Package reference writes and catalog removal share the package-row lock; foreign keys
 remain the final integrity guard. Removal deletes unreferenced repository/Stack/catalog
@@ -173,9 +188,11 @@ rows transactionally, invalidates cached projections, then quarantines filesyste
 content. A filesystem cleanup failure is retried during startup. Catalog removal never
 uninstalls software.
 
-The Store owns publication accounts, moderation, key lifecycle and public discovery.
-Ambari consumes only signed registry metadata and immutable artifacts. Store state is
-never copied into cluster authorization, tasks or native ownership.
+The independent source repository builds user-signed single packages and periodic
+all-package offline collections with a digest inventory. Collection identity and
+digests are transport metadata, not a substitute for each publisher's signature.
+Ambari alone verifies packages and owns catalog, cluster authorization, tasks and
+native ownership. No hosted publisher accounts or remote registry are required.
 
 UI, CLI and AI are untrusted clients of these same APIs. None can fabricate target
 incarnation, task binding, source approval or removal evidence. Stable error categories

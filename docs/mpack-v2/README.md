@@ -17,42 +17,40 @@
 
 # Mpack V2
 
-Mpack extends Ambari with signed software definitions and versioned host profiles
-management while retaining existing cluster/service identity, authorization,
-configuration, Agent ownership, request/task history, and dependency authority.
-Current availability and acceptance are recorded in [status.md](status.md).
-Design descriptions are not claims of implemented or tested runtime support.
+Mpack V2 lets a trusted package add and manage host software without adding that
+software to Ambari core or first converting it to an RPM. A package may contain its
+own Ambari service definitions, lifecycle scripts, configuration and software binary,
+or acquire a digest-pinned binary from an operator-selected URL or target-host path.
+Ambari still owns authorization, host assignment, configuration, requests and Agent
+execution. Importing such a package is therefore trusted-code admission, not sandboxing.
 
-The independent [Store design](store-design.md) covers the third-party website and
-backend, to be implemented later in a new repository. Ambari provides file/URL import
-and local package/service management, without Store pages. The [Ambari delivery plan](implementation-plan.md)
-records the implemented local scope and the remaining real-environment acceptance gates.
-The 2026-09-15 [architecture convergence decision](architecture.md#architecture-convergence-decision--2026-09-15)
-removes container and orchestrator runtimes from Mpack V2 and narrows the platform to
-versioned Ambari-managed host profiles. The user removed the Kyuubi example and its dedicated integration work; current
-examples are HTTP, Redis, multi-service YAML and an external PostgreSQL observer. Historical review records retain
-their original scope and do not override the active plan.
+Ambari itself is built as Server and Agent RPMs for the validation cluster. Software
+managed by Mpack, starting with Kyuubi, is installed from its upstream binary rather
+than a Kyuubi RPM. No Kyuubi-specific branch belongs in Ambari Java, Python or UI.
 
-Package authors should start with the English [development guide and examples](../../mpack-authoring/README.md)
-and run [validate.py](../../mpack-authoring/validate.py) against their own source or
-offline source bundle. The guide distinguishes source checks from host export and
-actual runtime acceptance.
+The independent source repository and periodic all-package collection are described in
+[distribution](store-design.md). There is no hosted Store, publisher website or curated
+subset. "All-package" means every Mpack definition; large upstream binaries may remain
+external. [Implementation plan](implementation-plan.md) makes the Ambari RPM plus
+Kyuubi UI flow the next acceptance milestone. [Status](status.md) distinguishes what is
+already implemented from that unexecuted plan.
+
+The current `v2alpha1` authoring compiler is a declarative convenience subset. It does
+not yet express package-owned lifecycle scripts or optional external binary delivery;
+the next milestone must add that source/build path without weakening package signing.
 
 ## Read in this order
 
 1. [Architecture](architecture.md): boundaries, ownership, decisions and tradeoffs.
 2. [Contracts](contracts.md): identity, configuration, dependency and operation rules.
 3. [Manifest](manifest-spec.md): versioned authoring format and validation.
-4. [Reference acceptance](reference-examples.md): host, external observation,
-   dependency and AI scenarios; these are acceptance requirements.
+4. [Reference acceptance](reference-examples.md): the Kyuubi golden path and supporting
+   host scenarios; these are acceptance requirements.
 5. [Implementation plan](implementation-plan.md): ordered work and exit criteria.
 6. [Status and provenance](status.md): current findings, executed checks and limits.
 7. [Independent review](reviews/independent-architecture-review-2026-09-10.md):
    historical findings against c7dc663f7c, retained for traceability.
 
-Keep one architecture, one implementation plan, and one status ledger. Update
-these documents instead of adding per-batch completion reports. The separate Store
-design is explicitly requested and will move to its future repository; it is not a
-second Ambari architecture or implementation plan. Record external
-acceptance dependencies explicitly. Do not replace an unresolved defect with a
-claim that a fixture, command exit code, or class definition proves support.
+Keep one architecture, one implementation plan and one status ledger. Historical
+reviews preserve their original findings and do not override these current documents.
+Do not report a build, import or unit test as proof of live installation.

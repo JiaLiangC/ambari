@@ -17,17 +17,29 @@
 
 # Reference acceptance scenarios
 
-The Redis walkthrough, actual call entries and breakpoints are maintained
-once in [status](status.md). Its historical Kyuubi walkthrough is outside the current
-scope; the user removed that example on 2026-09-10. Complete authoring examples live in fixtures linked by
-[manifest-spec](manifest-spec.md). The scenarios below define acceptance requirements;
-they do not report tests already run or imply missing runtime implementations exist.
+Kyuubi is the primary end-to-end scenario. The smaller HTTP, Redis and external
+database fixtures remain focused contract tests. These scenarios define acceptance;
+completed evidence is recorded only in [status](status.md).
+
+## Kyuubi golden path
+
+| Step | Required observation |
+| --- | --- |
+| Build Ambari | Reproducible Server and Agent RPMs from the tested branch, with recorded SHA-256 digests. |
+| Start cluster | Server database initialized; Agents registered on disposable systemd hosts; test cluster and Spark/Hadoop prerequisites healthy. |
+| Build Mpack | Independent source builds a signed Kyuubi Mpack from package-local definitions/scripts and a pinned official binary checksum. Kyuubi has no RPM and Ambari has no Kyuubi-specific code. |
+| Select binary | UI offers embedded content when present, approved HTTP(S), or an absolute target-host path. Every choice verifies the same locked artifact identity before installation. |
+| Import | UI uploads the Kyuubi Mpack or its all-package collection; Ambari verifies publisher, signature, inventory and compatibility before catalog publication. |
+| Install | Operator chooses service, hosts and configuration once; Server creates the normal Ambari request and Agent executes the package's install/configure/start lifecycle. |
+| Verify | UI and task history show the actual outcome; native process, version, ports and health match; a JDBC/SQL smoke query succeeds. |
+| Operate | Stop/start and a configuration-driven restart work through normal Ambari actions. Wrong digest, URL/path policy and corrupt archive failures are visible and bounded. |
+| Remove | Ordinary uninstall stops Kyuubi and preserves declared logs/work data; reinstall is deterministic. Destructive cleanup, if later supported, remains separately authorized. |
 
 ## Current host and catalog slice
 
 | Scenario | Required observation | Closest local coverage |
 | --- | --- | --- |
-| Author/build HTTP or Redis | One canonical validation path; deterministic exact inventory; offline declared payload | AuthoringSafetyTest, LegacyExportTest |
+| Author/build HTTP or Redis | One canonical validation path; deterministic exact inventory; declared payload | AuthoringSafetyTest, LegacyExportTest |
 | Signed import | Actual generated modules loaded by MpackManager; digest bound in DB; wrong key/modified content rejected before publication | MpackManagerTest compiler-produced fixture |
 | Publication crash before/after DB | Uncommitted files quarantined; committed projection completed; rollback failure retains definitions | MpackManagerTest crash-window cases |
 | Delete while referenced | DB transaction fails with references and files retained; unreferenced deletion commits before filesystem cleanup | MpackDAOTest and MpackManagerTest |
@@ -39,12 +51,8 @@ they do not report tests already run or imply missing runtime implementations ex
 | Cancellation/output pressure | Drain both pipes, capped output, bounded termination; UNKNOWN disables automatic retries | Local child-process tests and TestActionQueue |
 | Catalog UI | Existing permissions/API and delete behavior; absent runtime route not exposed | React model/route tests and production build |
 
-Real Redis/systemd acceptance additionally needs isolated native hosts with supported
-OS packages and service users. It must inspect real unit paths/InvocationID, occupied
-ports, process exit after successful command submission, invalid config, interrupted
-publication and data retention. Local fixtures do not meet this native evidence bar.
-Server-Agent connection loss/restart acceptance must inspect persisted actual tasks,
-metadata/config generations and late responses, not only reconstruct a local class.
+HTTP and Redis fixtures remain useful for fast profile regression tests. They do not
+replace the Kyuubi browser-to-Agent acceptance path.
 
 ## External observation and removal acceptance
 

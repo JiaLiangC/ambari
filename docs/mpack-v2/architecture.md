@@ -19,15 +19,24 @@
 
 ## Product boundary
 
-Mpack V2 extends Ambari with installable, signed software definitions. An Mpack may
-define services, components, typed configuration, artifacts, health checks and a
-bounded lifecycle supported by a versioned runtime profile. Ambari remains the only
-cluster deployment authority: it owns RBAC, service state, configuration history,
-requests, tasks, host assignment and Agent delivery.
+Mpack V2 extends Ambari with signed, installable software definitions. An Mpack may
+ship service definitions, package-owned lifecycle scripts, configuration, health
+checks and software payloads. The payload may be embedded or resolved at installation
+from an approved URL or target-host local path. This removes the requirement to build
+an RPM for every managed product. Ambari remains the only cluster deployment authority:
+it owns RBAC, service state, configuration history, requests, tasks, host assignment
+and Agent delivery.
 
-The product is not a universal runtime or distributed transaction platform. OCI and
-Kubernetes execution are outside this repository and are not deferred Mpack features.
-The supported profiles are:
+Package lifecycle scripts are trusted code executed through Ambari's existing Agent
+command-script mechanism. A signature identifies and protects package content; it does
+not make that code safe. Publisher trust, package review and install authorization are
+therefore security boundaries. Product-specific installation and observation belong in
+the package, never in product-name branches in Ambari Server, Agent or UI.
+
+The product is not a new workflow engine, sandbox or distributed transaction platform.
+OCI and Kubernetes execution are outside this repository. The current declarative
+compiler also offers these reusable profiles for packages that do not need custom
+scripts:
 
 | Profile | Purpose | Supported lifecycle |
 | --- | --- | --- |
@@ -41,10 +50,11 @@ backup/migrate/restore and force-abandon are not part of this contract. New life
 verbs require a concrete native postcondition and recovery model before schema or UI
 work begins.
 
-The official Store is a separate discovery and publishing system. It may publish a
-signed, versioned, read-only registry index and immutable Mpack artifacts. It has no
-cluster credentials or deployment authority. Ambari continues to support offline file
-and administrator-approved URL import when the Store is unavailable.
+The independent source repository holds Mpack source, package scripts and pinned build
+logic. Authors can build their own signed releases; maintainers periodically build
+every source into individual releases and one collection. The collection includes all
+definitions but need not include every upstream binary. No hosted Store, publication
+website, remote registry or cluster credentials are required.
 
 ## Architecture assessment and convergence
 
@@ -71,29 +81,32 @@ cannot be operated safely.
 
 ```mermaid
 flowchart TD
-  A[Author source] --> C[Deterministic compiler]
-  C --> P[Signed immutable Mpack]
-  R[Store or registry index] --> I
+  A[Author source, scripts and artifact lock] --> C[Deterministic builder]
+  C --> P[Signed immutable Mpack definition]
+  R[Independent sources and signed package collection] --> I
   P --> I[Artifact fetch policy and authenticated import]
   I --> D[(Ambari catalog and Stack projection)]
   U[UI or API actor] --> S[Install-plan coordinator and existing RBAC]
   S --> D
   S --> Q[Existing request, stage and task history]
   Q --> G[Assigned Ambari Agent]
-  G --> X[Profile adapter]
-  X --> N[systemd, files, or external observation]
+  B[Embedded blob, approved URL or target-host path] --> V[Artifact resolver and digest check]
+  G --> V
+  V --> X[Package lifecycle or profile adapter]
+  X --> N[Package lifecycle or reusable host profile]
   X --> E[(Root-owned local receipt)]
   N --> X
   X --> Q
 ```
 
-The compiler performs schema/reference/inventory validation and never authorizes or
-executes a deployment. Import verifies package identity, inventory and signature
-before publishing catalog/Stack projections. The install coordinator validates the
-selected imported repository, service definition, all component assignments,
-cardinality, hosts, configuration types and permissions before it writes anything.
-It uses existing resource providers and request history rather than creating another
-workflow database.
+The builder performs schema/reference/inventory validation and never authorizes or
+executes a deployment. A build-time fetch may obtain an upstream binary, but must pin
+and verify its digest before embedding it. Import verifies package identity, inventory
+and signature before publishing catalog/Stack projections. The install coordinator
+validates the selected imported repository, service definition, all component
+assignments, cardinality, hosts, configuration types and permissions before it writes
+anything. It uses existing resource providers and request history rather than creating
+another workflow database.
 
 Immediately before task persistence, Server binds cluster, service, component, host,
 package digest, target incarnation, operation and configuration hashes. Agent plans
@@ -152,22 +165,23 @@ and never removes shared OS users or packages.
 
 The following rules control future complexity:
 
-1. A new software product inside an existing profile must require only manifest,
-   schema, templates and artifacts, not product-name branches in Java, Python or UI.
+1. New software is implemented with package-local definitions, scripts, templates and
+   artifacts, not product-name branches in Ambari Java, Python or UI.
 2. A new profile needs one owner, typed inputs, discovery, postconditions, recovery,
    security limits and real-runtime acceptance.
 3. A new lifecycle verb needs a durable intent and independently observable success;
    otherwise it stays package documentation or an external runbook.
 4. No second identity, workflow, authorization, binding or deployment database is
    introduced while existing Ambari authority can represent the state.
-5. Store availability never gates local import or management.
+5. Hosted discovery never gates local import or management.
 
 ## Remaining acceptance gates
 
 Local unit and integration fixtures establish contract behavior, not production
-readiness. A disposable environment must still prove signed file/approved-URL import,
-HTTP and Redis installation, configuration restart, native readiness, lost-response
-recovery, retained-data uninstall, purge safety, catalog deletion and fresh/upgraded
-production database behavior. See [status](status.md) for executed checks and the
+readiness. The next disposable environment must build Ambari Server/Agent RPMs, import
+a signed Kyuubi Mpack in the UI, install an official Kyuubi binary from embedded,
+approved-URL and target-host path sources, and verify its lifecycle and health. See
+[implementation plan](implementation-plan.md) for the sequence, [status](status.md) for
+executed checks and the
 [independent review](reviews/independent-architecture-review-2026-09-10.md) for the
 historical line-by-line audit.

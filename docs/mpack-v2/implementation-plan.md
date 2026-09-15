@@ -20,9 +20,10 @@
 ## Goal and guardrails
 
 Deliver a maintainable Ambari extension path for signed software packages, using one
-existing control plane from import through removal. Software inside a supported host
-profile should be package-local. Runtime semantics, authorization, request history and
-native ownership remain platform code.
+existing control plane from import through removal. Product definitions, lifecycle
+scripts and binary handling are package-local; no product RPM or product-name branch in
+Ambari is required. Authorization, host assignment and request history remain Ambari
+platform responsibilities.
 
 The plan excludes OCI, Kubernetes, rolling package upgrade, reload, ownership handoff,
 package data procedures and force-abandon. They are removed, not placeholders for the
@@ -38,9 +39,55 @@ authorization database.
 | C2 | Reduce lifecycle to install/configure/start/stop/restart/observe/uninstall plus controlled purge. | Implemented across authoring, Agent, Server and UI; advanced actions and recovery states removed. |
 | C3 | Move service/component/host/config install orchestration from browser to Server. | Implemented as the UUID-addressed install-plan endpoint; targeted API/UI tests pass. |
 | C4 | Split high-change responsibilities. | Implemented initial split: artifact fetch policy, install coordination, removal parsing and profile readiness/runtime initialization have separate owners. Continue only when changes demonstrate another concrete coupling. |
-| C5 | Prove the signed host golden path in a disposable environment. | Open: file and approved URL import, HTTP/Redis install, config restart, observe, retained uninstall, purge and catalog removal. |
+| C5 | Prove the signed host golden path in a disposable environment. | Open: build/install Ambari RPMs, then import and operate Kyuubi through the Mpack V2 UI using its official binary. |
 | C6 | Ship clean authoring commands and CI template. | Open: installed `init`, `validate`, `build`, `sign`, `publish`; no repository-specific `PYTHONPATH`. |
-| C7 | Deliver official discovery in the independent Store repository. | Open: signed/versioned read-only index, publisher governance, key rotation/revocation; offline import remains available. |
+| C7 | Build independent source repository and all-package offline distribution. | Local source repository, pinned compiler build scripts and bounded Ambari collection file importer implemented with target tests. A real signed cross-repository import, release approval and native acceptance remain open. No hosted Store or curated subset. |
+
+## Next milestone: Ambari RPM and Kyuubi
+
+This is the handoff sequence for the next implementation session. Kyuubi is the first
+golden-path consumer because it exercises a large upstream binary, custom installation,
+configuration, a long-running process and real health checks.
+
+| Order | Deliverable | Exit criterion |
+| --- | --- | --- |
+| K0 | Reproducible Ambari lab | Build separate `ambari-server` and `ambari-agent` RPMs from this branch in the supported Rocky build environment. Install one Server and Agents on disposable systemd hosts, initialize the database, register hosts and create the validation cluster. |
+| K1 | General package source path | Extend the independent repository builder to package complete Ambari service definitions and package-owned Python lifecycle scripts. Signing covers definitions, scripts, artifact locks and any embedded blobs. No Kyuubi logic is added to Ambari core. |
+| K2 | Artifact delivery | Represent each software artifact by version, size and digest. Support embedded content, an approved HTTP(S) URL and an absolute target-host `file` path. All transports must produce the same verified bytes before the install script runs. |
+| K3 | Kyuubi Mpack | Add Kyuubi metadata, configuration, service/component definitions and install/configure/start/stop/status scripts. Pin an Apache Kyuubi binary release and checksum; do not build a Kyuubi RPM. Preserve logs and work data on ordinary uninstall. |
+| K4 | UI acceptance | Build/sign the Kyuubi Mpack, trust its publisher, upload it in Management Packs, select the Kyuubi service, hosts, configuration and binary source, and submit the Server-owned install plan. Verify task history and service state in the normal Ambari UI. |
+| K5 | Native acceptance | Verify installed version, process identity, configured ports, health, restart after config change, stop/start, uninstall retention and reinstall. Run one Kyuubi JDBC/SQL smoke query against the test cluster; a listening port alone is insufficient. |
+| K6 | Failure acceptance | Reject wrong digests, untrusted signatures, disallowed URLs, invalid local paths and corrupt archives. Preserve actionable Ambari request/task failure output without recording credentials. |
+
+### Binary transport rules
+
+"Full collection" means every package source is built; it does not mean every upstream
+binary is embedded. The builder must support thin and offline outputs from one artifact
+lock:
+
+- Embedded: the Mpack carrier includes the verified content-addressed blob.
+- Network: the install plan selects an administrator-approved URL; mutable location
+  does not change the pinned digest.
+- Local: the install plan selects an absolute path present on every assigned Agent host,
+  typically shared storage or pre-staged content; the Agent rejects symlinks, non-files
+  and paths outside approved roots.
+
+If embedded and thin carriers produce different bytes, they must have explicit delivery
+variants and must not reuse one publisher/package/version identity with different
+digests. Package lifecycle scripts receive only the verified local artifact path; they
+do not implement credentials, URL policy or checksum bypasses themselves.
+
+### Kyuubi scope
+
+Use an official Apache Kyuubi binary and its published checksum. The Mpack source may
+download it during an embedded build or leave it external for thin builds. Runtime
+configuration supplies Java and the test cluster's Spark/Hadoop client paths. Keep the
+first milestone to one Kyuubi server component and one supported OS/JDK/Spark matrix;
+HA, rolling upgrade, Kerberos and cross-cluster dependency brokering are follow-up work.
+
+The resulting evidence must record source commit, RPM digests, Mpack digest, Kyuubi
+artifact digest, host topology, commands and observed results. Do not mark C5 complete
+until the browser-to-Agent flow and SQL smoke query have run successfully.
 
 ## Server install plan
 
@@ -96,6 +143,7 @@ these postconditions.
 | `MpackRemovalEvidence` | Typed release-envelope validation and state mapping | Profile-specific systemd/file/database interpretation |
 | `ManifestService` | Existing Script entry points and profile dispatch | Cross-profile readiness conditionals |
 | Profile deployments | Native discovery, mutation, postcondition and receipt evidence | User authorization or global workflow state |
+| Package command scripts | Product-specific install, configuration, process and health logic | Publisher trust, artifact source policy or Ambari workflow state |
 | Management Packs UI | Collect one plan, display state, invoke public actions | Multi-resource mutation sequencing or inferred recovery |
 
 The split is intentionally shallow. Shared task identity, receipt journal and catalog

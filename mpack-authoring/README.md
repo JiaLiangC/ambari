@@ -17,12 +17,12 @@
 
 # Developing and validating a new Mpack
 
-An Mpack describes software using a manifest, configuration schemas/templates and
-explicit artifacts. New software within an implemented runtime profile uses the
-shared Ambari lifecycle; it does not need software-specific Java/Python dispatch,
-copied lifecycle scripts or a Store plugin. This guide covers the current
-`mpack.ambari.apache.org/v2alpha1` authoring format and bounded `host.systemd/v1`
-export, not the future public Store or unimplemented runtimes.
+This guide covers the current declarative `mpack.ambari.apache.org/v2alpha1` format and
+its reusable host profiles. It is a convenience path, not a restriction on the Mpack
+container: trusted management packs may also carry complete Ambari service definitions,
+package-owned lifecycle scripts and embedded or externally resolved software binaries.
+That independent-repository build path is planned but is not yet accepted by this
+schema. Neither path needs product-specific dispatch in Ambari core or a hosted Store.
 
 ## Set up the tools
 
@@ -42,7 +42,7 @@ MPACK_PY="$MPACK_WORK/venv/bin/python"
 
 For an offline environment, install these Python dependencies from an approved local
 wheel directory beforehand. Validation itself does not download dependencies or
-software, start services, call systemd, contact a Store or need a running Ambari.
+software, start services, call systemd, contact a remote registry or need a running Ambari.
 
 ## Choose an example
 
@@ -81,9 +81,10 @@ Redis deployment. Actual runtime acceptance is recorded in
    are included through their configuration declarations. Neighboring files are not
    implicitly bundled. A program such as `redis-server` must be supplied by a declared
    OS prerequisite; an arbitrary path to a missing binary is not a distribution.
-   Archive artifacts are payloads, not an instruction to extract/install themselves.
-   Vendor URL artifacts before offline builds; URL declarations require SHA-256 and
-   cannot contain credentials, query strings or fragments. Do not put secrets in files.
+   In this declarative subset, archive artifacts are payloads rather than install
+   instructions, and host export requires URL artifacts to be vendored. The planned
+   custom-script path may install embedded, approved-URL or target-host artifacts only
+   after verifying the locked digest. Do not put secrets in files or URLs.
 
 3. Define configuration in a closed JSON Schema object with supported scalar fields.
    Give ports integer bounds `1..65535`, and validate defaults. Each configuration
@@ -220,15 +221,16 @@ The output directory must be empty and outside the package source. It contains
 payload and a wrapper invoking the shared Agent `ManifestService`. Both files must be
 available through the existing registration flow. The Ambari Server must be configured
 with the same external HMAC key through `mpack.signing.key.file`. Never publish that
-key or include it in source, archives, logs or a Store upload. This alpha shared-key
+key or include it in source, archives, logs or a public release. This alpha shared-key
 mode is not the planned asymmetric multi-publisher distribution contract.
 
-Registration and local export are distinct from software deployment. Current
-independent-package composition into existing clusters and generic uninstall have
-open implementation gates; follow [the Ambari plan](../docs/mpack-v2/implementation-plan.md)
-and status instead of treating a successful export as a completed install.
-Store pages/backend will be implemented later in a separate repository using the
-[Store design](../docs/mpack-v2/store-design.md). This guide and validator add no Store
+Registration and local export are distinct from software deployment. Independent
+package installation into an existing cluster and typed uninstall have local
+implementations, but live Server/Agent/native acceptance remains open; follow
+[the Ambari plan](../docs/mpack-v2/implementation-plan.md) and status instead of
+treating a successful export as a completed install.
+An [independent source repository and offline collection](../docs/mpack-v2/store-design.md)
+replace the former hosted Store plan. This guide and validator add no hosted service
 implementation or deployment authority.
 
 
@@ -345,7 +347,7 @@ References and keyed generation fingerprints, never plaintext, are retained in t
 
 The compiler can be packaged without building Ambari. The wheel contains the canonical
 schema copied into build output, and installs `mpack-validate`; there is no second schema
-source or Store-specific validator. Source implementation is present; wheel acceptance
+source or distribution-specific validator. Source implementation is present; wheel acceptance
 belongs to the consolidated batch and has not run yet.
 
 ```bash

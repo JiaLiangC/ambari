@@ -23,6 +23,13 @@ with semantic checks in `mpack_authoring/schema.py` and `compiler.py`. Use
 `apiVersion: mpack.ambari.apache.org/v2alpha1`, `kind: Mpack`. This alpha source
 version is distinct from legacy registration format and runtime contract version.
 
+This document describes the implemented declarative authoring subset, not the full
+Mpack container. Management packs can carry complete Ambari service definitions and
+package-owned command scripts. Adding that source path and optional embedded/network/
+local binary delivery to the independent builder is the next milestone in
+[implementation-plan.md](implementation-plan.md); those fields are not accepted by the
+current schema yet.
+
 ## Source fields and limits
 
 | Field | Meaning and current validation |
@@ -85,10 +92,10 @@ Use complete source fixtures instead of copying another illustrative schema:
 
 The English [development guide](../../mpack-authoring/README.md) explains how to copy
 and adapt these sources, build them and run `mpack-authoring/validate.py`. Its `examples`
-command checks HTTP, Redis and multi-service YAML source and host export. A passing
+command checks HTTP, Redis, multi-service YAML and external PostgreSQL source/export. A passing
 suite proves no live runtime deployment.
 
-New software under host-service/v1 changes its manifest, schema/templates and artifacts,
+New software that fits `host-service/v1` changes its manifest, schema/templates and artifacts,
 then uses the existing compiler/export/import and Ambari service workflow. One profile
 per component is explicit; there is no automatic profile selection. The exporter writes
 real legacy service/config XML and one wrapper around the common Agent Script. The
@@ -103,8 +110,9 @@ provenance and a file inventory captured by compilation. Package digest covers t
 inventory. Source and legacy exports compare the exact bytes to the compiled lock;
 a changed input cannot silently receive the original package identity or signature. A source ZIP uses
 fixed archive metadata and an exact file inventory; undeclared directory neighbors,
-symlinks and previous outputs are excluded. Local archives are payloads. URL artifacts
-must be vendored before offline export; OS packages/native dependencies remain external.
+symlinks and previous outputs are excluded. In this subset, local archives are payloads
+and URL artifacts must be vendored before host export. This is not a product requirement
+that every software binary be embedded.
 
 `--legacy-export` is distinct from `--export`: it requires an external signing key
 and creates the actual legacy V2 registration layout for the host subset. The Server
