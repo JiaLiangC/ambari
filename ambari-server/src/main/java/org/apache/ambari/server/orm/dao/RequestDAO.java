@@ -112,6 +112,16 @@ public class RequestDAO implements Cleanable {
   }
 
   @RequiresSession
+  public RequestEntity findLatestByClusterAndContext(Long clusterId, String context) {
+    List<RequestEntity> requests = entityManagerProvider.get().createQuery(
+        "SELECT request FROM RequestEntity request WHERE request.clusterId = :clusterId "
+            + "AND request.requestContext = :context ORDER BY request.requestId DESC",
+        RequestEntity.class).setParameter("clusterId", clusterId).setParameter("context", context)
+        .setMaxResults(1).getResultList();
+    return requests.isEmpty() ? null : requests.get(0);
+  }
+
+  @RequiresSession
   public List<RequestEntity> findByPks(Collection<Long> requestIds) {
     return findByPks(requestIds, false);
   }

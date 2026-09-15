@@ -57,7 +57,8 @@ describe("package installation schema projection", () => {
     fireEvent.submit(port.closest("form")!);
     await waitFor(() => expect(submitted).toHaveBeenCalledWith("HTTP_ECHO"));
     expect(lifecycle.install).toHaveBeenCalledWith("cluster", 7, expect.anything(),
-      {HTTP_ECHO_SERVER: ["host.example"]}, {http: expect.objectContaining({enabled: "false", credential: "secret://mpack.HTTP_ECHO.auth"})});
+      {HTTP_ECHO_SERVER: ["host.example"]}, {http: expect.objectContaining({enabled: "false", credential: "secret://mpack.HTTP_ECHO.auth"})},
+      expect.stringMatching(/^[a-f0-9-]{36}$/));
   });
 
   it("rejects literal or foreign-service credentials before any install mutation", async () => {

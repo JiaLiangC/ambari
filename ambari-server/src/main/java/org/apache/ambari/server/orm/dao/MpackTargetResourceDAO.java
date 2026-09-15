@@ -17,7 +17,6 @@
  */
 package org.apache.ambari.server.orm.dao;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +24,7 @@ import java.util.Set;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 
+import org.apache.ambari.server.mpack.MpackRemovalEvidence;
 import org.apache.ambari.server.orm.RequiresSession;
 import org.apache.ambari.server.orm.entities.MpackEntity;
 import org.apache.ambari.server.orm.entities.MpackTargetResourceEntity;
@@ -40,7 +40,8 @@ import com.google.inject.persist.Transactional;
 /** Projects existing task intent and verified Agent evidence; never schedules work. */
 @Singleton
 public class MpackTargetResourceDAO {
-  private static final Set<String> MUTATIONS = Set.of("INSTALL", "CONFIGURE", "START", "STOP", "RESTART", "RELOAD", "UPGRADE", "DETACH", "ADOPT", "UNINSTALL", "PURGE", "BACKUP", "MIGRATE", "RESTORE");
+  private static final Set<String> MUTATIONS = Set.of(
+      "INSTALL", "CONFIGURE", "START", "STOP", "RESTART", "UNINSTALL", "PURGE");
   @Inject
   private Provider<EntityManager> managers;
 
@@ -63,9 +64,6 @@ public class MpackTargetResourceDAO {
         + binding.get("hostName").getAsString() + "\n" + binding.get("role").getAsString());
     MpackTargetResourceEntity resource = manager.find(MpackTargetResourceEntity.class, key, LockModeType.PESSIMISTIC_WRITE);
     boolean created = resource == null;
-    if (!created && "ABANDONED".equals(resource.getResourceState())) {
-      throw new IllegalStateException("Abandoned targets are terminal; use a new service incarnation");
-    }
     boolean purge = "PURGE".equals(binding.get("operation").getAsString());
     boolean purgeStarted = !created && "PURGE".equals(JsonParser.parseString(
         resource.getTaskBinding()).getAsJsonObject().get("operation").getAsString());
@@ -75,32 +73,6 @@ public class MpackTargetResourceDAO {
     }
     if (!purge && !created && (purgeStarted || "PURGED".equals(resource.getResourceState()))) {
       throw new IllegalStateException("Purge has begun; finish purge and use a new service incarnation");
-    }
-    String operation = binding.get("operation").getAsString();
-    String previousOperation = created ? null : JsonParser.parseString(resource.getTaskBinding()).getAsJsonObject().get("operation").getAsString();
-    if (!created && "PENDING".equals(resource.getResourceState()) && Set.of("DETACH", "ADOPT", "BACKUP", "MIGRATE", "RESTORE").contains(previousOperation)
-        && !operation.equals(previousOperation)) {
-      throw new IllegalStateException("Reconcile the pending ownership or data operation before another operation");
-    }
-    if (!created && "DETACHED".equals(resource.getResourceState()) && !Set.of("DETACH", "ADOPT").contains(operation)) {
-      throw new IllegalStateException("Adopt the detached target before modifying its resources");
-    }
-    if ("ADOPT".equals(operation) && (created || !("DETACHED".equals(resource.getResourceState()) || "ADOPT".equals(previousOperation)))) {
-      throw new IllegalStateException("Adoption requires verified prior handoff of this same target");
-    }
-    if ("DETACH".equals(operation) && (created || !(Set.of("MANAGED", "DETACHED").contains(resource.getResourceState()) || "DETACH".equals(previousOperation)))) {
-      throw new IllegalStateException("Detachment requires a verified managed target");
-    }
-    if (Set.of("DETACH", "ADOPT").contains(operation)) {
-      if (!packageId.equals(resource.getMaterializedMpackId()) || resource.getResourceEvidence() == null) {
-        throw new IllegalStateException("Ownership handoff requires the confirmed installed package");
-      }
-      JsonObject evidence = JsonParser.parseString(resource.getResourceEvidence()).getAsJsonObject()
-          .getAsJsonObject("mpackOperation").getAsJsonObject("observation");
-      if (!evidence.has("loadState") || !"loaded".equals(evidence.get("loadState").getAsString())
-          || !"inactive".equals(evidence.get("state").getAsString()) || !"0".equals(evidence.get("pid").getAsString())) {
-        throw new IllegalStateException("Stop and verify the native target before ownership handoff");
-      }
     }
     if (resource == null) {
       resource = new MpackTargetResourceEntity();
@@ -140,8 +112,7 @@ public class MpackTargetResourceDAO {
       }
       for (MpackTargetResourceEntity resource : resources) {
         managers.get().refresh(resource, LockModeType.PESSIMISTIC_WRITE);
-        // Neither a superseded task nor a late Agent receipt can replace a terminal abandonment.
-        if (!taskId.equals(resource.getTaskId()) || "ABANDONED".equals(resource.getResourceState())) {
+        if (!taskId.equals(resource.getTaskId())) {
           continue;
         }
         JsonObject binding = JsonParser.parseString(resource.getTaskBinding()).getAsJsonObject();
@@ -156,38 +127,20 @@ public class MpackTargetResourceDAO {
             || !binding.get("targetIncarnation").equals(identity.get("targetIncarnation"))) {
           return;
         }
-        String operationName = binding.get("operation").getAsString();
-        if (Set.of("BACKUP", "MIGRATE", "RESTORE").contains(operationName)) {
-          JsonObject data = observation.getAsJsonObject("dataOperation");
-          if (data == null || !"SUCCEEDED".equals(data.get("state").getAsString())
-              || !operationName.equalsIgnoreCase(data.get("operation").getAsString())
-              || !data.get("evidenceDigest").getAsString().matches("[a-f0-9]{64}")
-              || !"inactive".equals(observation.get("state").getAsString()) || !"0".equals(observation.get("pid").getAsString())) {
-            return;
-          }
-        }
         boolean uninstalled = "UNINSTALL".equals(binding.get("operation").getAsString());
         boolean purged = "PURGE".equals(binding.get("operation").getAsString());
-        if ((uninstalled || purged) && (!removed(observation)
-            || !report.has("retainedResources") || !report.get("retainedResources").isJsonArray()
+        MpackRemovalEvidence removal = null;
+        if (uninstalled || purged) {
+          removal = MpackRemovalEvidence.released(observation);
+        }
+        if ((uninstalled || purged) && (!report.has("retainedResources")
+            || !report.get("retainedResources").isJsonArray()
             || report.getAsJsonArray("retainedResources").size() == 0)) {
           return;
         }
         if (purged && (!report.has("purged") || !report.get("purged").getAsBoolean()
             || !report.has("purgedResources") || !report.get("purgedResources").isJsonArray()
-            || !validPurgeEvidence(report))) {
-          return;
-        }
-        boolean detached = "DETACH".equals(binding.get("operation").getAsString());
-        boolean adopted = "ADOPT".equals(binding.get("operation").getAsString());
-        if ((detached || adopted) && (!report.has("detached") || report.get("detached").getAsBoolean() != detached
-            || !"loaded".equals(observation.get("loadState").getAsString())
-            || !"inactive".equals(observation.get("state").getAsString()) || !"0".equals(observation.get("pid").getAsString())
-            || !binding.get("packageDigest").equals(report.get("materializedPackageDigest")))) {
-          return;
-        }
-        if (detached && (!report.has("retainedResources") || !report.get("retainedResources").isJsonArray()
-            || report.getAsJsonArray("retainedResources").size() == 0)) {
+            || !removal.isPurged() || !validPurgeEvidence(report))) {
           return;
         }
         if (report.has("materializedPackageDigest") && !report.get("materializedPackageDigest").isJsonNull()) {
@@ -206,7 +159,7 @@ public class MpackTargetResourceDAO {
           resource.setMaterializedMpackId(null);
         }
         resource.setResourceEvidence(serialized);
-        resource.setResourceState(uninstalled && observation.has("kind") && "external.database/v1".equals(observation.get("kind").getAsString()) ? "UNREGISTERED" : purged ? "PURGED" : detached ? "DETACHED" : uninstalled ? "UNINSTALLED_RETAINED" : "MANAGED");
+        resource.setResourceState(uninstalled || purged ? removal.resourceState() : "MANAGED");
       }
     } catch (RuntimeException malformedReport) {
       // A malformed observation cannot authorize deleting service or data.
@@ -244,27 +197,6 @@ public class MpackTargetResourceDAO {
     return receiptRetained && retained.isEmpty();
   }
 
-  private boolean removed(JsonObject observation) {
-    if (observation.has("kind") && "external.database/v1".equals(observation.get("kind").getAsString())) {
-      return observation.get("registrationAbsent").getAsBoolean() && "observed".equals(observation.get("ownership").getAsString());
-    }
-    if (observation.has("kind") && "kubernetes.workload/v1".equals(observation.get("kind").getAsString())) {
-      return !observation.get("exists").getAsBoolean() && observation.get("remainingPods").getAsInt() == 0;
-    }
-    if (observation.has("kind") && "oci.container/v1".equals(observation.get("kind").getAsString())) {
-      return !observation.get("exists").getAsBoolean()
-          && "inactive".equals(observation.get("state").getAsString())
-          && "0".equals(observation.get("pid").getAsString());
-    }
-    if (observation.has("kind") && "host.files/v1".equals(observation.get("kind").getAsString())) {
-      return "absent".equals(observation.get("state").getAsString())
-          && observation.get("publicationAbsent").getAsBoolean();
-    }
-    return "not-found".equals(observation.get("loadState").getAsString())
-        && "inactive".equals(observation.get("state").getAsString())
-        && "0".equals(observation.get("pid").getAsString());
-  }
-
   @RequiresSession
   public List<MpackTargetResourceEntity> findPage(Long clusterId, String after, int limit) {
     return managers.get().createQuery("SELECT r FROM MpackTargetResourceEntity r WHERE r.clusterId = :id "
@@ -278,73 +210,6 @@ public class MpackTargetResourceDAO {
         MpackTargetResourceEntity.class).setParameter("id", clusterId).getResultList();
   }
 
-  /**
-   * Relinquishes Ambari's ownership claim when the native target can no longer be
-   * contacted. This records an operator decision; it does not claim native cleanup.
-   */
-  @Transactional
-  public MpackTargetResourceEntity abandon(Long clusterId, String targetKey, String serviceName,
-      String hostName, String componentName, String targetIncarnation, Long expectedTaskId,
-      String expectedState, String confirmation, String reason, String actor) {
-    if (clusterId == null || clusterId <= 0 || targetKey == null || !targetKey.matches("[a-f0-9]{64}")
-        || expectedTaskId == null || expectedTaskId <= 0 || serviceName == null || hostName == null
-        || componentName == null || targetIncarnation == null
-        || !Set.of("MANAGED", "PENDING").contains(expectedState)) {
-      throw new IllegalArgumentException("A complete current target identity is required");
-    }
-    String expectedConfirmation = "ABANDON " + serviceName + "/" + componentName + "@" + hostName;
-    if (!expectedConfirmation.equals(confirmation)) {
-      throw new IllegalArgumentException("The abandonment confirmation does not match the target");
-    }
-    String auditReason = reason == null ? "" : reason.trim();
-    if (auditReason.length() < 10 || auditReason.length() > 512
-        || auditReason.chars().anyMatch(Character::isISOControl)) {
-      throw new IllegalArgumentException("An abandonment reason between 10 and 512 characters is required");
-    }
-    if (actor == null || actor.isBlank()) {
-      throw new IllegalStateException("An authenticated actor is required for abandonment");
-    }
-
-    MpackTargetResourceEntity resource = managers.get().find(
-        MpackTargetResourceEntity.class, targetKey, LockModeType.PESSIMISTIC_WRITE);
-    if (resource == null || !clusterId.equals(resource.getClusterId())
-        || !serviceName.equals(resource.getServiceName()) || !hostName.equals(resource.getHostName())
-        || !componentName.equals(resource.getComponentName())
-        || !targetIncarnation.equals(resource.getTargetIncarnation())
-        || !expectedTaskId.equals(resource.getTaskId())) {
-      throw new IllegalStateException("The managed target changed; refresh before abandoning it");
-    }
-    if ("ABANDONED".equals(resource.getResourceState())) {
-      JsonObject abandonment = JsonParser.parseString(resource.getResourceEvidence()).getAsJsonObject()
-          .getAsJsonObject("mpackAbandonment");
-      if (abandonment == null || !expectedState.equals(abandonment.get("previousState").getAsString())) {
-        throw new IllegalStateException("The managed target changed; refresh before abandoning it");
-      }
-      return resource;
-    }
-    if (!expectedState.equals(resource.getResourceState())) {
-      throw new IllegalStateException("The managed target state changed; refresh before abandoning it");
-    }
-
-    JsonObject abandonment = new JsonObject();
-    abandonment.addProperty("format", "mpack-abandonment/v1");
-    abandonment.addProperty("actor", actor);
-    abandonment.addProperty("reason", auditReason);
-    abandonment.addProperty("recordedAt", Instant.now().toString());
-    abandonment.addProperty("previousState", resource.getResourceState());
-    abandonment.addProperty("nativeResourcesMayRemain", true);
-    if (resource.getResourceEvidence() == null) {
-      abandonment.add("lastAgentEvidence", com.google.gson.JsonNull.INSTANCE);
-    } else {
-      abandonment.add("lastAgentEvidence", JsonParser.parseString(resource.getResourceEvidence()));
-    }
-    JsonObject evidence = new JsonObject();
-    evidence.add("mpackAbandonment", abandonment);
-    resource.setResourceEvidence(evidence.toString());
-    resource.setResourceState("ABANDONED");
-    return resource;
-  }
-
   @RequiresSession
   public void requireHostRemovable(Long clusterId, String service, String incarnation,
       String host, String component, boolean neverInstalled) {
@@ -355,8 +220,8 @@ public class MpackTargetResourceDAO {
         .setParameter("cluster", clusterId).setParameter("service", service).setParameter("incarnation", incarnation)
         .setParameter("host", host).setParameter("component", component).getResultList();
     if (resources.isEmpty() && !neverInstalled || resources.stream().anyMatch(
-        resource -> !Set.of("UNINSTALLED_RETAINED", "PURGED", "DETACHED", "UNREGISTERED", "ABANDONED").contains(resource.getResourceState()))) {
-      throw new IllegalStateException("Verified cleanup, handoff, or explicit abandonment is required before removing this host component");
+        resource -> !Set.of("UNINSTALLED_RETAINED", "PURGED", "UNREGISTERED").contains(resource.getResourceState()))) {
+      throw new IllegalStateException("Verified management release is required before removing this host component");
     }
   }
 
@@ -365,39 +230,10 @@ public class MpackTargetResourceDAO {
     Long count = managers.get().createQuery("SELECT COUNT(r) FROM MpackTargetResourceEntity r "
         + "WHERE r.clusterId = :cluster AND r.serviceName = :service AND r.resourceState NOT IN :states", Long.class)
         .setParameter("cluster", clusterId).setParameter("service", serviceName)
-        .setParameter("states", Set.of("UNINSTALLED_RETAINED", "PURGED", "DETACHED", "UNREGISTERED", "ABANDONED")).getSingleResult();
+        .setParameter("states", Set.of("UNINSTALLED_RETAINED", "PURGED", "UNREGISTERED")).getSingleResult();
     if (count != 0) {
-      throw new IllegalStateException("Verify cleanup or explicitly abandon every managed target before deleting the service");
+      throw new IllegalStateException("Verify management release for every target before deleting the service");
     }
   }
 
-  /** A stopped native observation determines the source release, not desired selection. */
-  @RequiresSession
-  public Long requireStoppedRelease(Long clusterId, String service, String incarnation) {
-    List<MpackTargetResourceEntity> resources = managers.get().createQuery(
-        "SELECT r FROM MpackTargetResourceEntity r WHERE r.clusterId = :cluster AND r.serviceName = :service "
-            + "AND r.targetIncarnation = :incarnation", MpackTargetResourceEntity.class)
-        .setParameter("cluster", clusterId).setParameter("service", service).setParameter("incarnation", incarnation)
-        .getResultList();
-    Long release = null;
-    for (MpackTargetResourceEntity resource : resources) {
-      if (!"MANAGED".equals(resource.getResourceState()) || resource.getMaterializedMpackId() == null
-          || resource.getResourceEvidence() == null) {
-        throw new IllegalStateException("Stop and verify every target before changing the selected package");
-      }
-      JsonObject result = JsonParser.parseString(resource.getResourceEvidence()).getAsJsonObject().getAsJsonObject("mpackOperation");
-      JsonObject observation = result.getAsJsonObject("observation");
-      if (!observation.has("loadState") || !observation.has("pid")
-          || !"inactive".equals(observation.get("state").getAsString()) || !"0".equals(observation.get("pid").getAsString())
-          || !"loaded".equals(observation.get("loadState").getAsString())
-          || release != null && !release.equals(resource.getMaterializedMpackId())) {
-        throw new IllegalStateException("Package selection requires stopped targets on one verified release");
-      }
-      release = resource.getMaterializedMpackId();
-    }
-    if (release == null) {
-      throw new IllegalStateException("No verified installed target is available for an artifact update");
-    }
-    return release;
-  }
 }

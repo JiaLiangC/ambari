@@ -52,7 +52,7 @@ import { AppContext } from "../../store/context";
 import { useAuth } from "../../hooks/useAuth";
 import Spinner from "../../components/Spinner";
 import PackageInstallDialog from "./PackageInstallDialog";
-import { abandonmentConfirmation, managedActions, PackageLifecycle, ManagedResource } from "./packageLifecycle";
+import { managedActions, PackageLifecycle, ManagedResource } from "./packageLifecycle";
 import {
   CatalogMpackVersion,
   catalogKey,
@@ -154,11 +154,7 @@ export default function ManagementPacks() {
   const resourceGeneration = useRef(0);
   const [resourceAfter, setResourceAfter] = useState("");
   const [resourceDetails, setResourceDetails] = useState<ManagedResource>();
-  const [abandonResource, setAbandonResource] = useState<ManagedResource>();
-  const [abandonConfirmation, setAbandonConfirmation] = useState("");
-  const [abandonReason, setAbandonReason] = useState("");
-  const [serviceAction, setServiceAction] = useState<{cluster: string; service: string; incarnation: string; action: "start" | "stop" | "uninstall" | "purge" | "upgrade" | "detach" | "adopt" | "backup" | "migrate" | "restore" | "remove"}>();
-  const [upgradePackageId, setUpgradePackageId] = useState<number>();
+  const [serviceAction, setServiceAction] = useState<{cluster: string; service: string; incarnation: string; action: "start" | "stop" | "uninstall" | "purge" | "remove"}>();
   const [purgeConfirmation, setPurgeConfirmation] = useState("");
   const [showInstallConfirmation, setShowInstallConfirmation] = useState(false);
   const [mpackToDelete, setMpackToDelete] = useState<RegisteredMpack>();
@@ -178,7 +174,6 @@ export default function ManagementPacks() {
   const canInstall = hasAuthorization("SERVICE.ADD_DELETE_SERVICES");
   const canOperate = hasAuthorization("SERVICE.START_STOP");
   const canPurge = hasAuthorization("SERVICE.PURGE_DATA");
-  const canUpgradePackage = hasAuthorization("CLUSTER.UPGRADE_DOWNGRADE_STACK");
   const canViewResources = hasAuthorization("SERVICE.VIEW_STATUS_INFO");
   const canManage = hasAuthorization("AMBARI.MANAGE_STACK_VERSIONS");
   const mutationBlocked = upgradeIsRunning || isNonWizardUser;
@@ -240,60 +235,17 @@ export default function ManagementPacks() {
   async function executeServiceAction() {
     if (!serviceAction || !clusterName || resourceCluster !== clusterName || serviceAction.cluster !== clusterName || !activeServices.has(serviceAction.service) || mutationBlocked) return;
     if (!managed.some((resource) => resource.currentServiceTarget && resource.serviceName === serviceAction.service && resource.targetIncarnation === serviceAction.incarnation)) return;
-    if (["purge", "migrate", "restore"].includes(serviceAction.action) && (!canPurge || purgeConfirmation !== serviceAction.service)) return;
+    if (serviceAction.action === "purge" && (!canPurge || purgeConfirmation !== serviceAction.service)) return;
     setBusy("service"); setOperationError("");
     try {
       if (serviceAction.action === "uninstall") await PackageLifecycle.uninstall(clusterName, serviceAction.service);
       else if (serviceAction.action === "purge") await PackageLifecycle.purge(clusterName, serviceAction.service, serviceAction.incarnation);
-      else if (serviceAction.action === "backup" || serviceAction.action === "migrate" || serviceAction.action === "restore") {
-        await PackageLifecycle.retainedAction(clusterName, serviceAction.service,
-          serviceAction.action.toUpperCase() as "BACKUP" | "MIGRATE" | "RESTORE", serviceAction.incarnation);
-      }
-      else if (serviceAction.action === "detach" || serviceAction.action === "adopt") {
-        if (!canInstall) return;
-        await PackageLifecycle.handoff(clusterName, serviceAction.service, serviceAction.action === "detach" ? "DETACH" : "ADOPT", serviceAction.incarnation);
-      }
-      else if (serviceAction.action === "upgrade") {
-        const selected = installed.find((pack) => pack.id === upgradePackageId);
-        if (!canUpgradePackage || !selected?.repositoryVersionId || !selected.digest) return;
-        const targets = managed.filter((resource) => resource.currentServiceTarget && resource.serviceName === serviceAction.service);
-        // A current selection can be a partially applied update on another page.
-        // Only changing selection back to a materialized release skips native work;
-        // Server checks every target before accepting that selection change.
-        const restoreSelection = targets.length > 0 && targets.some((resource) => resource.selectedPackageId !== selected.id)
-          && targets.every((resource) => resource.materializedPackageId === selected.id);
-        await PackageLifecycle.changeRelease(clusterName, serviceAction.service, selected.repositoryVersionId,
-          selected.digest, serviceAction.incarnation, restoreSelection);
-      }
       else if (serviceAction.action === "remove") await PackageLifecycle.removeService(clusterName, serviceAction.service);
       else await PackageLifecycle.state(clusterName, serviceAction.service, serviceAction.action === "start" ? "STARTED" : "INSTALLED");
       toast.success("Request accepted. Refresh resource evidence and inspect the service's background operations for its outcome.");
       setServiceAction(undefined); await loadResources(resourceAfter);
     } catch { setOperationError("The service action was rejected or its response was lost. Inspect existing requests and resource evidence before submitting another action."); }
     finally { setBusy(""); }
-  }
-
-  async function executeAbandonment() {
-    if (!abandonResource || !clusterName || !canInstall || !canPurge || mutationBlocked
-      || resourceCluster !== clusterName || !activeServices.has(abandonResource.serviceName)
-      || !managed.some((resource) => resource.currentServiceTarget
-        && resource.targetKey === abandonResource.targetKey
-        && resource.taskId === abandonResource.taskId
-        && resource.state === abandonResource.state)) return;
-    setBusy("abandon");
-    setOperationError("");
-    try {
-      await PackageLifecycle.abandon(clusterName, abandonResource, abandonConfirmation, abandonReason);
-      setAbandonResource(undefined);
-      setAbandonConfirmation("");
-      setAbandonReason("");
-      toast.success("Target ownership was abandoned. Native resources may still exist and require external cleanup.");
-      await loadResources(resourceAfter);
-    } catch (error) {
-      setOperationError(errorMessage(error, "The target could not be abandoned. Refresh its evidence before retrying."));
-    } finally {
-      setBusy("");
-    }
   }
 
   const activeRegistry = registries.find((registry) => registry.id === selectedRegistryId);
@@ -861,33 +813,16 @@ export default function ManagementPacks() {
             </> : resource.serviceName} / {resource.componentName}</td>
             <td>{resource.hostName}</td><td><Button variant="link" onClick={() => setResourceDetails(resource)}>{resource.state}</Button></td>
             <td><ButtonGroup size="sm">
-              {canOperate && managedActions(resource).has("start") && resource.currentServiceTarget && resourceCluster === clusterName && activeServices.has(resource.serviceName) && <><Button disabled={mutationBlocked || Boolean(busy)} onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "start"})}>Start</Button>
-                <Button disabled={mutationBlocked || Boolean(busy)} onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "stop"})}>Stop</Button></>}
+              {canOperate && managedActions(resource).has("start") && resource.currentServiceTarget && resourceCluster === clusterName && activeServices.has(resource.serviceName)
+                && <Button disabled={mutationBlocked || Boolean(busy)} onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "start"})}>Start</Button>}
+              {canOperate && managedActions(resource).has("stop") && resource.currentServiceTarget && resourceCluster === clusterName && activeServices.has(resource.serviceName)
+                && <Button disabled={mutationBlocked || Boolean(busy)} onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "stop"})}>Stop</Button>}
               {canPurge && resource.currentServiceTarget && resourceCluster === clusterName && activeServices.has(resource.serviceName) && managedActions(resource).has("purge") && <Button variant="outline-danger" disabled={mutationBlocked || Boolean(busy)} onClick={() => {
                 setPurgeConfirmation(""); setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "purge"});
               }}>{resource.operation === "PURGE" ? "Resume purge" : "Purge data"}</Button>}
-              {canUpgradePackage && resource.currentServiceTarget && resourceCluster === clusterName && activeServices.has(resource.serviceName)
-                && managedActions(resource).has("upgrade") && <Button disabled={mutationBlocked || Boolean(busy)} onClick={() => {
-                  setUpgradePackageId(undefined);
-                  setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "upgrade"});
-                }}>Change release</Button>}
-              {resourceCluster === clusterName && activeServices.has(resource.serviceName) && (["backup", "migrate", "restore"] as const)
-                .filter((action) => managedActions(resource).has(action) && (action === "backup" ? hasAuthorization("SERVICE.RUN_CUSTOM_COMMAND") : canPurge))
-                .map((action) => <Button key={action} variant="outline-warning" disabled={mutationBlocked || Boolean(busy)} onClick={() => {
-                  setPurgeConfirmation(""); setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action});
-                }}>{resource.state === "PENDING" ? "Verify " : ""}{action}</Button>)}
-              {canInstall && resourceCluster === clusterName && activeServices.has(resource.serviceName) && (["detach", "adopt"] as const).filter((action) => managedActions(resource).has(action)).map((action) =>
-                <Button key={action} variant="outline-warning" disabled={mutationBlocked || Boolean(busy)} onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action})}>
-                  {resource.state === "PENDING" ? "Resume " : ""}{action === "detach" ? "Detach resources" : "Adopt resources"}
-                </Button>)}
               {canInstall && resource.currentServiceTarget && resourceCluster === clusterName && activeServices.has(resource.serviceName) && <><Button disabled={mutationBlocked || Boolean(busy) || !managedActions(resource).has("uninstall")} onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "uninstall"})}>Uninstall resources</Button>
                 <Button variant="outline-danger" disabled={mutationBlocked || Boolean(busy) || !managedActions(resource).has("remove")}
                   onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "remove"})}>Remove service record</Button></>}
-              {canInstall && canPurge && resource.currentServiceTarget && resourceCluster === clusterName
-                && activeServices.has(resource.serviceName) && managedActions(resource).has("abandon")
-                && <Button variant="danger" disabled={mutationBlocked || Boolean(busy)} onClick={() => {
-                  setAbandonConfirmation(""); setAbandonReason(""); setAbandonResource(resource);
-                }}>Abandon target</Button>}
             </ButtonGroup></td>
           </tr>)}</tbody></Table>
         {!managed.length && <p>No managed resource evidence is recorded on this page.</p>}
@@ -899,53 +834,20 @@ export default function ManagementPacks() {
           setInstallPack(undefined); void loadResources(); toast.success(`Installation submitted for ${service}. Inspect its background operations before starting.`);
         }} />}
       <Modal show={serviceAction !== undefined} onHide={() => !busy && setServiceAction(undefined)}>
-        <Modal.Header closeButton={!busy}><Modal.Title>{serviceAction?.action} {serviceAction?.service}</Modal.Title></Modal.Header>
-        <Modal.Body>{serviceAction && ["purge", "migrate", "restore"].includes(serviceAction.action) ? <>
-          <p>{serviceAction.action === "purge" ? "Permanently delete retained data." : "Execute the package-declared data procedure on stopped targets. Review its compatibility and backup requirements first."} This has no automatic data rollback. An unknown result must be reconciled before other operations.</p>
+        <Modal.Header closeButton={!busy}><Modal.Title>{serviceAction && `${{
+          start: "Start", stop: "Stop", uninstall: "Uninstall resources", purge: "Purge data", remove: "Remove service record",
+        }[serviceAction.action]} ${serviceAction.service}`}</Modal.Title></Modal.Header>
+        <Modal.Body>{serviceAction?.action === "purge" ? <>
+          <p>Permanently delete retained data. This has no automatic rollback. An unknown result must be reconciled before another operation.</p>
           <Form.Label>Type the service name to confirm</Form.Label>
           <Form.Control value={purgeConfirmation} onChange={(event) => setPurgeConfirmation(event.target.value)} disabled={Boolean(busy)} />
-        </> : serviceAction?.action === "detach" || serviceAction?.action === "adopt" ? <>
-          <p>Stop and verify all service targets first. Detach hands existing resources to external management and retains their files and data. Adopt reclaims only the same verified detached target while this service incarnation and package still exist.</p>
-          <p>Changed files, configuration, native identity or live secrets prevent this operation. Resolve any pending handoff before starting or removing resources. Removing the service record ends this adoption path.</p>
-        </> : serviceAction?.action === "upgrade" ? <>
-          <p>Stop and verify every service target first. Only declared compatible artifact updates with unchanged data and resource layout are supported. The service remains stopped until you start it separately.</p>
-          <Form.Label>Imported release</Form.Label>
-          <Form.Select value={upgradePackageId ?? ""} disabled={Boolean(busy)} onChange={(event) => setUpgradePackageId(event.target.value ? Number(event.target.value) : undefined)}>
-            <option value="">Select a release</option>
-            {installed.filter((pack) => {
-              const resource = managed.find((item) => item.currentServiceTarget && item.serviceName === serviceAction.service);
-              const current = installed.find((item) => item.id === resource?.selectedPackageId);
-              return resource && pack.digest && pack.repositoryVersionId && current?.name === pack.name
-                && (pack.id !== resource.selectedPackageId || resource.operation === "UPGRADE" || resource.selectedPackageId !== resource.materializedPackageId);
-            }).map((pack) => <option key={pack.id} value={pack.id}>{pack.displayName} {pack.version}</option>)}
-          </Form.Select>
-          <p className="mt-2">Selecting the last verified installed release can restore package selection after a failed attempt. This does not restore data. Inspect existing requests before retrying an interrupted update.</p>
-        </> : <>This action applies to all assigned components of the service. Stop the service before uninstalling. Uninstall removes owned runtime definitions while retaining data. Removing a service record requires verified uninstall evidence for every target.</>}</Modal.Body>
+        </> : serviceAction?.action === "uninstall"
+          ? <>Stop the service first. Uninstall removes owned runtime definitions while retaining data.</>
+          : serviceAction?.action === "remove"
+            ? <>Remove the Ambari service record after every assigned target has verified management release.</>
+            : <>Apply this action to all assigned components of the service.</>}</Modal.Body>
         <Modal.Footer><Button variant="secondary" disabled={Boolean(busy)} onClick={() => setServiceAction(undefined)}>Cancel</Button>
-          <Button variant={serviceAction?.action === "purge" ? "danger" : "primary"} disabled={Boolean(busy) || (serviceAction && ["purge", "migrate", "restore"].includes(serviceAction.action) && purgeConfirmation !== serviceAction.service) || (serviceAction?.action === "upgrade" && !upgradePackageId)} onClick={() => void executeServiceAction()}>Submit</Button></Modal.Footer>
-      </Modal>
-      <Modal show={abandonResource !== undefined} onHide={() => !busy && setAbandonResource(undefined)}>
-        <Modal.Header closeButton={!busy}><Modal.Title>Abandon managed target</Modal.Title></Modal.Header>
-        <Modal.Body>{abandonResource && <>
-          <Alert variant="danger">
-            This does not contact the Agent or delete native resources. Processes, files, containers,
-            Kubernetes workloads, or external registrations may remain. Ambari will permanently stop
-            managing this target and allow its host component, service record, and package references to be removed.
-          </Alert>
-          <Form.Label>Audit reason</Form.Label>
-          <Form.Control as="textarea" rows={3} maxLength={512} value={abandonReason}
-            onChange={(event) => setAbandonReason(event.target.value)} disabled={Boolean(busy)} />
-          <Form.Label className="mt-3">Type <code>{abandonmentConfirmation(abandonResource)}</code> to confirm</Form.Label>
-          <Form.Control value={abandonConfirmation}
-            onChange={(event) => setAbandonConfirmation(event.target.value)} disabled={Boolean(busy)} />
-        </>}</Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" disabled={Boolean(busy)} onClick={() => setAbandonResource(undefined)}>Cancel</Button>
-          <Button variant="danger" disabled={Boolean(busy) || !abandonResource
-            || abandonConfirmation !== abandonmentConfirmation(abandonResource)
-            || abandonReason.trim().length < 10 || /[\u0000-\u001f\u007f-\u009f]/.test(abandonReason.trim())}
-            onClick={() => void executeAbandonment()}>Abandon target</Button>
-        </Modal.Footer>
+          <Button variant={serviceAction?.action === "purge" ? "danger" : "primary"} disabled={Boolean(busy) || (serviceAction?.action === "purge" && purgeConfirmation !== serviceAction.service)} onClick={() => void executeServiceAction()}>Submit</Button></Modal.Footer>
       </Modal>
       <Modal show={resourceDetails !== undefined} onHide={() => setResourceDetails(undefined)} size="lg">
         <Modal.Header closeButton><Modal.Title>Resource ownership and retention evidence</Modal.Title></Modal.Header>

@@ -30,6 +30,7 @@ export default function PackageInstallDialog({ pack, cluster, close, submitted }
   const [hosts, setHosts] = useState<string[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string[]>>({});
   const [configs, setConfigs] = useState<PackageService["defaults"]>({});
+  const [planId, setPlanId] = useState(() => crypto.randomUUID());
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -66,10 +67,10 @@ export default function PackageInstallDialog({ pack, cluster, close, submitted }
     }
     setBusy(true); setError("");
     try {
-      await PackageLifecycle.install(cluster, pack.repositoryVersionId, service, assignments, configs);
+      await PackageLifecycle.install(cluster, pack.repositoryVersionId, service, assignments, configs, planId);
       submitted(service.name);
     } catch {
-      setError("Installation could not be submitted completely. Existing records are retained. Refresh service status before retrying; server authorization, package conflicts and task failures are authoritative.");
+      setError("Installation could not be submitted. Retry this plan after resolving the server validation or request failure.");
     } finally { setBusy(false); }
   }
   return <Modal show onHide={() => !busy && close()} size="lg" backdrop="static">
@@ -81,7 +82,7 @@ export default function PackageInstallDialog({ pack, cluster, close, submitted }
       <Form.Group className="mb-3"><Form.Label>Service</Form.Label>
         <Form.Select value={service?.name || ""} disabled={busy} onChange={(event) => {
           const selected = definitions.find((item) => item.name === event.target.value);
-          setService(selected); setConfigs(selected?.defaults || {}); setAssignments({});
+          setService(selected); setConfigs(selected?.defaults || {}); setAssignments({}); setPlanId(crypto.randomUUID());
         }}>{definitions.map((item) => <option key={item.name}>{item.name}</option>)}</Form.Select>
       </Form.Group>
       {service?.components.map((component) => <fieldset key={component.name} className="mb-3">

@@ -256,136 +256,52 @@ public class MpackDAOTest {
   }
 
   @Test
-  public void testFailedUpgradeKeepsConfirmedCatalogReferenceAndLateResponsesCannotReplaceIt() {
-    MpackEntity previous = release("1", "a".repeat(64));
-    MpackEntity candidate = release("2", "b".repeat(64));
-    MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
-    com.google.gson.JsonObject binding = releaseBinding(previous, "host-one", "STOP");
-    resources.recordIntent(binding.toString(), 200L);
-    resources.recordReport(200L, stoppedReport(binding, 200L, previous.getContentDigest()));
-    assertEquals(previous.getId(), resources.requireStoppedRelease(9L, "HTTP_ECHO", binding.get("targetIncarnation").getAsString()));
-
-    binding.addProperty("operation", "UPGRADE");
-    binding.addProperty("packageId", candidate.getId());
-    binding.addProperty("packageDigest", candidate.getContentDigest());
-    resources.recordIntent(binding.toString(), 201L);
-    org.junit.Assert.assertThrows(IllegalStateException.class, () -> m_dao.removeCatalog(previous.getId()));
-    org.junit.Assert.assertThrows(IllegalStateException.class,
-        () -> resources.requireStoppedRelease(9L, "HTTP_ECHO", binding.get("targetIncarnation").getAsString()));
-    assertEquals(previous.getId(), resources.findByCluster(9L).get(0).getMaterializedMpackId());
-
-    // STOP can resolve native uncertainty without claiming that new artifacts were installed.
-    binding.addProperty("operation", "STOP");
-    resources.recordIntent(binding.toString(), 202L);
-    resources.recordReport(202L, stoppedReport(binding, 202L, previous.getContentDigest()));
-    assertEquals(previous.getId(), resources.requireStoppedRelease(9L, "HTTP_ECHO", binding.get("targetIncarnation").getAsString()));
-    resources.recordReport(201L, stoppedReport(binding, 201L, candidate.getContentDigest()));
-    assertEquals(previous.getId(), resources.findByCluster(9L).get(0).getMaterializedMpackId());
-
-    binding.addProperty("operation", "UPGRADE");
-    resources.recordIntent(binding.toString(), 203L);
-    resources.recordReport(203L, stoppedReport(binding, 203L, candidate.getContentDigest()));
-    assertEquals(candidate.getId(), resources.requireStoppedRelease(9L, "HTTP_ECHO", binding.get("targetIncarnation").getAsString()));
-    m_dao.removeCatalog(previous.getId());
-    org.junit.Assert.assertNull(m_dao.findById(previous.getId()));
-    org.junit.Assert.assertThrows(IllegalStateException.class, () -> m_dao.removeCatalog(candidate.getId()));
-  }
-
-  @Test
-  public void testDetachedOwnershipMustBeReclaimedBeforeMutationAndSurvivesCatalogRemoval() {
-    MpackEntity pack = release("1", "a".repeat(64));
-    MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
-    com.google.gson.JsonObject binding = releaseBinding(pack, "host-one", "ADOPT");
-    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.recordIntent(binding.toString(), 300L));
-    binding.addProperty("operation", "STOP");
-    resources.recordIntent(binding.toString(), 300L);
-    resources.recordReport(300L, stoppedReport(binding, 300L, pack.getContentDigest()));
-    binding.addProperty("operation", "DETACH");
-    resources.recordIntent(binding.toString(), 301L);
-    binding.addProperty("operation", "START");
-    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.recordIntent(binding.toString(), 302L));
-    com.google.gson.JsonObject report = com.google.gson.JsonParser.parseString(stoppedReport(binding, 301L, pack.getContentDigest())).getAsJsonObject();
-    com.google.gson.JsonObject operation = report.getAsJsonObject("mpackOperation");
-    operation.addProperty("detached", true);
-    operation.add("retainedResources", com.google.gson.JsonParser.parseString("[{\"path\":\"/fixture/owned\",\"device\":1,\"inode\":2}]"));
-    resources.recordReport(301L, report.toString());
-    assertEquals("DETACHED", resources.findByCluster(9L).get(0).getResourceState());
-    resources.requireRemovable(9L, "HTTP_ECHO");
-    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.recordIntent(binding.toString(), 302L));
-    binding.addProperty("operation", "ADOPT");
-    resources.recordIntent(binding.toString(), 302L);
-    operation.addProperty("taskId", "302");
-    operation.addProperty("detached", false);
-    resources.recordReport(302L, report.toString());
-    assertEquals("MANAGED", resources.findByCluster(9L).get(0).getResourceState());
-    org.junit.Assert.assertThrows(IllegalStateException.class, () -> m_dao.removeCatalog(pack.getId()));
-    binding.addProperty("operation", "DETACH");
-    resources.recordIntent(binding.toString(), 303L);
-    operation.addProperty("taskId", "303");
-    operation.addProperty("detached", true);
-    resources.recordReport(303L, report.toString());
-    m_dao.removeCatalog(pack.getId());
-    org.junit.Assert.assertNull(resources.findByCluster(9L).get(0).getMpackId());
-    assertEquals("DETACHED", resources.findByCluster(9L).get(0).getResourceState());
-  }
-
-  @Test
-  public void testMixedConfirmedReleasesCannotSelectAnotherPackage() {
-    MpackEntity previous = release("1", "a".repeat(64));
-    MpackEntity candidate = release("2", "b".repeat(64));
-    MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
-    com.google.gson.JsonObject first = releaseBinding(previous, "host-one", "STOP");
-    com.google.gson.JsonObject second = releaseBinding(candidate, "host-two", "STOP");
-    resources.recordIntent(first.toString(), 210L);
-    resources.recordReport(210L, stoppedReport(first, 210L, previous.getContentDigest()));
-    resources.recordIntent(second.toString(), 211L);
-    resources.recordReport(211L, stoppedReport(second, 211L, candidate.getContentDigest()));
-    org.junit.Assert.assertThrows(IllegalStateException.class,
-        () -> resources.requireStoppedRelease(9L, "HTTP_ECHO", first.get("targetIncarnation").getAsString()));
-  }
-
-  @Test
-  public void testRuntimeSpecificAbsenceCannotBeReplacedByCommandSuccess() {
+  public void testRemovalRequiresConsistentProfileIndependentDispositionEvidence() {
     MpackEntity pack = release("runtime-evidence", "c".repeat(64));
     MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
-    long task = 300;
-    for (String runtime : new String[]{"host.files/v1", "oci.container/v1", "kubernetes.workload/v1", "external.database/v1"}) {
-      com.google.gson.JsonObject binding = releaseBinding(pack, "host-" + task, "UNINSTALL");
-      resources.recordIntent(binding.toString(), task);
-      com.google.gson.JsonObject report = com.google.gson.JsonParser.parseString(stoppedReport(binding, task, pack.getContentDigest())).getAsJsonObject();
-      com.google.gson.JsonObject outcome = report.getAsJsonObject("mpackOperation");
-      com.google.gson.JsonObject observation = outcome.getAsJsonObject("observation");
-      observation.remove("pid");
-      observation.remove("loadState");
-      observation.addProperty("kind", runtime);
-      observation.addProperty("state", "absent");
-      observation.addProperty("publicationAbsent", false);
-      observation.addProperty("exists", true);
-      observation.addProperty("remainingPods", 1);
-      observation.addProperty("registrationAbsent", false);
-      observation.addProperty("ownership", "observed");
-      outcome.add("retainedResources", com.google.gson.JsonParser.parseString("[{\"path\":\"/fixture/owned\",\"device\":1,\"inode\":2}]"));
-      resources.recordReport(task, report.toString());
-      final String host = "host-" + task;
-      org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.requireHostRemovable(9L, "HTTP_ECHO",
-          binding.get("targetIncarnation").getAsString(), host, "HTTP_ECHO_SERVER", false));
-      observation.addProperty("publicationAbsent", true);
-      observation.addProperty("exists", false);
-      observation.addProperty("remainingPods", 0);
-      observation.addProperty("registrationAbsent", true);
-      if (runtime.equals("oci.container/v1")) {
-        observation.addProperty("state", "inactive");
-        observation.addProperty("pid", "0");
-      }
-      resources.recordReport(task, report.toString());
-      resources.requireHostRemovable(9L, "HTTP_ECHO", binding.get("targetIncarnation").getAsString(), host, "HTTP_ECHO_SERVER", false);
-      task++;
-    }
+    long task = 300L;
+    com.google.gson.JsonObject binding = releaseBinding(pack, "host-managed", "UNINSTALL");
+    resources.recordIntent(binding.toString(), task);
+    com.google.gson.JsonObject report = com.google.gson.JsonParser.parseString(
+        stoppedReport(binding, task, pack.getContentDigest())).getAsJsonObject();
+    com.google.gson.JsonObject outcome = report.getAsJsonObject("mpackOperation");
+    com.google.gson.JsonObject observation = outcome.getAsJsonObject("observation");
+    outcome.add("retainedResources", com.google.gson.JsonParser.parseString(
+        "[{\"path\":\"/fixture/owned\",\"device\":1,\"inode\":2}]"));
+    resources.recordReport(task, report.toString());
+    assertEquals("PENDING", resources.findByCluster(9L).get(0).getResourceState());
+    observation.addProperty("managementReleased", true);
+    observation.addProperty("runtimeDisposition", "absent");
+    observation.addProperty("dataDisposition", "external");
+    observation.addProperty("ownershipDisposition", "released");
+    resources.recordReport(task, report.toString());
+    assertEquals("PENDING", resources.findByCluster(9L).get(0).getResourceState());
+    observation.addProperty("dataDisposition", "retained");
+    resources.recordReport(task, report.toString());
+    assertEquals("UNINSTALLED_RETAINED", resources.findByCluster(9L).get(0).getResourceState());
+    resources.requireHostRemovable(9L, "HTTP_ECHO", binding.get("targetIncarnation").getAsString(),
+        "host-managed", "HTTP_ECHO_SERVER", false);
+
+    task++;
+    binding = releaseBinding(pack, "host-external", "UNINSTALL");
+    resources.recordIntent(binding.toString(), task);
+    report = com.google.gson.JsonParser.parseString(stoppedReport(binding, task, pack.getContentDigest())).getAsJsonObject();
+    outcome = report.getAsJsonObject("mpackOperation");
+    observation = outcome.getAsJsonObject("observation");
+    observation.addProperty("managementReleased", true);
+    observation.addProperty("runtimeDisposition", "external");
+    observation.addProperty("dataDisposition", "external");
+    observation.addProperty("ownershipDisposition", "external");
+    outcome.add("retainedResources", com.google.gson.JsonParser.parseString(
+        "[{\"path\":\"/fixture/external\",\"device\":1,\"inode\":3}]"));
+    resources.recordReport(task, report.toString());
+    assertEquals("UNREGISTERED", resources.findByCluster(9L).stream()
+        .filter(value -> "host-external".equals(value.getHostName())).findFirst().get().getResourceState());
   }
 
   private MpackEntity release(String version, String digest) {
     MpackEntity pack = new MpackEntity();
-    pack.setMpackName("UPGRADE_PACKAGE");
+    pack.setMpackName("LIFECYCLE_PACKAGE");
     pack.setMpackVersion(version);
     pack.setMpackUri("file:///fixture/mpack.json");
     pack.setContentDigest(digest);
@@ -426,88 +342,6 @@ public class MpackDAOTest {
   }
 
   @Test
-  public void testAbandonmentIsAuditedTerminalAndReleasesDeletionGates() {
-    MpackEntity pack = release("abandon", "d".repeat(64));
-    MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
-    com.google.gson.JsonObject binding = releaseBinding(pack, "lost-agent.example", "STOP");
-    resources.recordIntent(binding.toString(), 400L);
-    String report = stoppedReport(binding, 400L, pack.getContentDigest());
-    resources.recordReport(400L, report);
-    org.apache.ambari.server.orm.entities.MpackTargetResourceEntity before = resources.findByCluster(9L).get(0);
-    String confirmation = "ABANDON HTTP_ECHO/HTTP_ECHO_SERVER@lost-agent.example";
-
-    org.junit.Assert.assertThrows(IllegalArgumentException.class, () -> resources.abandon(9L,
-        before.getTargetKey(), "HTTP_ECHO", "lost-agent.example", "HTTP_ECHO_SERVER",
-        before.getTargetIncarnation(), 400L, "MANAGED", "wrong", "Agent host was retired", "admin"));
-    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.abandon(9L,
-        before.getTargetKey(), "HTTP_ECHO", "lost-agent.example", "HTTP_ECHO_SERVER",
-        before.getTargetIncarnation(), 401L, "MANAGED", confirmation, "Agent host was retired", "admin"));
-
-    org.apache.ambari.server.orm.entities.MpackTargetResourceEntity abandoned = resources.abandon(9L,
-        before.getTargetKey(), "HTTP_ECHO", "lost-agent.example", "HTTP_ECHO_SERVER",
-        before.getTargetIncarnation(), 400L, "MANAGED", confirmation, " Agent host was retired ", "admin");
-    assertEquals("ABANDONED", abandoned.getResourceState());
-    com.google.gson.JsonObject audit = com.google.gson.JsonParser.parseString(abandoned.getResourceEvidence())
-        .getAsJsonObject().getAsJsonObject("mpackAbandonment");
-    assertEquals("mpack-abandonment/v1", audit.get("format").getAsString());
-    assertEquals("admin", audit.get("actor").getAsString());
-    assertEquals("Agent host was retired", audit.get("reason").getAsString());
-    assertEquals("MANAGED", audit.get("previousState").getAsString());
-    org.junit.Assert.assertTrue(audit.get("nativeResourcesMayRemain").getAsBoolean());
-    assertNotNull(audit.getAsJsonObject("lastAgentEvidence").getAsJsonObject("mpackOperation"));
-
-    resources.requireHostRemovable(9L, "HTTP_ECHO", before.getTargetIncarnation(),
-        "lost-agent.example", "HTTP_ECHO_SERVER", false);
-    resources.requireRemovable(9L, "HTTP_ECHO");
-    resources.recordReport(400L, report);
-    assertEquals("ABANDONED", resources.findByCluster(9L).get(0).getResourceState());
-    binding.addProperty("operation", "START");
-    org.junit.Assert.assertThrows(IllegalStateException.class,
-        () -> resources.recordIntent(binding.toString(), 401L));
-
-    // A retry after a lost HTTP response preserves the first operator's audit record.
-    resources.abandon(9L, before.getTargetKey(), "HTTP_ECHO", "lost-agent.example",
-        "HTTP_ECHO_SERVER", before.getTargetIncarnation(), 400L, "MANAGED", confirmation,
-        "A different retry reason", "another-admin");
-    com.google.gson.JsonObject retriedAudit = com.google.gson.JsonParser.parseString(
-        resources.findByCluster(9L).get(0).getResourceEvidence()).getAsJsonObject()
-        .getAsJsonObject("mpackAbandonment");
-    assertEquals("admin", retriedAudit.get("actor").getAsString());
-    assertEquals("Agent host was retired", retriedAudit.get("reason").getAsString());
-
-    m_dao.removeCatalog(pack.getId());
-    org.apache.ambari.server.orm.entities.MpackTargetResourceEntity retained = resources.findByCluster(9L).get(0);
-    assertEquals("ABANDONED", retained.getResourceState());
-    org.junit.Assert.assertNull(retained.getMpackId());
-    org.junit.Assert.assertNull(retained.getMaterializedMpackId());
-    assertNotNull(retained.getTaskBinding());
-    assertNotNull(retained.getResourceEvidence());
-  }
-
-  @Test
-  public void testPendingTargetWithoutAgentEvidenceCanBeAbandoned() {
-    MpackEntity pack = release("pending-abandon", "e".repeat(64));
-    MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
-    com.google.gson.JsonObject binding = releaseBinding(pack, "unreachable.example", "INSTALL");
-    resources.recordIntent(binding.toString(), 410L);
-    org.apache.ambari.server.orm.entities.MpackTargetResourceEntity pending = resources.findByCluster(9L).get(0);
-
-    resources.abandon(9L, pending.getTargetKey(), "HTTP_ECHO", "unreachable.example",
-        "HTTP_ECHO_SERVER", pending.getTargetIncarnation(), 410L, "PENDING",
-        "ABANDON HTTP_ECHO/HTTP_ECHO_SERVER@unreachable.example",
-        "Agent and receipt are unavailable", "admin");
-
-    org.apache.ambari.server.orm.entities.MpackTargetResourceEntity abandoned = resources.findByCluster(9L).get(0);
-    assertEquals("ABANDONED", abandoned.getResourceState());
-    com.google.gson.JsonObject audit = com.google.gson.JsonParser.parseString(abandoned.getResourceEvidence())
-        .getAsJsonObject().getAsJsonObject("mpackAbandonment");
-    org.junit.Assert.assertTrue(audit.get("lastAgentEvidence").isJsonNull());
-    resources.requireHostRemovable(9L, "HTTP_ECHO", pending.getTargetIncarnation(),
-        "unreachable.example", "HTTP_ECHO_SERVER", false);
-    resources.requireRemovable(9L, "HTTP_ECHO");
-  }
-
-  @Test
   public void testDefaultRepositorySelectionAndDurableUninstallEvidence() throws Exception {
     MpackEntity pack = new MpackEntity();
     pack.setMpackName("RESOURCE_PACKAGE");
@@ -545,6 +379,10 @@ public class MpackDAOTest {
     observation.addProperty("loadState", "not-found");
     observation.addProperty("state", "inactive");
     observation.addProperty("pid", "0");
+    observation.addProperty("managementReleased", true);
+    observation.addProperty("runtimeDisposition", "absent");
+    observation.addProperty("dataDisposition", "retained");
+    observation.addProperty("ownershipDisposition", "released");
     com.google.gson.JsonObject outcome = new com.google.gson.JsonObject();
     outcome.addProperty("state", "SUCCEEDED");
     outcome.addProperty("taskId", "101");
@@ -587,6 +425,7 @@ public class MpackDAOTest {
     outcome.add("purgedResources", new com.google.gson.JsonArray());
     resources.recordReport(102L, report.toString());
     org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.requireRemovable(7L, "HTTP_ECHO"));
+    observation.addProperty("dataDisposition", "purged");
     com.google.gson.JsonObject purgedRoot = retainedRoot.deepCopy();
     purgedRoot.addProperty("disposition", "receipt-only");
     outcome.getAsJsonArray("purgedResources").add(purgedRoot);

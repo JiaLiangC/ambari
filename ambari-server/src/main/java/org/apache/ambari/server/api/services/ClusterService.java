@@ -49,6 +49,7 @@ import org.apache.ambari.server.controller.AmbariManagementController;
 import org.apache.ambari.server.controller.AmbariServer;
 import org.apache.ambari.server.controller.ClusterArtifactResponse;
 import org.apache.ambari.server.controller.ClusterResponse.ClusterResponseWrapper;
+import org.apache.ambari.server.controller.MpackInstallPlanRequest;
 import org.apache.ambari.server.controller.internal.ClusterResourceProvider;
 import org.apache.ambari.server.controller.spi.Resource;
 import org.apache.ambari.server.security.authorization.AuthorizationHelper;
@@ -64,7 +65,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -138,65 +138,29 @@ public class ClusterService extends BaseService {
   }
 
   @POST
-  @Path("{clusterName}/mpack_resources/{targetKey}/abandon")
+  @Path("{clusterName}/mpack_install_plans/{planId}")
   @Consumes(MediaType.APPLICATION_JSON)
   @Produces(MediaType.APPLICATION_JSON)
-  @ApiOperation(value = "Explicitly abandons an unreachable managed package target without native cleanup")
-  public Response abandonMpackResource(String body, @PathParam("clusterName") String clusterName,
-      @PathParam("targetKey") String targetKey) {
-    String serviceName;
-    String hostName;
-    String componentName;
-    String targetIncarnation;
-    Long taskId;
-    String expectedState;
-    String confirmation;
-    String reason;
+  @ApiOperation(value = "Validates or applies an idempotent package service install plan")
+  public Response applyMpackInstallPlan(String body, @PathParam("clusterName") String clusterName,
+      @PathParam("planId") String planId) {
     try {
-      JsonObject root = JsonParser.parseString(body).getAsJsonObject();
-      JsonObject request = root.getAsJsonObject("MpackResourceAbandonment");
-      if (request == null || !request.has("taskId")) {
-        throw new IllegalArgumentException("Missing abandonment request");
-      }
-      serviceName = requiredString(request, "serviceName");
-      hostName = requiredString(request, "hostName");
-      componentName = requiredString(request, "componentName");
-      targetIncarnation = requiredString(request, "targetIncarnation");
-      taskId = request.get("taskId").getAsLong();
-      expectedState = requiredString(request, "expectedState");
-      confirmation = requiredString(request, "confirmation");
-      reason = requiredString(request, "reason");
-    } catch (RuntimeException invalid) {
-      return Response.status(Response.Status.BAD_REQUEST)
-          .entity("{\"message\":\"Resource abandonment request is invalid\"}").build();
-    }
-
-    try {
-      Map<String, Object> result = getManagementController().abandonMpackResource(
-          clusterName, targetKey, serviceName, hostName, componentName, targetIncarnation,
-          taskId, expectedState, confirmation, reason);
-      return Response.ok(gson.toJson(java.util.Map.of("item", result))).build();
+      JsonObject root = gson.fromJson(body, JsonObject.class);
+      MpackInstallPlanRequest plan = gson.fromJson(
+          root.getAsJsonObject("MpackInstallPlan"), MpackInstallPlanRequest.class);
+      Map<String, Object> result = getManagementController().applyMpackInstallPlan(
+          clusterName, planId, plan);
+      return Response.ok(gson.toJson(Map.of("item", result))).build();
     } catch (org.apache.ambari.server.security.authorization.AuthorizationException denied) {
       return Response.status(Response.Status.FORBIDDEN)
-          .entity("{\"message\":\"Resource abandonment is not authorized\"}").build();
+          .entity("{\"message\":\"Package installation is not authorized\"}").build();
     } catch (IllegalStateException conflict) {
       return Response.status(Response.Status.CONFLICT)
-          .entity("{\"message\":\"Resource abandonment preconditions did not match\"}").build();
-    } catch (org.apache.ambari.server.AmbariException | IllegalArgumentException invalid) {
+          .entity("{\"message\":\"Package installation conflicts with current cluster state\"}").build();
+    } catch (org.apache.ambari.server.AmbariException | RuntimeException invalid) {
       return Response.status(Response.Status.BAD_REQUEST)
-          .entity("{\"message\":\"Resource abandonment request is invalid\"}").build();
+          .entity("{\"message\":\"Package install plan is invalid\"}").build();
     }
-  }
-
-  private String requiredString(JsonObject request, String name) {
-    if (!request.has(name) || request.get(name).isJsonNull()) {
-      throw new IllegalArgumentException("Missing " + name);
-    }
-    String value = request.get(name).getAsString();
-    if (value.isEmpty()) {
-      throw new IllegalArgumentException("Empty " + name);
-    }
-    return value;
   }
 
   protected AmbariManagementController getManagementController() {

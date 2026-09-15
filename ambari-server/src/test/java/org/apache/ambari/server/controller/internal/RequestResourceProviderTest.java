@@ -995,33 +995,13 @@ public class RequestResourceProviderTest {
 
   @Test
   public void testPurgeRequiresSeparateDestructiveAuthorization() throws Exception {
-    for (String command : new String[]{"PURGE", "MIGRATE", "RESTORE"}) {
     for (Authentication authentication : Arrays.asList(
         TestAuthenticationFactory.createClusterAdministrator(),
         TestAuthenticationFactory.createServiceAdministrator(),
         TestAuthenticationFactory.createServiceOperator())) {
-      Assert.assertThrows(AuthorizationException.class, () -> testCreateResourcesForCommands(authentication, command));
+      Assert.assertThrows(AuthorizationException.class, () -> testCreateResourcesForCommands(authentication, "PURGE"));
     }
-    testCreateResourcesForCommands(TestAuthenticationFactory.createAdministrator(), command);
-    }
-  }
-
-  @Test
-  public void testArtifactUpdateUsesExistingUpgradeAuthorization() throws Exception {
-    Assert.assertThrows(AuthorizationException.class,
-        () -> testCreateResourcesForCommands(TestAuthenticationFactory.createServiceOperator(), "UPGRADE"));
-    testCreateResourcesForCommands(TestAuthenticationFactory.createClusterAdministrator(), "UPGRADE");
-    testCreateResourcesForCommands(TestAuthenticationFactory.createAdministrator(), "UPGRADE");
-  }
-
-  @Test
-  public void testOwnershipHandoffRequiresServiceLifecycleAuthorization() throws Exception {
-    for (String command : new String[]{"DETACH", "ADOPT"}) {
-      Assert.assertThrows(AuthorizationException.class,
-          () -> testCreateResourcesForCommands(TestAuthenticationFactory.createServiceOperator(), command));
-      testCreateResourcesForCommands(TestAuthenticationFactory.createClusterAdministrator(), command);
-      testCreateResourcesForCommands(TestAuthenticationFactory.createAdministrator(), command);
-    }
+    testCreateResourcesForCommands(TestAuthenticationFactory.createAdministrator(), "PURGE");
   }
 
   private void testCreateResourcesForCommands(Authentication authentication, String command) throws Exception {

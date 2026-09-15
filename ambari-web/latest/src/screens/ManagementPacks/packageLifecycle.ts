@@ -90,33 +90,20 @@ export function managedActions(resource: ManagedResource): Set<string> {
   const actions = new Set<string>();
   if (!resource.currentServiceTarget) return actions;
   const supports = (command: string) => resource.customCommands?.includes(command);
-  if (["UNINSTALLED_RETAINED", "PURGED", "DETACHED", "UNREGISTERED", "ABANDONED"].includes(resource.state)) actions.add("remove");
-  if (["PURGED", "ABANDONED"].includes(resource.state)) return actions;
-  if (resource.state === "PENDING" && ["PURGE", "DETACH", "ADOPT", "BACKUP", "MIGRATE", "RESTORE"].includes(resource.operation || "")) {
-    if (supports(resource.operation!)) actions.add(resource.operation!.toLowerCase());
-    actions.add("abandon");
-    return actions;
-  }
-  if (resource.state === "DETACHED") {
-    if (supports("ADOPT")) actions.add("adopt");
-    return actions;
-  }
-  if (resource.category === "MASTER" || resource.category === "SLAVE") {
+  if (["UNINSTALLED_RETAINED", "PURGED", "UNREGISTERED"].includes(resource.state)) actions.add("remove");
+  if (["PURGED", "UNREGISTERED"].includes(resource.state)) return actions;
+  if ((resource.category === "MASTER" || resource.category === "SLAVE") && resource.state === "MANAGED") {
     actions.add("start"); actions.add("stop");
-    if (supports("UPGRADE") && (resource.state === "MANAGED" || resource.operation === "UPGRADE")) actions.add("upgrade");
   }
-  for (const command of ["BACKUP", "MIGRATE", "RESTORE"]) {
-    if (supports(command) && resource.state === "MANAGED") actions.add(command.toLowerCase());
+  if ((resource.category === "MASTER" || resource.category === "SLAVE")
+    && resource.state === "PENDING" && ["START", "RESTART", "STOP"].includes(resource.operation || "")) {
+    actions.add("stop");
   }
-  if (supports("UNINSTALL")) actions.add("uninstall");
-  if (supports("PURGE") && resource.state === "UNINSTALLED_RETAINED") actions.add("purge");
-  if (supports("DETACH") && resource.state === "MANAGED") actions.add("detach");
-  if (["MANAGED", "PENDING"].includes(resource.state)) actions.add("abandon");
+  if (supports("UNINSTALL") && (resource.state === "MANAGED"
+    || (resource.state === "PENDING" && resource.operation === "UNINSTALL"))) actions.add("uninstall");
+  if (supports("PURGE") && (resource.state === "UNINSTALLED_RETAINED"
+    || (resource.state === "PENDING" && resource.operation === "PURGE"))) actions.add("purge");
   return actions;
-}
-
-export function abandonmentConfirmation(resource: ManagedResource): string {
-  return `ABANDON ${resource.serviceName}/${resource.componentName}@${resource.hostName}`;
 }
 
 export const PackageLifecycle = {
@@ -140,59 +127,21 @@ export const PackageLifecycle = {
     const response = await ambariApi.get(`/clusters/${path(cluster)}/mpack_resources`, { params: { after } });
     return rows(object(response.data).items) as ManagedResource[];
   },
-  async abandon(cluster: string, resource: ManagedResource, confirmation: string, reason: string) {
-    const auditReason = reason.trim();
-    if (!resource.currentServiceTarget || !/^[a-f0-9]{64}$/.test(resource.targetKey)
-      || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(resource.targetIncarnation)
-      || !Number.isSafeInteger(resource.taskId) || resource.taskId <= 0
-      || !["MANAGED", "PENDING"].includes(resource.state)
-      || confirmation !== abandonmentConfirmation(resource)
-      || auditReason.length < 10 || auditReason.length > 512 || /[\u0000-\u001f\u007f-\u009f]/.test(auditReason)) {
-      throw new Error("A current target, exact confirmation, and audit reason are required.");
-    }
-    return (await ambariApi.post(`/clusters/${path(cluster)}/mpack_resources/${path(resource.targetKey)}/abandon`, {
-      MpackResourceAbandonment: {
-        serviceName: resource.serviceName,
-        hostName: resource.hostName,
-        componentName: resource.componentName,
-        targetIncarnation: resource.targetIncarnation,
-        taskId: resource.taskId,
-        expectedState: resource.state,
-        confirmation,
-        reason: auditReason,
-      },
-    })).data;
-  },
   async install(cluster: string, repository: number, service: PackageService,
-    assignments: Record<string, string[]>, configurations: PackageService["defaults"]) {
-    const root = `/clusters/${path(cluster)}`;
-    const serviceUrl = `${root}/services/${path(service.name)}`;
-    const current = await existing(serviceUrl);
-    if (current && Number(object(current.ServiceInfo).desired_repository_version_id) !== repository) {
-      throw new Error("This service already uses another package version. Refresh the selection before continuing.");
+    assignments: Record<string, string[]>, configurations: PackageService["defaults"], planId: string) {
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(planId)) {
+      throw new Error("A stable installation plan ID is required.");
     }
-    if (current && object(current.ServiceInfo).state === "STARTED") {
-      throw new Error("This service is already running. Use its component and configuration pages to make changes.");
-    }
-    if (!current) await ambariApi.post(`${root}/services`, { ServiceInfo: {
-      service_name: service.name, desired_repository_version_id: repository,
-    } });
-    for (const component of service.components) {
-      const componentUrl = `${serviceUrl}/components/${path(component.name)}`;
-      if (!await existing(componentUrl)) await ambariApi.post(componentUrl, { ServiceComponentInfo: { component_name: component.name } });
-      for (const host of assignments[component.name] || []) {
-        const hostUrl = `${root}/hosts/${path(host)}/host_components/${path(component.name)}`;
-        if (!await existing(hostUrl)) await ambariApi.post(hostUrl, { HostRoles: { component_name: component.name, host_name: host } });
-      }
-    }
-    // Preserve a resumed deployment's published config; edits use the existing config workflow.
-    const clusterResponse = await ambariApi.get(root, { params: { fields: "Clusters/desired_configs" } });
-    const desired = object(object(object(clusterResponse.data).Clusters).desired_configs);
-    const missing = Object.entries(configurations).filter(([type]) => !desired[type]).map(([type, properties]) => ({
-      type, properties, tag: `mpack-${repository}-${Date.now()}`,
-    }));
-    if (missing.length) await ambariApi.put(root, { Clusters: { desired_config: missing } });
-    return this.state(cluster, service.name, "INSTALLED");
+    const url = `/clusters/${path(cluster)}/mpack_install_plans/${path(planId)}`;
+    const request = (validateOnly: boolean) => ({MpackInstallPlan: {
+      repositoryVersionId: repository,
+      serviceName: service.name,
+      assignments,
+      configurations,
+      validateOnly,
+    }});
+    await ambariApi.post(url, request(true));
+    return (await ambariApi.post(url, request(false))).data;
   },
   async state(cluster: string, service: string, state: "INSTALLED" | "STARTED") {
     return (await ambariApi.put(`/clusters/${path(cluster)}/services/${path(service)}`, {
@@ -206,29 +155,8 @@ export const PackageLifecycle = {
   async purge(cluster: string, service: string, incarnation: string) {
     return this.retainedAction(cluster, service, "PURGE", incarnation);
   },
-  async handoff(cluster: string, service: string, command: "DETACH" | "ADOPT", incarnation: string) {
-    return this.retainedAction(cluster, service, command, incarnation);
-  },
-  async changeRelease(cluster: string, service: string, repository: number, digest: string, incarnation: string, restoreSelection: boolean) {
-    if (!/^[a-f0-9]{64}$/.test(digest) || !Number.isSafeInteger(repository) || repository <= 0
-      || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(incarnation)) {
-      throw new Error("A verified package and target are required.");
-    }
-    const url = `/clusters/${path(cluster)}/services/${path(service)}`;
-    const current = await existing(url);
-    if (!current || object(current.ServiceInfo).state !== "INSTALLED") throw new Error("Stop and verify the service before selecting a release.");
-    if (Number(object(current.ServiceInfo).desired_repository_version_id) !== repository) {
-      await ambariApi.put(url, {RequestInfo: {context: `Select package release for ${service}`, parameters: {expected_target_incarnation: incarnation}},
-        ServiceInfo: {desired_repository_version_id: repository}});
-    }
-    if (restoreSelection) return {selectionRestored: true};
-    return this.retainedAction(cluster, service, "UPGRADE", incarnation, digest);
-  },
-  async retainedAction(cluster: string, service: string, command: "UNINSTALL" | "PURGE" | "UPGRADE" | "DETACH" | "ADOPT" | "BACKUP" | "MIGRATE" | "RESTORE", incarnation?: string, digest?: string) {
-    if (command === "UPGRADE" && !/^[a-f0-9]{64}$/.test(digest || "")) {
-      throw new Error("Artifact update requires a verified package digest.");
-    }
-    if (command !== "UNINSTALL" && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(incarnation || "")) {
+  async retainedAction(cluster: string, service: string, command: "UNINSTALL" | "PURGE", incarnation?: string) {
+    if (command === "PURGE" && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(incarnation || "")) {
       throw new Error("Resource mutation requires the target incarnation from resource evidence.");
     }
     const current = await existing(`/clusters/${path(cluster)}/services/${path(service)}`);
@@ -240,9 +168,8 @@ export const PackageLifecycle = {
       component_name: String(object(object(item).ServiceComponentInfo).component_name || "") })).filter((item) => item.component_name);
     if (!filters.length) throw new Error("No assigned components are available for the resource operation.");
     return (await ambariApi.post(`/clusters/${path(cluster)}/requests`, {
-      RequestInfo: { command, context: ["BACKUP", "MIGRATE", "RESTORE"].includes(command) ? `${command} package data for ${service}` : command === "PURGE" ? `Purge retained data for ${service}` : command === "UPGRADE" ? `Update compatible artifacts for ${service}` : command === "DETACH" ? `Hand off ${service}; retain resources` : command === "ADOPT" ? `Reclaim verified ${service} resources` : `Uninstall ${service}; retain data`,
-        ...(command !== "UNINSTALL" ? {parameters: {expected_target_incarnation: incarnation,
-          ...(command === "UPGRADE" ? {expected_package_digest: digest} : {})}} : {}),
+      RequestInfo: { command, context: command === "PURGE" ? `Purge retained data for ${service}` : `Uninstall ${service}; retain data`,
+        ...(command === "PURGE" ? {parameters: {expected_target_incarnation: incarnation}} : {}),
         operation_level: { level: "SERVICE", cluster_name: cluster, service_name: service } },
       Requests: { resource_filters: filters },
     })).data;

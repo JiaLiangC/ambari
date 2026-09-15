@@ -417,34 +417,7 @@ public class ServiceImpl implements Service {
   @Override
   @Transactional
   public void setDesiredRepositoryVersion(RepositoryVersionEntity repositoryVersionEntity) {
-    setDesiredRepositoryVersion(repositoryVersionEntity, null);
-  }
-
-  @Override
-  @Transactional
-  public void setDesiredRepositoryVersion(RepositoryVersionEntity repositoryVersionEntity, String expectedIncarnation) {
-    ClusterServiceEntity persisted = clusterServiceDAO.findByPKForUpdate(serviceEntityPK);
-    if (expectedIncarnation != null && (persisted == null || !expectedIncarnation.equals(persisted.getMpackTargetIncarnation()))) {
-      throw new IllegalArgumentException("PLAN_STALE: selected service incarnation has changed");
-    }
     try {
-      RepositoryVersionEntity previous = getDesiredRepositoryVersion();
-      if (previous != null && !java.util.Objects.equals(previous.getId(), repositoryVersionEntity.getId())
-          && (previous.getStack().getMpackId() != null || repositoryVersionEntity.getStack().getMpackId() != null)) {
-        if (persisted == null || persisted.getMpackTargetIncarnation() == null
-            || repositoryVersionEntity.getStack().getMpackId() == null || getDesiredState() != State.INSTALLED
-            || getServiceComponents().values().stream().flatMap(component -> component.getServiceComponentHosts().values().stream())
-                .anyMatch(host -> host.getState() != State.INSTALLED || host.getDesiredState() != State.INSTALLED)) {
-          throw new IllegalArgumentException("Stop all package service targets before changing the selected release");
-        }
-        Long materialized = mpackResources.requireStoppedRelease(getClusterId(), getName(), persisted.getMpackTargetIncarnation());
-        Long candidate = repositoryVersionEntity.getStack().getMpackId();
-        if (!materialized.equals(candidate)) {
-          ambariMetaInfo.getMpackManager().validateUpgrade(materialized, candidate, serviceName);
-        }
-        // Selecting the last verified materialized release restores metadata after a
-        // failed attempt. Agent still verifies/stages that release before any START.
-      }
       StackId selected = repositoryVersionEntity.getStackId();
       validateMpackSelection(ambariMetaInfo.getService(selected.getStackName(), selected.getStackVersion(), serviceName),
           repositoryVersionEntity);

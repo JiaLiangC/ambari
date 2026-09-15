@@ -23,7 +23,6 @@ import static org.junit.Assert.assertEquals;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
@@ -46,55 +45,6 @@ import org.junit.Test;
  * Unit tests for ClusterService.
  */
 public class ClusterServiceTest extends BaseServiceTest {
-
-  @Test
-  public void testAbandonMpackResourceForwardsExactPreconditions() throws Exception {
-    Clusters clusters = EasyMock.createNiceMock(Clusters.class);
-    AmbariManagementController controller = EasyMock.createMock(AmbariManagementController.class);
-    String targetKey = "a".repeat(64);
-    EasyMock.expect(controller.abandonMpackResource("cluster one", targetKey, "HTTP_ECHO",
-        "host.example", "HTTP_ECHO_SERVER", "00000000-0000-0000-0000-000000000001",
-        301L, "PENDING", "ABANDON HTTP_ECHO/HTTP_ECHO_SERVER@host.example",
-        "Agent host was retired")).andReturn(Map.of("state", "ABANDONED"));
-    EasyMock.replay(controller);
-    ClusterService service = new TestClusterService(clusters, "cluster one", controller);
-    String body = "{\"MpackResourceAbandonment\":{"
-        + "\"serviceName\":\"HTTP_ECHO\",\"hostName\":\"host.example\","
-        + "\"componentName\":\"HTTP_ECHO_SERVER\","
-        + "\"targetIncarnation\":\"00000000-0000-0000-0000-000000000001\","
-        + "\"taskId\":301,\"expectedState\":\"PENDING\","
-        + "\"confirmation\":\"ABANDON HTTP_ECHO/HTTP_ECHO_SERVER@host.example\","
-        + "\"reason\":\"Agent host was retired\"}}";
-
-    Response response = service.abandonMpackResource(body, "cluster one", targetKey);
-
-    assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
-    org.junit.Assert.assertTrue(response.getEntity().toString().contains("ABANDONED"));
-    EasyMock.verify(controller);
-  }
-
-  @Test
-  public void testAbandonMpackResourceRejectsMalformedAndStaleRequests() throws Exception {
-    Clusters clusters = EasyMock.createNiceMock(Clusters.class);
-    AmbariManagementController controller = EasyMock.createMock(AmbariManagementController.class);
-    String targetKey = "a".repeat(64);
-    EasyMock.expect(controller.abandonMpackResource(EasyMock.anyString(), EasyMock.anyString(),
-        EasyMock.anyString(), EasyMock.anyString(), EasyMock.anyString(), EasyMock.anyString(),
-        EasyMock.anyLong(), EasyMock.anyString(), EasyMock.anyString(), EasyMock.anyString()))
-        .andThrow(new IllegalStateException("stale"));
-    EasyMock.replay(controller);
-    ClusterService service = new TestClusterService(clusters, "cluster", controller);
-
-    assertEquals(Response.Status.BAD_REQUEST.getStatusCode(),
-        service.abandonMpackResource("{}", "cluster", targetKey).getStatus());
-    String complete = "{\"MpackResourceAbandonment\":{"
-        + "\"serviceName\":\"S\",\"hostName\":\"H\",\"componentName\":\"C\","
-        + "\"targetIncarnation\":\"00000000-0000-0000-0000-000000000001\","
-        + "\"taskId\":1,\"expectedState\":\"PENDING\",\"confirmation\":\"x\",\"reason\":\"reason long\"}}";
-    assertEquals(Response.Status.CONFLICT.getStatusCode(),
-        service.abandonMpackResource(complete, "cluster", targetKey).getStatus());
-    EasyMock.verify(controller);
-  }
 
 
   @Override
@@ -189,6 +139,36 @@ public class ClusterServiceTest extends BaseServiceTest {
     listInvocations.add(new ServiceTestInvocation(Request.Type.DELETE, clusterService, m, args, "body"));
 
     return listInvocations;
+  }
+
+  @Test
+  public void testApplyMpackInstallPlanParsesAndForwardsOnePlan() throws Exception {
+    AmbariManagementController controller = EasyMock.createMock(AmbariManagementController.class);
+    org.easymock.Capture<org.apache.ambari.server.controller.MpackInstallPlanRequest> captured =
+        EasyMock.newCapture();
+    EasyMock.expect(controller.applyMpackInstallPlan(EasyMock.eq("cluster"),
+        EasyMock.eq("00000000-0000-4000-8000-000000000001"), EasyMock.capture(captured)))
+        .andReturn(java.util.Map.of("state", "VALIDATED"));
+    EasyMock.replay(controller);
+    ClusterService service = new TestClusterService(null, "cluster", controller);
+    Response response = service.applyMpackInstallPlan("{\"MpackInstallPlan\":{"
+        + "\"repositoryVersionId\":43,\"serviceName\":\"HTTP_ECHO\","
+        + "\"assignments\":{\"HTTP_ECHO_SERVER\":[\"host.example\"]},"
+        + "\"configurations\":{\"http\":{\"port\":\"18080\"}},\"validateOnly\":true}}",
+        "cluster", "00000000-0000-4000-8000-000000000001");
+    assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    assertEquals(Long.valueOf(43), captured.getValue().getRepositoryVersionId());
+    assertEquals("HTTP_ECHO", captured.getValue().getServiceName());
+    assertEquals(List.of("host.example"), captured.getValue().getAssignments().get("HTTP_ECHO_SERVER"));
+    EasyMock.verify(controller);
+  }
+
+  @Test
+  public void testApplyMpackInstallPlanRejectsMalformedInput() {
+    ClusterService service = new TestClusterService(null, "cluster",
+        EasyMock.createNiceMock(AmbariManagementController.class));
+    assertEquals(Response.Status.BAD_REQUEST.getStatusCode(),
+        service.applyMpackInstallPlan("{}", "cluster", "not-a-plan").getStatus());
   }
 
 

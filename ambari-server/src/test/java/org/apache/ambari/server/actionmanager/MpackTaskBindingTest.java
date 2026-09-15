@@ -137,26 +137,6 @@ public class MpackTaskBindingTest {
     Map<?, ?> purgeBinding = gson.fromJson(command.getCommandParams().get("mpack_task_binding"), Map.class);
     assertEquals("PURGE", purgeBinding.get("operation"));
     assertEquals("00000000-0000-0000-0000-000000000001", purgeBinding.get("targetIncarnation"));
-    command.getCommandParams().put("custom_command", "UPGRADE");
-    assertThrows(org.apache.ambari.server.AmbariException.class, () -> accessor.pinMpackTask(command, 1L));
-    command.getCommandParams().put("expected_package_digest", "c".repeat(64));
-    assertThrows(org.apache.ambari.server.AmbariException.class, () -> accessor.pinMpackTask(command, 1L));
-    command.getCommandParams().put("expected_package_digest", digest);
-    when(current.getDesiredState()).thenReturn(org.apache.ambari.server.state.State.STARTED);
-    assertThrows(org.apache.ambari.server.AmbariException.class, () -> accessor.pinMpackTask(command, 1L));
-    when(current.getDesiredState()).thenReturn(org.apache.ambari.server.state.State.INSTALLED);
-    accessor.pinMpackTask(command, 1L);
-    Map<?, ?> upgradeBinding = gson.fromJson(command.getCommandParams().get("mpack_task_binding"), Map.class);
-    assertEquals("UPGRADE", upgradeBinding.get("operation"));
-    assertEquals(digest, upgradeBinding.get("packageDigest"));
-    for (String handoff : new String[]{"DETACH", "ADOPT"}) {
-      command.getCommandParams().put("custom_command", handoff);
-      command.getCommandParams().put("expected_target_incarnation", "00000000-0000-0000-0000-000000000002");
-      assertThrows(org.apache.ambari.server.AmbariException.class, () -> accessor.pinMpackTask(command, 1L));
-      command.getCommandParams().put("expected_target_incarnation", "00000000-0000-0000-0000-000000000001");
-      accessor.pinMpackTask(command, 1L);
-      assertEquals(handoff, gson.fromJson(command.getCommandParams().get("mpack_task_binding"), Map.class).get("operation"));
-    }
     command.setClusterId("2");
     assertThrows(org.apache.ambari.server.AmbariException.class, () -> accessor.pinMpackTask(command, 1L));
   }

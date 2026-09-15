@@ -386,17 +386,14 @@ public class ActionDBAccessorImpl implements ActionDBAccessor {
     Map<String, String> params = command.getCommandParams();
     params.put("mpack_content_digest", pack.getContentDigest());
     params.put("mpack_target_incarnation", mpackServiceDAO.getOrCreateMpackTargetIncarnation(clusterId, command.getServiceName()));
-    if (java.util.Set.of("PURGE", "UPGRADE", "DETACH", "ADOPT", "BACKUP", "MIGRATE", "RESTORE").contains(params.getOrDefault("custom_command", ""))
+    if ("PURGE".equals(params.get("custom_command"))
         && !params.get("mpack_target_incarnation").equals(params.get("expected_target_incarnation"))) {
       throw new AmbariException("PLAN_STALE: retained target differs from the current service incarnation");
     }
-    if ("UPGRADE".equals(params.get("custom_command")) && !pack.getContentDigest().equals(params.get("expected_package_digest"))) {
-      throw new AmbariException("PLAN_STALE: selected package differs from the requested artifact update");
-    }
     org.apache.ambari.server.state.Cluster cluster = clusters.getClusterById(clusterId);
-    if (java.util.Set.of("UNINSTALL", "PURGE", "UPGRADE", "DETACH", "ADOPT", "BACKUP", "MIGRATE", "RESTORE").contains(params.getOrDefault("custom_command", ""))
+    if (java.util.Set.of("UNINSTALL", "PURGE").contains(params.getOrDefault("custom_command", ""))
         && cluster.getService(command.getServiceName()).getDesiredState() == org.apache.ambari.server.state.State.STARTED) {
-      throw new AmbariException("Stop the service through its existing workflow before removing or updating resources");
+      throw new AmbariException("Stop the service through its existing workflow before removing resources");
     }
     Map<String, Map<String, String>> tags = mpackConfigHelper.get().getEffectiveDesiredTags(
         cluster, command.getHostname(), cluster.getDesiredConfigs());
