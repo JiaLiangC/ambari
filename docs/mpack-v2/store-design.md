@@ -52,7 +52,7 @@ Both paths use one Server importer and require no Store-specific discovery API.
 The Ambari UI distinguishes import of a package definition, installation into an existing
 cluster, management of an installed service, uninstall of owned runtime resources,
 and removal of an unreferenced catalog definition. Native uninstall retains data by
-default; detach and separately authorized purge have different semantics. Import alone
+default; retained uninstall and separately authorized purge have different semantics. Import alone
 creates no native resources. Catalog deletion never substitutes for native uninstall.
 
 ```mermaid

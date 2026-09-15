@@ -351,29 +351,11 @@ mandatory; schema string-length constraints are shown as help and enforced there
 Typed controls and rejection of literal/foreign-service credentials have new focused
 tests; the 2026-09-15 Mpack status ledger records their execution and remaining live acceptance.
 
-### Declarative package release selection (local validation)
-
-Classic `stack_and_upgrade_controller.js#installRepoVersion` submits
-`ClusterStackVersions` through `admin.stack_version.install.repo_version`; its upgrade
-permission and background requests remain the baseline. The new Mpack action is an
-intentional separate bounded flow using existing service repository selection and
-UPGRADE custom requests: stopped compatible vendored artifacts only, with incarnation
-and digest expectations. It is not Classic rolling upgrade parity or a data rollback.
-The UI never treats a failed selection response as permission to submit native work,
-and current resource pages cannot prove completion on hosts outside that page.
-Focused helper cases and the React production build passed on 2026-09-15; native/browser acceptance remains separate. Upgrade actions require declared UPGRADE capability and use selectedPackageId for release selection, independently of the latest task intent.
-
-The resumed Mpack extension adds capability-driven package BACKUP/MIGRATE/RESTORE
-requests through existing service tasks. Destructive data operations require existing
-SERVICE.PURGE_DATA and typed service-name confirmation. Pending data operations offer
-verification of the original intent, not automatic apply. This is distinct from the
-Classic Stack upgrade workflow and has no rolling-upgrade parity claim. Tests and
-build results are recorded with the consolidated Mpack validation.
-
-The managed-resource extension also provides a bounded emergency action for a current
-target whose Agent or receipt cannot be recovered. Classic has no per-target retained
-resource view or equivalent action. React therefore intentionally adds a dual-authorized
-typed-confirmation dialog that submits the exact target key, service incarnation, task
-and expected state to the Server. The resulting `ABANDONED` state is an audited terminal
-relinquishment, not evidence of uninstall, purge, or handoff; the dialog states that
-native resources may remain. Focused lifecycle/API/DAO tests are the regression boundary.
+The form submits one stable UUID install plan to Server, first for validation and then
+for execution. Server owns the service/component/host/config/install sequence and
+returns the ordinary Ambari request; React no longer performs partial resource writes.
+Mpack package upgrade, reload, ownership handoff, data procedures and force-abandon
+were removed during architecture convergence. The managed-resource UI exposes only
+start, stop, uninstall, separately authorized purge and deletion after verified
+management release. Missing Agent evidence remains blocked rather than being converted
+into a successful terminal state.

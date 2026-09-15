@@ -31,7 +31,8 @@ they do not report tests already run or imply missing runtime implementations ex
 | Signed import | Actual generated modules loaded by MpackManager; digest bound in DB; wrong key/modified content rejected before publication | MpackManagerTest compiler-produced fixture |
 | Publication crash before/after DB | Uncommitted files quarantined; committed projection completed; rollback failure retains definitions | MpackManagerTest crash-window cases |
 | Delete while referenced | DB transaction fails with references and files retained; unreferenced deletion commits before filesystem cleanup | MpackDAOTest and MpackManagerTest |
-| Create/recreate service | Existing cluster/service identity retained; new native incarnation does not adopt old data/unit | MpackDAOTest, TestMpackHost |
+| Create/recreate service | Existing cluster/service identity retained; new native incarnation cannot claim old data/unit | MpackDAOTest, TestMpackHost |
+| Submit installation plan | Whole assignment/config intent validates before writes; repeated UUID resumes the ordinary Ambari request | MpackInstallCoordinatorTest, ClusterServiceTest and React lifecycle/dialog tests; real-provider fault injection remains open |
 | Install/start/configure/stop | Declared resources, stage/publish config, active PID/application readiness, verified stop and retained data | TestMpackHost controlled native fixture |
 | Duplicate/late task | Same intent verifies without duplicate mutation; older task cannot overwrite newer evidence | TestMpackHost |
 | Lost response or Agent process restart | Reconstruct driver from persisted receipt; new native invocation can reconcile; ambiguity stays UNKNOWN | TestMpackHost; real Agent restart delivery still pending |
@@ -45,20 +46,17 @@ publication and data retention. Local fixtures do not meet this native evidence 
 Server-Agent connection loss/restart acceptance must inspect persisted actual tasks,
 metadata/config generations and late responses, not only reconstruct a local class.
 
-## Native runtime and data lifecycle acceptance
+## External observation and removal acceptance
 
-OCI must bind an actual engine/container identity and prove immutable image, state,
-volume retention and recovery semantics. Kubernetes must bind authorized API server,
-namespace and native UID/revision, observe rollout/controller state and handle resource
-replacement. External databases require scoped connections/probes and explicitly
-unsupported mutation where appropriate. Equal method names do not establish equal
-execution or cancellation semantics across these runtimes.
+External databases require scoped connections/probes and explicitly unsupported
+mutation where appropriate. Container and orchestrator workloads are outside the
+Mpack V2 contract and use their dedicated platforms instead.
 
-Adoption must verify identity/ownership before taking control. Detach must not delete
-provider-owned resources. Uninstall retains persistent data; purge needs independent
-capability, authorization and audit. Software rollback cannot promise data rollback.
-Migration acceptance includes partial success, irreversible boundaries, backup/restore
-and manual recovery evidence. Bounded implementations and local fixtures now exist; those fixtures do not complete this real-runtime acceptance. The supported contract excludes foreign adoption, orphan purge and automatic data rollback.
+External unregister must release only Ambari's registration and report provider-owned
+runtime/data/ownership. Uninstall retains managed data; purge requires independent
+capability, authorization, exact incarnation and retained inode evidence. A missing
+Agent or receipt does not permit force-success. The supported contract excludes
+foreign adoption, orphan purge and automatic data rollback.
 
 ## Human and AI authoring
 
@@ -66,5 +64,5 @@ A human or AI changes the same declarative source, sees the same diagnostics/dif
 and uses the same review, compiler, signed export and authenticated import. Invalid
 port/config references, unsupported capabilities, secret literals and dependency gaps
 must be rejected without leaking values. No AI may grant approval, directly invoke
-native commands, bypass server RBAC or describe an irreversible migration as rollback.
+native commands, bypass server RBAC or describe an irreversible purge as rollback.
 This repository does not implement an AI provider; the authoring boundary is shared.

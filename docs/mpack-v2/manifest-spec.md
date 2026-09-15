@@ -34,17 +34,17 @@ version is distinct from legacy registration format and runtime contract version
 | spec.dependencies | Package-level requirements; no automatic binding approval/resolution |
 | spec.services | Service definitions using existing Ambari names |
 | service.components | Named category/role/cardinality and explicit profiles; CLIENT exports use host.files or external.database with their own capability limits |
-| component.profiles | Profile ID, adapter ID, declared capability subset, typed resources, optional health and capability-matched dataOperations handlers |
-| service.configurations | Unique config names, local schema/template files, defaults and changeEffect |
+| component.profiles | Profile ID, supported adapter (`host.systemd/v1`, `host.files/v1` or `external.database/v1`), declared capability subset, typed resources and optional health |
+| service.configurations | Unique config names, local schema/template files and defaults; active services restart after changed publication |
 | service.requires/provides | Named interface slots/version contracts; requires lock retains consumer service plus slot |
 | service.operations | Reserved; only an empty array accepted |
 | service.observability | Bounded existing REST metric and LogSearch projections; health has its own bounded shape |
 
-Resources can describe packages, users/groups, directories/retention, ports, program,
-arguments/environment, unit user/group/working directory, image/namespace/native name,
-replicas, artifact reference and external endpoint config reference. These are typed
-author inputs, not a promise that all runtime adapters exist. Static adapter capability
-sets in profiles.py are authoring constraints; deployment discovery is separate evidence.
+Host resources describe packages, users/groups, directories/retention, ports, program,
+arguments/environment and unit user/group/working directory. External observation uses
+a package probe, non-root run-as user and provider-native identity. Static adapter
+capability sets in profiles.py are authoring constraints; deployment discovery is
+separate evidence. Container and orchestrator resources are not part of this schema.
 
 Arguments support strings and typed artifactRef/configRef/configurationRef/directoryRef/
 secretRef expressions. Known artifacts/config fields/directories must resolve within
@@ -66,11 +66,9 @@ fields inject an isolated managed directory; defaults/overrides/extra constraint
 not allowed for these runtime-owned values. Runtime validation repeats the supported
 scalar constraints after applying Ambari desired values. Unsupported constraints fail
 export instead of disappearing from generated UI/runtime behavior. Host configuration
-changeEffect defaults to restart. Reload requires an explicit signal and HTTP
-`X-Ambari-Config-Generation` acknowledgement of the rendered
-`{{ mpack_config_generation }}` token, with an unchanged native invocation. Port/unit
-changes or environment secrets require restart. None/migration remain unsupported.
-Separate backup/migrate/restore operations reference authenticated package handlers; they are not changeEffect values. Current local validation and native acceptance limits are recorded in status.
+changes restart an active systemd target. Reload, upgrade, handoff and package data
+procedures are not source fields or capabilities. Current local validation and native
+acceptance limits are recorded in status.
 
 ## Source examples and standard onboarding
 
