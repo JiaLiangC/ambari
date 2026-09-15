@@ -41,7 +41,8 @@ import urllib.request
 import uuid
 
 
-HOST_OPERATIONS = frozenset({"install", "configure", "start", "stop", "restart", "reload", "upgrade", "detach", "adopt", "uninstall", "purge", "observe"})
+HOST_OPERATIONS = frozenset({"install", "configure", "start", "stop", "restart", "reload", "upgrade", "detach", "adopt", "uninstall", "purge", "observe", "backup", "migrate", "restore"})
+DATA_OPERATIONS = frozenset({"backup", "migrate", "restore"})
 
 
 class HostError(Exception):
@@ -592,6 +593,17 @@ class HostDeployment:
     return False
 
   def verify(self, action, configs):
+    if action in DATA_OPERATIONS:
+      receipt = self._receipt()
+      evidence = receipt.get("dataOperation", {})
+      if evidence.get("operation") != action or evidence.get("state") != "SUCCEEDED":
+        raise HostError("OUTCOME_UNKNOWN", "Package data operation is not verified", "UNKNOWN")
+      self._verify_data_handler(action, configs, evidence)
+      observation = self.observe()
+      if observation["state"] != "inactive" or observation["pid"] != "0":
+        raise HostError("OUTCOME_UNKNOWN", "Data handler changed the stopped target", "UNKNOWN")
+      observation["dataOperation"] = evidence
+      return observation
     deadline = time.monotonic() + 30
     while True:
       observation = self.observe()
@@ -603,7 +615,7 @@ class HostDeployment:
       if action in ("detach", "adopt") and observation["loadState"] == "loaded" and observation["state"] == "inactive" and observation["pid"] == "0":
         if self._receipt().get("detached", False) == (action == "detach"):
           return observation
-      if action == "stop" and observation["state"] == "inactive":
+      if action == "stop" and observation["state"] == "inactive" and observation["pid"] == "0":
         return observation
       if action in ("start", "restart") and observation["state"] == "active" and int(observation["pid"]) > 0 and self._healthy(configs):
         return observation
@@ -647,6 +659,41 @@ class HostDeployment:
         or metadata.get("mpack_content_digest") != self.package_digest):
       raise HostError("PLAN_STALE", "Service metadata superseded the persisted task binding")
 
+  def _verify_data_handler(self, action, configs, evidence):
+    from resource_management.libraries.functions.mpack_handler import PackageHandler
+    handler = PackageHandler(self, self.profile["dataOperations"][action], self.resources["unit"]["user"])
+    result = handler.call("verify", action, evidence["key"], configs, evidence["preconditionDigest"])
+    if result["result"] != "SUCCEEDED":
+      raise HostError("OUTCOME_UNKNOWN", "Package data operation needs durable-result reconciliation", "UNKNOWN")
+    return result
+
+  def _data_operation(self, action, configs, receipt, interrupted=False):
+    from resource_management.libraries.functions.mpack_handler import PackageHandler
+    handler = PackageHandler(self, self.profile["dataOperations"][action], self.resources["unit"]["user"])
+    generation = self._generation(configs)
+    pending = receipt.get("dataOperation", {})
+    if pending and (pending.get("state") == "UNKNOWN" or interrupted and pending.get("key") == receipt.get("dataAttemptKey")):
+      if pending["operation"] != action or pending["configGeneration"] != generation:
+        raise HostError("OUTCOME_UNKNOWN", "Recover the original package data operation with its original configuration", "UNKNOWN")
+      result = self._verify_data_handler(action, configs, pending)
+    else:
+      key = receipt.get("dataAttemptKey") if interrupted else None
+      key = key or _json_hash({"intent": receipt["intentDigest"], "taskId": receipt["taskId"]})
+      receipt["dataAttemptKey"] = key
+      self._save(receipt)
+      prepared = handler.call("prepare", action, key, configs)
+      if prepared["result"] != "READY":
+        raise HostError("TARGET_CONFLICT", "Package data operation preconditions were not confirmed")
+      pending = {"operation": action, "key": key, "configGeneration": generation,
+                 "preconditionDigest": prepared["evidenceDigest"], "state": "UNKNOWN"}
+      receipt["dataOperation"] = pending
+      self._save(receipt)
+      handler.call("apply", action, key, configs, pending["preconditionDigest"])
+      result = self._verify_data_handler(action, configs, pending)
+    pending.update(state="SUCCEEDED", evidenceDigest=result["evidenceDigest"])
+    receipt["dataOperation"] = pending
+    self._save(receipt)
+
   def _observation_stamp(self, observation):
     return {field: observation.get(field) for field in ("state", "loadState", "invocationId", "job")}
 
@@ -669,6 +716,9 @@ class HostDeployment:
       if self._observation_stamp(current) != self._observation_stamp(plan["observation"]):
         raise HostError("PLAN_STALE", "Native state changed after planning")
       action = plan["operation"]
+      data_pending = receipt.get("dataOperation", {})
+      if data_pending.get("state") == "UNKNOWN" and action not in (data_pending["operation"], "stop"):
+        raise HostError("OUTCOME_UNKNOWN", "Verify the pending package data operation before other mutations", "UNKNOWN")
       if receipt.get("detached") and action not in ("detach", "adopt"):
         raise HostError("TARGET_CONFLICT", "Adopt the detached target before managing its resources")
       if (receipt.get("purged") or receipt.get("operation") == "purge") and action != "purge":
@@ -734,6 +784,12 @@ class HostDeployment:
         self._check_upgrade(receipt, current, plan["configGeneration"])
       if action in ("detach", "adopt"):
         self._check_handoff(action, receipt, current, configs, plan["configGeneration"])
+      if action in DATA_OPERATIONS:
+        if (self.runtime_profile != "host.systemd/v1" or not self.profile.get("dataOperations", {}).get(action)
+            or materialized_digest != self.package_digest or current.get("loadState") != "loaded"
+            or current["state"] != "inactive" or current.get("pid") != "0"
+            or (self.task_binding or {}).get("secretGenerations")):
+          raise HostError("CAPABILITY_UNSUPPORTED", "Package data operations require the verified stopped release and declared handler")
       if action == "reload":
         if (current["state"] != "active" or not current.get("invocationId")
             or self.profile.get("health", {}).get("kind") != "http"
@@ -756,6 +812,8 @@ class HostDeployment:
       try:
         if self.cancel is not None and self.cancel.is_set():
           raise HostError("OUTCOME_UNKNOWN", "Task canceled before mutation", "UNKNOWN")
+        if action in DATA_OPERATIONS:
+          self._data_operation(action, configs, receipt, interrupted)
         if action in ("install", "configure", "start", "restart", "upgrade"):
           self._publish(configs, plan["configGeneration"], receipt)
         if action == "reload":

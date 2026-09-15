@@ -151,7 +151,7 @@ The Store can publish packages for any declared runtime, but displays unsupporte
 unverified compatibility accurately. It never translates a runtime capability label
 into a promise that Ambari can execute it. Installation, configuration, observability,
 upgrade, migration, recovery, uninstall and data purge remain Ambari responsibilities.
-Their detailed design and acceptance stay in [Ambari architecture](architecture.md#package-import-and-lifecycle-extension-proposed)
+Their detailed design and acceptance stay in [Ambari architecture](architecture.md#package-import-and-lifecycle-extension)
 and the [Ambari plan](implementation-plan.md#package-import-and-lifecycle-delivery-plan).
 When this document moves, replace those relative links with version-pinned references.
 

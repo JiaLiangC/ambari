@@ -90,9 +90,9 @@ export function managedActions(resource: ManagedResource): Set<string> {
   const actions = new Set<string>();
   if (!resource.currentServiceTarget) return actions;
   const supports = (command: string) => resource.customCommands?.includes(command);
-  if (["UNINSTALLED_RETAINED", "PURGED", "DETACHED"].includes(resource.state)) actions.add("remove");
+  if (["UNINSTALLED_RETAINED", "PURGED", "DETACHED", "UNREGISTERED"].includes(resource.state)) actions.add("remove");
   if (resource.state === "PURGED") return actions;
-  if (resource.state === "PENDING" && ["PURGE", "DETACH", "ADOPT"].includes(resource.operation || "")) {
+  if (resource.state === "PENDING" && ["PURGE", "DETACH", "ADOPT", "BACKUP", "MIGRATE", "RESTORE"].includes(resource.operation || "")) {
     if (supports(resource.operation!)) actions.add(resource.operation!.toLowerCase());
     return actions;
   }
@@ -102,7 +102,10 @@ export function managedActions(resource: ManagedResource): Set<string> {
   }
   if (resource.category === "MASTER" || resource.category === "SLAVE") {
     actions.add("start"); actions.add("stop");
-    if (resource.state === "MANAGED" || resource.operation === "UPGRADE") actions.add("upgrade");
+    if (supports("UPGRADE") && (resource.state === "MANAGED" || resource.operation === "UPGRADE")) actions.add("upgrade");
+  }
+  for (const command of ["BACKUP", "MIGRATE", "RESTORE"]) {
+    if (supports(command) && resource.state === "MANAGED") actions.add(command.toLowerCase());
   }
   if (supports("UNINSTALL")) actions.add("uninstall");
   if (supports("PURGE") && resource.state === "UNINSTALLED_RETAINED") actions.add("purge");
@@ -192,7 +195,7 @@ export const PackageLifecycle = {
     if (restoreSelection) return {selectionRestored: true};
     return this.retainedAction(cluster, service, "UPGRADE", incarnation, digest);
   },
-  async retainedAction(cluster: string, service: string, command: "UNINSTALL" | "PURGE" | "UPGRADE" | "DETACH" | "ADOPT", incarnation?: string, digest?: string) {
+  async retainedAction(cluster: string, service: string, command: "UNINSTALL" | "PURGE" | "UPGRADE" | "DETACH" | "ADOPT" | "BACKUP" | "MIGRATE" | "RESTORE", incarnation?: string, digest?: string) {
     if (command === "UPGRADE" && !/^[a-f0-9]{64}$/.test(digest || "")) {
       throw new Error("Artifact update requires a verified package digest.");
     }
@@ -208,7 +211,7 @@ export const PackageLifecycle = {
       component_name: String(object(object(item).ServiceComponentInfo).component_name || "") })).filter((item) => item.component_name);
     if (!filters.length) throw new Error("No assigned components are available for the resource operation.");
     return (await ambariApi.post(`/clusters/${path(cluster)}/requests`, {
-      RequestInfo: { command, context: command === "PURGE" ? `Purge retained data for ${service}` : command === "UPGRADE" ? `Update compatible artifacts for ${service}` : command === "DETACH" ? `Hand off ${service}; retain resources` : command === "ADOPT" ? `Reclaim verified ${service} resources` : `Uninstall ${service}; retain data`,
+      RequestInfo: { command, context: ["BACKUP", "MIGRATE", "RESTORE"].includes(command) ? `${command} package data for ${service}` : command === "PURGE" ? `Purge retained data for ${service}` : command === "UPGRADE" ? `Update compatible artifacts for ${service}` : command === "DETACH" ? `Hand off ${service}; retain resources` : command === "ADOPT" ? `Reclaim verified ${service} resources` : `Uninstall ${service}; retain data`,
         ...(command !== "UNINSTALL" ? {parameters: {expected_target_incarnation: incarnation,
           ...(command === "UPGRADE" ? {expected_package_digest: digest} : {})}} : {}),
         operation_level: { level: "SERVICE", cluster_name: cluster, service_name: service } },

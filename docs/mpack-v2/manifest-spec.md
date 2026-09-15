@@ -33,12 +33,12 @@ version is distinct from legacy registration format and runtime contract version
 | spec.artifacts | Unique file or URL references; local file hashes/sizes locked; URL requires SHA-256, no userinfo/query/fragment |
 | spec.dependencies | Package-level requirements; no automatic binding approval/resolution |
 | spec.services | Service definitions using existing Ambari names |
-| service.components | Named category/role/cardinality and explicit profiles; client source is representable but host-service export rejects it |
-| component.profiles | Profile ID, adapter ID, declared capability subset, typed resources and optional health |
+| service.components | Named category/role/cardinality and explicit profiles; CLIENT exports use host.files or external.database with their own capability limits |
+| component.profiles | Profile ID, adapter ID, declared capability subset, typed resources, optional health and capability-matched dataOperations handlers |
 | service.configurations | Unique config names, local schema/template files, defaults and changeEffect |
 | service.requires/provides | Named interface slots/version contracts; requires lock retains consumer service plus slot |
 | service.operations | Reserved; only an empty array accepted |
-| service.observability | Reserved; only an empty object accepted; health has its own bounded shape |
+| service.observability | Bounded existing REST metric and LogSearch projections; health has its own bounded shape |
 
 Resources can describe packages, users/groups, directories/retention, ports, program,
 arguments/environment, unit user/group/working directory, image/namespace/native name,
@@ -50,7 +50,7 @@ Arguments support strings and typed artifactRef/configRef/configurationRef/direc
 secretRef expressions. Known artifacts/config fields/directories must resolve within
 the declared scope. A configurationRef requires a template. Host secret references
 are allowed in private runtime configuration and environment files, never process
-arguments. The P6 implementation uses scoped existing credentials; validation is pending. Health is process, TCP or
+arguments. The P6 implementation uses scoped existing credentials and encrypted Agent dispatch; current interoperability evidence is in status. Health is process, TCP or
 HTTP with a bounded timeout and a required schema-constrained port reference for
 network probes. Every declared listener also requires a bounded integer port field.
 Host preflight checks IPv4 listeners; HTTP probes remain at their original endpoint.
@@ -70,7 +70,7 @@ changeEffect defaults to restart. Reload requires an explicit signal and HTTP
 `X-Ambari-Config-Generation` acknowledgement of the rendered
 `{{ mpack_config_generation }}` token, with an unchanged native invocation. Port/unit
 changes or environment secrets require restart. None/migration remain unsupported.
-These additions are source implementation with consolidated verification pending.
+Separate backup/migrate/restore operations reference authenticated package handlers; they are not changeEffect values. Current local validation and native acceptance limits are recorded in status.
 
 ## Source examples and standard onboarding
 
@@ -81,8 +81,9 @@ Use complete source fixtures instead of copying another illustrative schema:
 - [Redis](../../mpack-authoring/fixtures/redis/manifest.json): OS package prerequisite,
   foreground redis-server and generated config-file argument; persistent data retained.
 - [Multi-service YAML](../../mpack-authoring/fixtures/multi-service/manifest.yaml):
-  two independent services, distinct config defaults/ports, one shared schema and
-  standard-library HTTP entry points using the same host adapter.
+  two server services and a file-only CLIENT, distinct config defaults/ports and shared schemas.
+- [External PostgreSQL observer](../../mpack-authoring/fixtures/external-postgresql/manifest.json):
+  package-owned native identity probe, local registration and remote read-only observation.
 
 The English [development guide](../../mpack-authoring/README.md) explains how to copy
 and adapt these sources, build them and run `mpack-authoring/validate.py`. Its `examples`

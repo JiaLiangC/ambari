@@ -99,6 +99,7 @@ class TestMpackOci(unittest.TestCase):
       "service": copy.deepcopy(compiled["manifest"]["spec"]["services"][0]),
       "artifacts": compiled["artifacts"], "files": payload_lock(compiled, str(self.payload))}
     self.profile = self.descriptor["service"]["components"][0]["profiles"][0]
+    self.profile.pop("dataOperations", None)
     self.profile.update(adapter="oci.container/v1", capabilities=sorted(OciDeployment.operations), health={"kind": "process"},
       resources={"engine": "docker", "image": "localhost/example@sha256:" + "b" * 64, "runAsUser": "http",
         "directories": [{"path": "data", "owner": "http", "persistent": True, "retention": "retain"}],

@@ -40,7 +40,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 class Client:
   def __init__(self, url):
     parsed = urllib.parse.urlparse(url)
-    if parsed.scheme not in ("http", "https") or parsed.username or parsed.password or parsed.query or parsed.fragment:
+    if parsed.scheme not in ("http", "https") or not parsed.hostname or (parsed.scheme == "http" and parsed.hostname not in ("localhost", "127.0.0.1", "::1")) or parsed.username or parsed.password or parsed.query or parsed.fragment:
       raise AcceptanceFailure("INVALID_API_URL")
     self.url = url.rstrip("/") + "/api/v1"
     self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
@@ -65,9 +65,11 @@ class Client:
           raise AcceptanceFailure("RESPONSE_LIMIT")
         return json.loads(body) if body else {}
     except urllib.error.HTTPError as error:
-      if absent and error.code == 404:
+      status = error.code
+      error.close()
+      if absent and method == "GET" and status == 404:
         return None
-      raise AcceptanceFailure("HTTP_" + str(error.code)) from None
+      raise AcceptanceFailure("HTTP_" + str(status)) from None
     except (OSError, ValueError):
       raise AcceptanceFailure("OUTCOME_UNKNOWN_INSPECT_EXISTING_REQUESTS") from None
 
@@ -88,7 +90,7 @@ class Client:
   def wait(self, cluster, response):
     request_id = response.get("Requests", {}).get("id")
     if request_id is None:
-      return
+      raise AcceptanceFailure("MISSING_REQUEST_ID_INSPECT_EXISTING_STATE")
     print(json.dumps({"requestId": request_id, "state": "SUBMITTED"}), flush=True)
     deadline = time.monotonic() + 600
     while time.monotonic() < deadline:

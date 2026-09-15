@@ -167,6 +167,9 @@ public class MpackManagerTest {
   @Test
   public void testCommittedDeletionRemovesProjectionAfterDatabaseCommit() throws Exception {
     Path directory = Files.createDirectories(staging.resolve(MPACK_NAME).resolve(MPACK_VERSION));
+    Files.copy(createRepositoryMpack(), directory.resolve("mpack.json"));
+    Path link = Files.createDirectories(stackRoot.resolve(MPACK_NAME)).resolve(MPACK_VERSION);
+    Files.createSymbolicLink(link, directory);
     Files.writeString(directory.resolve("retained.txt"), "retained definition");
     MpackEntity entity = new MpackEntity();
     entity.setId(61L);
@@ -180,6 +183,7 @@ public class MpackManagerTest {
     EasyMock.replay(mpackDAO, stackDAO);
     manager.removeMpack(entity, null);
     Assert.assertFalse(Files.exists(directory));
+    Assert.assertFalse(Files.exists(link, java.nio.file.LinkOption.NOFOLLOW_LINKS));
     Assert.assertTrue(Files.isDirectory(staging.resolve("staging/quarantine")));
     EasyMock.verify(mpackDAO, stackDAO);
   }

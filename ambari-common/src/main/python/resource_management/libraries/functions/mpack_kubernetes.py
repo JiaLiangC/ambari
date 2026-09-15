@@ -90,8 +90,16 @@ class KubernetesConnection:
     request = urllib.request.Request(self.server + path, data=data, method=method,
       headers={"Accept": "application/json", "Content-Type": "application/json"})
     try:
+      deadline = time.monotonic() + 10
+      raw = bytearray()
       with self.opener.open(request, timeout=10) as response:
-        raw = response.read(1024 * 1024 + 1)
+        while len(raw) <= 1024 * 1024:
+          if time.monotonic() >= deadline or self.cancel is not None and self.cancel.is_set():
+            raise HostError("OUTCOME_UNKNOWN", "Kubernetes response exceeded its deadline", "UNKNOWN")
+          chunk = response.read1(min(65536, 1024 * 1024 + 1 - len(raw)))
+          if not chunk:
+            break
+          raw.extend(chunk)
       if len(raw) > 1024 * 1024:
         raise ValueError()
       value = json.loads(raw)
@@ -317,7 +325,7 @@ class KubernetesDeployment(HostDeployment):
   def _contains(actual, expected):
     # API defaulted fields are allowed; declared fields and list members must agree.
     if isinstance(expected, dict):
-      return isinstance(actual, dict) and all(key in actual and KubernetesDeployment._contains(actual[key], value)
+      return isinstance(actual, dict) and all((key not in actual and value in ([], {}) or key in actual and KubernetesDeployment._contains(actual[key], value))
                                              for key, value in expected.items())
     if isinstance(expected, list):
       return isinstance(actual, list) and len(actual) == len(expected) and all(

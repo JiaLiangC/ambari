@@ -52,8 +52,8 @@ class ContractTest(unittest.TestCase):
       adapter.apply(snapshot, 3)
     client.apply.assert_called_once_with(snapshot, 3)
 
-  def test_external_profile_is_observation_only(self):
-    self.assertEqual(frozenset({"observe"}), profile_capabilities("external.database/v1"))
+  def test_external_profile_manages_registration_without_remote_mutation(self):
+    self.assertEqual(frozenset({"install", "configure", "uninstall", "observe"}), profile_capabilities("external.database/v1"))
 
 
 if __name__ == "__main__":

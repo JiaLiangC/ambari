@@ -55,6 +55,8 @@ copy under an `examples` directory. Copy one whole directory before editing.
 | [Redis](fixtures/redis/manifest.json) | OS package prerequisite, rendered config passed through `configurationRef`, foreground process and retained data | Source build and host export; target must provide the declared `redis` OS package and `redis-server`. Adjust package naming for the supported OS. The bundle does not vendor Redis or pin its upstream binary version. |
 | [Multi-service YAML](fixtures/multi-service/manifest.yaml) | Two server services and a file-only CLIENT, distinct config types/ports, one reused schema, `directoryRef` and HTTP health | Source build and host export; server targets need Python 3/systemd. The optional `host.files/v1` client publishes configuration and a CLI artifact without starting a process. Runtime acceptance is pending. |
 
+| [External PostgreSQL observer](fixtures/external-postgresql/manifest.json) | Package-owned native identity probe and external.database CLIENT registration | Source/export and local protocol fixtures; real use needs a non-root observer, psql, private libpq service credentials and provider privileges. No remote database creation/deletion is supported. |
+
 The [minimal](fixtures/minimal/manifest.json) and `fixtures/conformance` inputs are
 contract-test shapes, not complete deployment starters. No fixture proves a live
 Redis deployment. Actual runtime acceptance is recorded in
@@ -102,12 +104,13 @@ Redis deployment. Actual runtime acceptance is recorded in
 
 5. Declare actual health checks and supported behavior. TCP/HTTP probes require a
    scoped `portRef`; HTTP probes use a local path. Configuration changes use restart
-   or the generation-acknowledged reload contract below. Host export rejects client-only
-   components, unresolved shared dependencies, no-effect configuration, migration and
-   non-host profiles. Uninstall, scoped execution secrets and verified reload have source
-   implementations in this active batch; consolidated verification is pending. Purge
-   follows the separate destructive authorization and retained-target contract below.
-   Upgrade and detach still require their explicit lifecycle implementation.
+   or the generation-acknowledged reload contract below. Each profile rejects unsupported
+   capabilities. File clients, local OCI, stateless Kubernetes and external observers
+   have their own contracts below; unresolved shared dependencies and unsupported
+   changeEffect values fail export. Native uninstall, scoped secrets, acknowledged
+   reload, stopped artifact upgrade and same-target handoff have local coverage.
+   Purge and package migrate/restore require separate destructive authorization.
+   Package data handlers never imply automatic configuration migration or rollback.
 
 6. Validate, inspect generated content and then build. For authoring-only
    sources, explicitly choose `--target source`. A requirement lock describes needed
@@ -129,7 +132,7 @@ with executable schema [manifest-v2alpha1.json](schema/manifest-v2alpha1.json).
 # Machine-readable result suitable for CI; preserve the process exit code.
 "$MPACK_PY" "$MPACK_TOOLS/validate.py" --json source "$MPACK_WORK/my-service/manifest.json" > "$MPACK_WORK/validation.json"
 
-# All three included examples: HTTP, Redis and multi-service YAML.
+# All four included examples: HTTP, Redis, multi-service YAML and external PostgreSQL.
 "$MPACK_PY" "$MPACK_TOOLS/validate.py" --json examples > "$MPACK_WORK/examples.json"
 ```
 
@@ -142,7 +145,7 @@ digests without dumping the compiled manifest, credentials or signing material.
 
 Exit codes: `0` means the requested checks passed; `2` means invalid content, a failed
 check or invalid command arguments; `3` means missing Python validation dependencies.
-The example suite returns `0` only when all three source and host-export checks
+The example suite returns `0` only when all four source and runtime-export checks
 succeed. These checks do not install or execute the software.
 Diagnostics identify the failed stage and correction category without echoing input
 values or exception paths. Edit locally using the schema and the guidance below.
@@ -301,7 +304,7 @@ resource row. Ambari rejects historical/recreated targets and unfinished uninsta
 After a partial purge, explicitly resume purge; do not start or uninstall that target
 again. Purge deletes retained owned data irreversibly, keeps the receipt tombstone,
 and never deletes shared users or OS packages. No automatic backup/restore is promised.
-These source paths remain unverified until the consolidated acceptance run.
+Local regression checks passed; real native acceptance remains open as recorded in status.
 
 For local `.mpack` imports, the catalog's source URI points to its verified installed
 `mpack.json`, since the uploaded transport is temporary. Approved HTTP imports retain
@@ -310,7 +313,7 @@ identity in both cases; a local source URI does not establish publisher trust.
 
 These newly implemented import/lifecycle paths are undergoing the authorized P0-P8
 implementation batch. Their consolidated tests and native acceptance are pending; see
-[the active ledger](../docs/mpack-v2/implementation-plan.md#active-implementation-ledger-verification-deferred).
+[the active ledger](../docs/mpack-v2/implementation-plan.md#current-implementation-ledger).
 
 
 ## Scoped execution credentials
@@ -387,8 +390,8 @@ configuration are under the existing incarnation-scoped Agent deployment directo
 with `--config` pointing to the latter on a host where the demonstration server is
 listening. Ambari never runs the CLI as an installation hook. Observation checks
 published file hashes/modes; uninstall withdraws the config publication and retains
-files/data until purge. Source and regression coverage are added, with the consolidated
-verification phase still pending.
+files/data until purge. Local filesystem and fresh Java-to-Agent fixture checks passed;
+actual host installation remains a separate native acceptance requirement.
 
 
 ## Compatible artifact updates and ownership handoff
@@ -459,5 +462,83 @@ them. Uninstall removes only the bound container, and a separately authorized pu
 removes owned retained host data. Images, shared users/packages and foreign volumes
 are never removed. No arbitrary engine flags, daemon credentials, image pulls,
 live secrets, OCI upgrade or ownership handoff are supported by this slice.
-The source and its CLI-response fixtures are unverified until the consolidated run;
-no Docker/Podman deployment has been performed for this batch.
+CLI-response fixtures passed the consolidated local run; no real Docker/Podman deployment was performed. See the status ledger for executed evidence.
+
+
+## Package data procedures
+
+The HTTP example declares `dataOperations.backup/migrate/restore`, each naming the
+locked Python `data-handler` artifact. The example operates only on a bounded
+`records.json` document in its own data directory: version one to version two, with
+a verified current backup required before migration. It is a demonstration of a
+software-owned format, not a Redis backup implementation. Seed that document only in
+an explicitly disposable runtime environment; source validation does not create data.
+
+Stop the service, submit BACKUP with the current `expected_target_incarnation`, and
+read the verified operation key from resource evidence. Set the example's
+`http.restore_backup` to that key before MIGRATE or RESTORE. Review the package's
+compatibility requirements first. All procedures use existing custom request/task
+APIs; migration/restore require SERVICE.PURGE_DATA and an explicit UI confirmation.
+The package writes durable intent before its data change and verifies actual output
+bytes. A retry after UNKNOWN only verifies the original key. Restore is an explicit
+data operation, never an automatic software rollback. If verify cannot establish an
+outcome, inspect the package's data/intent with the software maintainer; no generic
+force-success or reapply operation is provided. History is bounded and never silently
+purges backups. Retained backups on the same host are not disaster-recovery storage.
+
+The `mpack.handler/v1` protocol uses a single JSON stdin request and stdout result.
+Requests include phase, operation, operationKey, targetIdentity, packageDigest,
+configurations, declared directories and preconditionDigest. Results echo protocol,
+phase, operationKey and targetIdentity, and return result plus evidenceDigest (SHA-256).
+`prepare` returns READY; `apply` performs the package procedure; `verify` independently
+checks durable results and returns SUCCEEDED or UNKNOWN. Only bound digest/status
+evidence is retained by the platform. No raw handler stdout/stderr is logged. The
+handler runs under the declared non-root unit account with Python isolated mode,
+fixed environment, deadlines and bounded output. This is trusted signed package code,
+not a sandbox. Its artifact and parent directories must be root controlled. Python
+3.9+ and dependencies must be provisioned before execution. Live secret delivery to
+data handlers is unsupported; do not place credentials in their configuration.
+
+## External database observer example
+
+`fixtures/external-postgresql` supplies a package-owned PostgreSQL probe. It is a
+CLIENT with `external.database/v1`: install/configure registers an observed target;
+uninstall unregisters it locally, including when the provider is unavailable.
+There is no remote database install, start, stop, alteration, migration or deletion.
+The Server records UNREGISTERED evidence so the service/catalog can be removed while
+retaining the small local receipt for audit. No purge capability is declared.
+
+Provision a non-root `mpack_observer` OS account, `/usr/bin/psql`, and its private
+libpq connection service/password files separately. Require verified TLS (for example
+sslmode=verify-full), a fixed endpoint, connect_timeout and a least-privilege database
+role. Set `database.connection_service` to that service name. Replace the example's
+synthetic `nativeIdentity` with the independently obtained
+`system_identifier/database_oid`; a mismatched identity fails closed. Grant only the
+required CONNECT/catalog access and EXECUTE on `pg_control_system()` where necessary;
+do not grant superuser just to enable observation. Protocol SQL and credential-store
+conventions are in the Mpack probe, not Ambari core. See the primary PostgreSQL
+[control-data reference](https://www.postgresql.org/docs/current/functions-info.html)
+and [connection service reference](https://www.postgresql.org/docs/current/libpq-pgservice.html).
+No real PostgreSQL deployment is claimed by the offline example checks.
+
+## Kubernetes connection setup and support
+
+`kubernetes.workload/v1` currently handles a stateless apps/v1 Deployment with scalar
+command/environment configuration and an HTTP/TCP readiness probe. Set connectionRef,
+namespace, immutable image digest, non-zero runAsUserId and 1..32 replicas. Local
+install creates zero replicas; start scales to the declared count; stop waits for all
+owned Pods to disappear. Configure requires stop first. Uninstall uses UID and
+resourceVersion preconditions with foreground deletion. Secrets, PVCs, Services,
+Ingress, raw YAML, exec credential plugins and rolling upgrades are unsupported.
+
+The operator provisions `/etc/ambari-agent/mpack/kubernetes/<cluster-id>/<connectionRef>/`
+with root-owned mode-0600 `connection.json`, `ca.pem`, `client.pem`, and
+`client-key.pem`. The JSON contains exactly `server` (HTTPS origin) and `namespace`.
+Keep credential files out of packages and source control. Native Kubernetes RBAC must
+permit discovery, reading the designated namespace and its Pods/ReplicaSets, and
+get/create/update/delete of Deployments in that namespace. Use a dedicated namespace
+and credential policy; the transport does not create namespace authorization itself.
+Endpoint/CA identity and namespace UID are pinned in the receipt; replacing them is
+not transparent credential rotation. Reconcile existing targets before changing
+trust anchors. Failed lookups never prove resource absence; terminating Pods keep
+uninstall UNKNOWN until observation confirms completion.

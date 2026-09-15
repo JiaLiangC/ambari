@@ -121,6 +121,7 @@ public class ClusterService extends BaseService {
   @GET
   @Path("{clusterName}/mpack_resources")
   @Produces(MediaType.APPLICATION_JSON)
+  @ApiOperation(value = "Lists retained and managed package resources in an authorized cluster")
   public Response getMpackResources(@PathParam("clusterName") String clusterName,
       @jakarta.ws.rs.QueryParam("after") @jakarta.ws.rs.DefaultValue("") String after) {
     try {

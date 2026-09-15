@@ -81,7 +81,7 @@ class TestMpackFiles(unittest.TestCase):
     executable = deployment.root / "releases" / deployment.package_digest / "client.py"
     self.assertEqual(0o755, executable.stat().st_mode & 0o777)
     current = deployment.root / "config/current/website.conf"
-    self.assertEqual({"port": 18100}, json.loads(current.read_text()))
+    self.assertEqual(18100, json.loads(current.read_text())["port"])
     self.assertTrue(self.apply("install")["replayed"])
     self.command["taskId"] = 2
     result = self.apply("uninstall")

@@ -154,7 +154,7 @@ def _service_xml(service, version):
     _xml(script, "script", "scripts/manifest_service.py")
     _xml(script, "scriptType", "PYTHON")
     _xml(script, "timeout", "600")
-    commands = sorted(set(component["profiles"][0]["capabilities"]) & {"uninstall", "reload", "upgrade", "purge", "detach", "adopt"})
+    commands = sorted(set(component["profiles"][0]["capabilities"]) & {"uninstall", "reload", "upgrade", "purge", "detach", "adopt", "backup", "migrate", "restore"})
     if commands:
       customs = _xml(child, "customCommands")
       for action in commands:
@@ -275,7 +275,7 @@ def export_legacy(manifest_path, output_directory, signing_key, signature_algori
     if secret_defaults:
       metadata["secretConfigurationDefaults"][service["name"]] = secret_defaults
     for component in service["components"]:
-      if len(component["profiles"]) != 1 or component["profiles"][0]["adapter"] not in ("host.systemd/v1", "host.files/v1", "oci.container/v1", "kubernetes.workload/v1"):
+      if len(component["profiles"]) != 1 or component["profiles"][0]["adapter"] not in ("host.systemd/v1", "host.files/v1", "oci.container/v1", "kubernetes.workload/v1", "external.database/v1"):
         raise CompileError("Host export requires one explicit host profile per component",
                            code="CAPABILITY_UNSUPPORTED")
       profile = component["profiles"][0]
@@ -283,7 +283,8 @@ def export_legacy(manifest_path, output_directory, signing_key, signature_algori
       client = profile["adapter"] == "host.files/v1"
       oci = profile["adapter"] == "oci.container/v1"
       kubernetes = profile["adapter"] == "kubernetes.workload/v1"
-      if client != (component.get("category") == "CLIENT"):
+      external = profile["adapter"] == "external.database/v1"
+      if (client or external) != (component.get("category") == "CLIENT"):
         raise CompileError("CLIENT components require host.files/v1; host.systemd/v1 requires a server component",
                            code="CAPABILITY_UNSUPPORTED")
       if client:
@@ -325,7 +326,7 @@ def export_legacy(manifest_path, output_directory, signing_key, signature_algori
             raise CompileError("OCI arguments accept literals or mounted file/directory references", code="CAPABILITY_UNSUPPORTED")
         if any(not isinstance(value, str) for value in command.get("environment", {}).values()):
           raise CompileError("OCI environment changes require another image/package declaration", code="CAPABILITY_UNSUPPORTED")
-      elif not kubernetes and set(resources) & {"engine", "runAsUser", "mounts", "limits", "connectionRef", "runAsUserId"}:
+      elif not kubernetes and not external and set(resources) & {"engine", "runAsUser", "mounts", "limits", "connectionRef", "runAsUserId"}:
         raise CompileError("Container resource fields require oci.container/v1", code="CAPABILITY_UNSUPPORTED")
       if kubernetes:
         if (set(resources) - {"connectionRef", "namespace", "image", "replicas", "runAsUserId", "command", "limits"}
@@ -346,6 +347,19 @@ def export_legacy(manifest_path, output_directory, signing_key, signature_algori
         for expression in command.get("arguments", []) + list(command.get("environment", {}).values()):
           if not isinstance(expression, str) and (not isinstance(expression, dict) or set(expression) != {"configRef"}):
             raise CompileError("Kubernetes command accepts literals or scalar config references", code="CAPABILITY_UNSUPPORTED")
+      if external:
+        if (set(resources) - {"probe", "runAsUser", "nativeIdentity"} or not resources.get("runAsUser")
+            or resources.get("runAsUser") == "root" or not resources.get("nativeIdentity") or not resources.get("probe") or "health" in profile
+            or _has_secret_reference(service) or any(config.get("template") for config in service.get("configurations", []))):
+          raise CompileError("External database supports a package probe and local registration only", code="CAPABILITY_UNSUPPORTED")
+      handlers = profile.get("dataOperations", {})
+      requested_data = set(profile["capabilities"]) & {"backup", "migrate", "restore"}
+      if set(handlers) != requested_data or handlers and (profile["adapter"] != "host.systemd/v1" or _has_secret_reference(service) or resources.get("unit", {}).get("user") == "root"):
+        raise CompileError("Data capabilities require matching host handlers without live secrets", code="CAPABILITY_UNSUPPORTED")
+      for handler in list(handlers.values()) + ([resources["probe"]] if external else []):
+        artifact = next((item for item in compiled["artifacts"] if item["id"] == handler["artifactRef"]), None)
+        if artifact is None or not artifact["path"].endswith(".py"):
+          raise CompileError("Package handlers require a declared Python artifact", code="CAPABILITY_UNSUPPORTED")
       if "upgrade" in profile["capabilities"]:
         policy = profile.get("upgradePolicy", {})
         if (policy.get("configuration") != "compatible" or policy.get("data") != "unchanged"
@@ -370,7 +384,7 @@ def export_legacy(manifest_path, output_directory, signing_key, signature_algori
                            code="CAPABILITY_UNSUPPORTED")
       if any(_has_secret_reference(argument) for argument in resources.get("command", {}).get("arguments", [])):
         raise CompileError("Secret values cannot appear in process arguments", code="CAPABILITY_UNSUPPORTED")
-      if not client and not oci and not kubernetes and (not resources.get("command", {}).get("program") or not resources.get("unit", {}).get("user")):
+      if not client and not oci and not kubernetes and not external and (not resources.get("command", {}).get("program") or not resources.get("unit", {}).get("user")):
         raise CompileError("Host export requires a program and unit user")
       for directory in resources.get("directories", []):
         if directory["path"].startswith("/") or "/" in directory["path"] or directory["path"] in (".", ".."):
@@ -381,8 +395,10 @@ def export_legacy(manifest_path, output_directory, signing_key, signature_algori
         raise CompileError("Working directory must reference a declared directory")
       for config in service.get("configurations", []):
         schema = json.loads(payload[config["schema"]])
-        if kubernetes and any(field.get("x-resource") or field.get("x-sensitive") for field in schema.get("properties", {}).values()):
+        if (kubernetes or external) and any(field.get("x-resource") or field.get("x-sensitive") for field in schema.get("properties", {}).values()):
           raise CompileError("Kubernetes scalar environment does not accept host paths or live secrets", code="CAPABILITY_UNSUPPORTED")
+        if handlers and any(field.get("x-sensitive") for field in schema.get("properties", {}).values()):
+          raise CompileError("Data handlers do not accept live secrets", code="CAPABILITY_UNSUPPORTED")
         if any(field.get("x-resource") and field["x-resource"] not in directories
                for field in schema.get("properties", {}).values()):
           raise CompileError("Configuration references an undeclared managed directory")

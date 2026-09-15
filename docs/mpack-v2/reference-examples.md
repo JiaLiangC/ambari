@@ -45,7 +45,7 @@ publication and data retention. Local fixtures do not meet this native evidence 
 Server-Agent connection loss/restart acceptance must inspect persisted actual tasks,
 metadata/config generations and late responses, not only reconstruct a local class.
 
-## Future runtime and data lifecycle acceptance
+## Native runtime and data lifecycle acceptance
 
 OCI must bind an actual engine/container identity and prove immutable image, state,
 volume retention and recovery semantics. Kubernetes must bind authorized API server,
@@ -58,7 +58,7 @@ Adoption must verify identity/ownership before taking control. Detach must not d
 provider-owned resources. Uninstall retains persistent data; purge needs independent
 capability, authorization and audit. Software rollback cannot promise data rollback.
 Migration acceptance includes partial success, irreversible boundaries, backup/restore
-and manual recovery evidence. These are roadmap requirements, not current host features.
+and manual recovery evidence. Bounded implementations and local fixtures now exist; those fixtures do not complete this real-runtime acceptance. The supported contract excludes foreign adoption, orphan purge and automatic data rollback.
 
 ## Human and AI authoring
 

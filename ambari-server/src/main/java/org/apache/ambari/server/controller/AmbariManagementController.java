@@ -1039,7 +1039,7 @@ public interface AmbariManagementController {
    */
   Set<MpackResponse> getMpacks();
 
-  List<Map<String, Object>> getMpackResources(String clusterName, String after) throws AmbariException;
+  List<Map<String, Object>> getMpackResources(String clusterName, String after) throws AmbariException, org.apache.ambari.server.security.authorization.AuthorizationException;
 
   /***
    * Fetch an mpack based on id

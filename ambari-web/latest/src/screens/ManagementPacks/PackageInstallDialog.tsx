@@ -86,7 +86,7 @@ export default function PackageInstallDialog({ pack, cluster, close, submitted }
       </Form.Group>
       {service?.components.map((component) => <fieldset key={component.name} className="mb-3">
         <legend className="h6">{component.name} — {component.cardinality} host(s)</legend>
-        {hosts.map((host) => <Form.Check key={host} type="checkbox" label={host} disabled={busy}
+        {hosts.map((host) => <Form.Check key={host} id={`${formId}-${component.name}-${host}`} type="checkbox" label={host} disabled={busy}
           checked={(assignments[component.name] || []).includes(host)} onChange={(event) => {
             const checked = event.target.checked;
             setAssignments((current) => ({ ...current, [component.name]: checked

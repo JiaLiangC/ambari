@@ -995,13 +995,15 @@ public class RequestResourceProviderTest {
 
   @Test
   public void testPurgeRequiresSeparateDestructiveAuthorization() throws Exception {
+    for (String command : new String[]{"PURGE", "MIGRATE", "RESTORE"}) {
     for (Authentication authentication : Arrays.asList(
         TestAuthenticationFactory.createClusterAdministrator(),
         TestAuthenticationFactory.createServiceAdministrator(),
         TestAuthenticationFactory.createServiceOperator())) {
-      Assert.assertThrows(AuthorizationException.class, () -> testCreateResourcesForCommands(authentication, "PURGE"));
+      Assert.assertThrows(AuthorizationException.class, () -> testCreateResourcesForCommands(authentication, command));
     }
-    testCreateResourcesForCommands(TestAuthenticationFactory.createAdministrator(), "PURGE");
+    testCreateResourcesForCommands(TestAuthenticationFactory.createAdministrator(), command);
+    }
   }
 
   @Test

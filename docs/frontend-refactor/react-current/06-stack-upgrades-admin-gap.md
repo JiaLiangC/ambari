@@ -349,9 +349,9 @@ documented in Module 04 and its service_config_category template. It uses no pac
 JavaScript and introduces no schema authority in UI. Server/Agent validation remains
 mandatory; schema string-length constraints are shown as help and enforced there.
 Typed controls and rejection of literal/foreign-service credentials have new focused
-source tests; those tests have not run in this batch.
+tests; the 2026-09-15 Mpack status ledger records their execution and remaining live acceptance.
 
-### Declarative package release selection (source only)
+### Declarative package release selection (local validation)
 
 Classic `stack_and_upgrade_controller.js#installRepoVersion` submits
 `ClusterStackVersions` through `admin.stack_version.install.repo_version`; its upgrade
@@ -361,4 +361,11 @@ UPGRADE custom requests: stopped compatible vendored artifacts only, with incarn
 and digest expectations. It is not Classic rolling upgrade parity or a data rollback.
 The UI never treats a failed selection response as permission to submit native work,
 and current resource pages cannot prove completion on hosts outside that page.
-Focused helper cases are added; compilation and test execution remain deferred.
+Focused helper cases and the React production build passed on 2026-09-15; native/browser acceptance remains separate. Upgrade actions require declared UPGRADE capability and use selectedPackageId for release selection, independently of the latest task intent.
+
+The resumed Mpack extension adds capability-driven package BACKUP/MIGRATE/RESTORE
+requests through existing service tasks. Destructive data operations require existing
+SERVICE.PURGE_DATA and typed service-name confirmation. Pending data operations offer
+verification of the original intent, not automatic apply. This is distinct from the
+Classic Stack upgrade workflow and has no rolling-upgrade parity claim. Tests and
+build results are recorded with the consolidated Mpack validation.

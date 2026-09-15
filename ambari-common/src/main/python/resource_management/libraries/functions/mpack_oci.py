@@ -148,12 +148,20 @@ class OciDeployment(HostDeployment):
     health = state.get("Health", state.get("Healthcheck", {})) or {}
     return {"kind": self.runtime_profile, "identity": self.identity, "target": self.container_name,
       "engineIdentity": identity, "nativeId": native["Id"] if native else receipt.get("containerId"),
+      "publicationVerified": self._publication_ready(receipt) if native else False,
       "exists": native is not None, "state": "active" if running else "inactive", "pid": str(pid),
       "invocationId": state.get("StartedAt", "") if running else "",
       "job": "pending" if state.get("Restarting") or state.get("Paused") else "",
       "healthy": health.get("Status", "") in ("", "healthy"), "observedAt": time.time(),
       "publishedConfigGeneration": receipt.get("publishedConfigGeneration"),
       "runningConfigGeneration": receipt.get("runningConfigGeneration")}
+
+  def _publication_ready(self, receipt):
+    try:
+      return bool(receipt.get("publicationDigest") and receipt.get("publishedConfigGeneration")
+        and self._installed_file_digest(receipt["publishedConfigGeneration"]) == receipt["publicationDigest"])
+    except (HostError, OSError):
+      return False
 
   def _observation_stamp(self, observation):
     return {field: observation.get(field) for field in
@@ -241,6 +249,7 @@ class OciDeployment(HostDeployment):
     if native is None and receipt.get("containerId") and not receipt.get("containerRemoved"):
       raise HostError("TARGET_CONFLICT", "Confirmed container disappeared; explicitly uninstall before reinstalling")
     self._stage(configs, generation)
+    receipt["publicationDigest"] = self._installed_file_digest(generation)
     if native is None:
       receipt.update(engineIdentity=engine, imageId=image, creationIntent=intent, containerRecipe=recipe,
                      containerId=None, containerRemoved=False)
@@ -287,7 +296,7 @@ class OciDeployment(HostDeployment):
           return observation
       if action == "stop" and observation["state"] == "inactive" and observation["pid"] == "0" and not observation["job"]:
         return observation
-      if action in ("install", "configure") and observation["exists"]:
+      if action in ("install", "configure") and observation["exists"] and observation["publicationVerified"]:
         return observation
       if (action in ("start", "restart") and observation["state"] == "active" and int(observation["pid"]) > 0
           and not observation["job"] and self._healthy(configs)):

@@ -97,6 +97,10 @@ class PublisherTest(unittest.TestCase):
       export_legacy(str(self.source / "manifest.json"), str(self.root / "rejected"), self.private, "Ed25519")
 
   def test_secret_reference_export_keeps_credentials_out_of_artifacts(self):
+    profile = self.manifest["spec"]["services"][0]["components"][0]["profiles"][0]
+    profile.pop("dataOperations", None)
+    profile["capabilities"] = [name for name in profile["capabilities"] if name not in ("backup", "migrate", "restore")]
+
     import tarfile
     reference = "secret://mpack.HTTP_ECHO.password"
     schema_path = self.source / "config.schema.json"
@@ -105,6 +109,7 @@ class PublisherTest(unittest.TestCase):
       "properties": {"secretRef": {"type": "string"}}, "required": ["secretRef"],
       "additionalProperties": False, "default": {"secretRef": reference}}
     schema_path.write_text(json.dumps(schema))
+    (self.source / "manifest.json").write_text(json.dumps(self.manifest))
     export_legacy(str(self.source / "manifest.json"), str(self.root / "output"), self.private, "Ed25519")
     metadata = json.loads((self.root / "output/mpack.json").read_text())
     self.assertEqual({"http.password": reference}, metadata["secretConfigurationDefaults"]["HTTP_ECHO"])

@@ -344,6 +344,45 @@ public class MpackDAOTest {
         () -> resources.requireStoppedRelease(9L, "HTTP_ECHO", first.get("targetIncarnation").getAsString()));
   }
 
+  @Test
+  public void testRuntimeSpecificAbsenceCannotBeReplacedByCommandSuccess() {
+    MpackEntity pack = release("runtime-evidence", "c".repeat(64));
+    MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
+    long task = 300;
+    for (String runtime : new String[]{"host.files/v1", "oci.container/v1", "kubernetes.workload/v1", "external.database/v1"}) {
+      com.google.gson.JsonObject binding = releaseBinding(pack, "host-" + task, "UNINSTALL");
+      resources.recordIntent(binding.toString(), task);
+      com.google.gson.JsonObject report = com.google.gson.JsonParser.parseString(stoppedReport(binding, task, pack.getContentDigest())).getAsJsonObject();
+      com.google.gson.JsonObject outcome = report.getAsJsonObject("mpackOperation");
+      com.google.gson.JsonObject observation = outcome.getAsJsonObject("observation");
+      observation.remove("pid");
+      observation.remove("loadState");
+      observation.addProperty("kind", runtime);
+      observation.addProperty("state", "absent");
+      observation.addProperty("publicationAbsent", false);
+      observation.addProperty("exists", true);
+      observation.addProperty("remainingPods", 1);
+      observation.addProperty("registrationAbsent", false);
+      observation.addProperty("ownership", "observed");
+      outcome.add("retainedResources", com.google.gson.JsonParser.parseString("[{\"path\":\"/fixture/owned\",\"device\":1,\"inode\":2}]"));
+      resources.recordReport(task, report.toString());
+      final String host = "host-" + task;
+      org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.requireHostRemovable(9L, "HTTP_ECHO",
+          binding.get("targetIncarnation").getAsString(), host, "HTTP_ECHO_SERVER", false));
+      observation.addProperty("publicationAbsent", true);
+      observation.addProperty("exists", false);
+      observation.addProperty("remainingPods", 0);
+      observation.addProperty("registrationAbsent", true);
+      if (runtime.equals("oci.container/v1")) {
+        observation.addProperty("state", "inactive");
+        observation.addProperty("pid", "0");
+      }
+      resources.recordReport(task, report.toString());
+      resources.requireHostRemovable(9L, "HTTP_ECHO", binding.get("targetIncarnation").getAsString(), host, "HTTP_ECHO_SERVER", false);
+      task++;
+    }
+  }
+
   private MpackEntity release(String version, String digest) {
     MpackEntity pack = new MpackEntity();
     pack.setMpackName("UPGRADE_PACKAGE");
@@ -387,7 +426,7 @@ public class MpackDAOTest {
   }
 
   @Test
-  public void testDefaultRepositorySelectionAndDurableUninstallEvidence() {
+  public void testDefaultRepositorySelectionAndDurableUninstallEvidence() throws Exception {
     MpackEntity pack = new MpackEntity();
     pack.setMpackName("RESOURCE_PACKAGE");
     pack.setMpackVersion("1");

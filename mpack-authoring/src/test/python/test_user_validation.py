@@ -62,11 +62,11 @@ class UserValidationTest(unittest.TestCase):
     self.assertNotIn("compiled", report)
     self.assertNotIn("signature", report)
 
-  def test_example_suite_checks_all_three_deployable_source_exports(self):
+  def test_example_suite_checks_all_deployable_source_exports(self):
     report = self.run_check("examples")
     self.assertTrue(report["valid"])
     cases = {item["example"]: item for item in report["examples"]}
-    self.assertEqual({"http", "redis", "multi-service"}, set(cases))
+    self.assertEqual({"http", "redis", "multi-service", "external-postgresql"}, set(cases))
     for case in cases.values():
       self.assertTrue(case["expectationMet"])
       self.assertTrue(case["result"]["valid"])

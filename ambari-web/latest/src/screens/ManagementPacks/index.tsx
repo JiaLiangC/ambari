@@ -154,7 +154,7 @@ export default function ManagementPacks() {
   const resourceGeneration = useRef(0);
   const [resourceAfter, setResourceAfter] = useState("");
   const [resourceDetails, setResourceDetails] = useState<ManagedResource>();
-  const [serviceAction, setServiceAction] = useState<{cluster: string; service: string; incarnation: string; action: "start" | "stop" | "uninstall" | "purge" | "upgrade" | "detach" | "adopt" | "remove"}>();
+  const [serviceAction, setServiceAction] = useState<{cluster: string; service: string; incarnation: string; action: "start" | "stop" | "uninstall" | "purge" | "upgrade" | "detach" | "adopt" | "backup" | "migrate" | "restore" | "remove"}>();
   const [upgradePackageId, setUpgradePackageId] = useState<number>();
   const [purgeConfirmation, setPurgeConfirmation] = useState("");
   const [showInstallConfirmation, setShowInstallConfirmation] = useState(false);
@@ -237,11 +237,15 @@ export default function ManagementPacks() {
   async function executeServiceAction() {
     if (!serviceAction || !clusterName || resourceCluster !== clusterName || serviceAction.cluster !== clusterName || !activeServices.has(serviceAction.service) || mutationBlocked) return;
     if (!managed.some((resource) => resource.currentServiceTarget && resource.serviceName === serviceAction.service && resource.targetIncarnation === serviceAction.incarnation)) return;
-    if (serviceAction.action === "purge" && (!canPurge || purgeConfirmation !== serviceAction.service)) return;
+    if (["purge", "migrate", "restore"].includes(serviceAction.action) && (!canPurge || purgeConfirmation !== serviceAction.service)) return;
     setBusy("service"); setOperationError("");
     try {
       if (serviceAction.action === "uninstall") await PackageLifecycle.uninstall(clusterName, serviceAction.service);
       else if (serviceAction.action === "purge") await PackageLifecycle.purge(clusterName, serviceAction.service, serviceAction.incarnation);
+      else if (serviceAction.action === "backup" || serviceAction.action === "migrate" || serviceAction.action === "restore") {
+        await PackageLifecycle.retainedAction(clusterName, serviceAction.service,
+          serviceAction.action.toUpperCase() as "BACKUP" | "MIGRATE" | "RESTORE", serviceAction.incarnation);
+      }
       else if (serviceAction.action === "detach" || serviceAction.action === "adopt") {
         if (!canInstall) return;
         await PackageLifecycle.handoff(clusterName, serviceAction.service, serviceAction.action === "detach" ? "DETACH" : "ADOPT", serviceAction.incarnation);
@@ -253,7 +257,7 @@ export default function ManagementPacks() {
         // A current selection can be a partially applied update on another page.
         // Only changing selection back to a materialized release skips native work;
         // Server checks every target before accepting that selection change.
-        const restoreSelection = targets.length > 0 && targets.some((resource) => resource.packageId !== selected.id)
+        const restoreSelection = targets.length > 0 && targets.some((resource) => resource.selectedPackageId !== selected.id)
           && targets.every((resource) => resource.materializedPackageId === selected.id);
         await PackageLifecycle.changeRelease(clusterName, serviceAction.service, selected.repositoryVersionId,
           selected.digest, serviceAction.incarnation, restoreSelection);
@@ -841,6 +845,11 @@ export default function ManagementPacks() {
                   setUpgradePackageId(undefined);
                   setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "upgrade"});
                 }}>Change release</Button>}
+              {resourceCluster === clusterName && activeServices.has(resource.serviceName) && (["backup", "migrate", "restore"] as const)
+                .filter((action) => managedActions(resource).has(action) && (action === "backup" ? hasAuthorization("SERVICE.RUN_CUSTOM_COMMAND") : canPurge))
+                .map((action) => <Button key={action} variant="outline-warning" disabled={mutationBlocked || Boolean(busy)} onClick={() => {
+                  setPurgeConfirmation(""); setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action});
+                }}>{resource.state === "PENDING" ? "Verify " : ""}{action}</Button>)}
               {canInstall && resourceCluster === clusterName && activeServices.has(resource.serviceName) && (["detach", "adopt"] as const).filter((action) => managedActions(resource).has(action)).map((action) =>
                 <Button key={action} variant="outline-warning" disabled={mutationBlocked || Boolean(busy)} onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action})}>
                   {resource.state === "PENDING" ? "Resume " : ""}{action === "detach" ? "Detach resources" : "Adopt resources"}
@@ -860,8 +869,8 @@ export default function ManagementPacks() {
         }} />}
       <Modal show={serviceAction !== undefined} onHide={() => !busy && setServiceAction(undefined)}>
         <Modal.Header closeButton={!busy}><Modal.Title>{serviceAction?.action} {serviceAction?.service}</Modal.Title></Modal.Header>
-        <Modal.Body>{serviceAction?.action === "purge" ? <>
-          <p>Permanently delete retained data for all assigned components of {serviceAction.service}. This has no automatic data rollback. Purge must finish before removing the service record.</p>
+        <Modal.Body>{serviceAction && ["purge", "migrate", "restore"].includes(serviceAction.action) ? <>
+          <p>{serviceAction.action === "purge" ? "Permanently delete retained data." : "Execute the package-declared data procedure on stopped targets. Review its compatibility and backup requirements first."} This has no automatic data rollback. An unknown result must be reconciled before other operations.</p>
           <Form.Label>Type the service name to confirm</Form.Label>
           <Form.Control value={purgeConfirmation} onChange={(event) => setPurgeConfirmation(event.target.value)} disabled={Boolean(busy)} />
         </> : serviceAction?.action === "detach" || serviceAction?.action === "adopt" ? <>
@@ -874,15 +883,15 @@ export default function ManagementPacks() {
             <option value="">Select a release</option>
             {installed.filter((pack) => {
               const resource = managed.find((item) => item.currentServiceTarget && item.serviceName === serviceAction.service);
-              const current = installed.find((item) => item.id === resource?.packageId);
+              const current = installed.find((item) => item.id === resource?.selectedPackageId);
               return resource && pack.digest && pack.repositoryVersionId && current?.name === pack.name
-                && (pack.id !== resource.packageId || resource.operation === "UPGRADE" || resource.packageId !== resource.materializedPackageId);
+                && (pack.id !== resource.selectedPackageId || resource.operation === "UPGRADE" || resource.selectedPackageId !== resource.materializedPackageId);
             }).map((pack) => <option key={pack.id} value={pack.id}>{pack.displayName} {pack.version}</option>)}
           </Form.Select>
           <p className="mt-2">Selecting the last verified installed release can restore package selection after a failed attempt. This does not restore data. Inspect existing requests before retrying an interrupted update.</p>
         </> : <>This action applies to all assigned components of the service. Stop the service before uninstalling. Uninstall removes owned runtime definitions while retaining data. Removing a service record requires verified uninstall evidence for every target.</>}</Modal.Body>
         <Modal.Footer><Button variant="secondary" disabled={Boolean(busy)} onClick={() => setServiceAction(undefined)}>Cancel</Button>
-          <Button variant={serviceAction?.action === "purge" ? "danger" : "primary"} disabled={Boolean(busy) || (serviceAction?.action === "purge" && purgeConfirmation !== serviceAction.service) || (serviceAction?.action === "upgrade" && !upgradePackageId)} onClick={() => void executeServiceAction()}>Submit</Button></Modal.Footer>
+          <Button variant={serviceAction?.action === "purge" ? "danger" : "primary"} disabled={Boolean(busy) || (serviceAction && ["purge", "migrate", "restore"].includes(serviceAction.action) && purgeConfirmation !== serviceAction.service) || (serviceAction?.action === "upgrade" && !upgradePackageId)} onClick={() => void executeServiceAction()}>Submit</Button></Modal.Footer>
       </Modal>
       <Modal show={resourceDetails !== undefined} onHide={() => setResourceDetails(undefined)} size="lg">
         <Modal.Header closeButton><Modal.Title>Resource ownership and retention evidence</Modal.Title></Modal.Header>

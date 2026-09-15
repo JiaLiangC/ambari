@@ -79,6 +79,9 @@ class TestMpackHost(unittest.TestCase):
       "package": {"digest": compiled["packageDigest"]},
       "service": copy.deepcopy(compiled["manifest"]["spec"]["services"][0]),
       "artifacts": compiled["artifacts"], "files": payload_lock(compiled, str(self.payload))}
+    # Data handler execution is covered separately, without changing base lifecycle fixtures.
+    self.descriptor["service"]["components"][0]["profiles"][0].pop("dataOperations", None)
+    self.descriptor["service"]["components"][0]["profiles"][0]["capabilities"] = [value for value in self.descriptor["service"]["components"][0]["profiles"][0]["capabilities"] if value not in ("backup", "migrate", "restore")]
     # Native health is an explicit process-state fixture here, not a live HTTP claim.
     self.descriptor["service"]["components"][0]["profiles"][0]["health"] = {"kind": "process"}
     self.command = {"clusterId": 1, "serviceName": "HTTP_ECHO", "role": "HTTP_ECHO_SERVER",
@@ -117,6 +120,13 @@ class TestMpackHost(unittest.TestCase):
     self.command["roleCommand"] = action.upper()
     deployment = self.deployment()
     return deployment.apply(deployment.plan(action))
+
+  def test_stop_does_not_confirm_inactive_unit_with_surviving_process(self):
+    deployment = self.deployment()
+    with patch.object(deployment, "observe", return_value={"state": "inactive", "pid": "42"}), \
+        patch("resource_management.libraries.functions.mpack_host.time.monotonic", side_effect=[0, 31]):
+      with self.assertRaisesRegex(HostError, "Postcondition"):
+        deployment.verify("stop", {})
 
   def test_detach_and_adopt_preserve_resources_and_require_the_same_verified_stopped_target(self):
     profile = self.descriptor["service"]["components"][0]["profiles"][0]
@@ -567,7 +577,7 @@ class TestMpackHost(unittest.TestCase):
     self.assertEqual(second["publishedConfigGeneration"], second["runningConfigGeneration"])
     self.assertEqual(1, self.native.mutations.count("restart"))
     self.assertIn("--config", self.deployment().unit_path.read_text())
-    self.assertIn("19000", self.deployment().unit_path.read_text())
+    self.assertIn("19000", (self.deployment().root / "config/current/http.conf").read_text())
 
   def test_lost_response_recovers_by_invocation_without_second_mutation(self):
     self.native.lose_response = True

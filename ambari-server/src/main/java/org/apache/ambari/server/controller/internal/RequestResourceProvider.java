@@ -242,9 +242,9 @@ public class RequestResourceProvider extends AbstractControllerResourceProvider 
             if (!AuthorizationHelper.isAuthorized(resourceType, resourceId, RoleAuthorization.CLUSTER_UPGRADE_DOWNGRADE_STACK)) {
               throw new AuthorizationException("The authenticated user is not authorized to upgrade software.");
             }
-          } else if (commandName.equals("PURGE")) {
+          } else if (java.util.Set.of("PURGE", "MIGRATE", "RESTORE").contains(commandName)) {
             if (!AuthorizationHelper.isAuthorized(resourceType, resourceId, RoleAuthorization.SERVICE_PURGE_DATA)) {
-              throw new AuthorizationException("The authenticated user is not authorized to purge service data.");
+              throw new AuthorizationException("The authenticated user is not authorized to perform destructive service data operations.");
             }
           } else if (commandName.equals("RELOAD")) {
             if (!AuthorizationHelper.isAuthorized(resourceType, resourceId, RoleAuthorization.SERVICE_START_STOP)) {

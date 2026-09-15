@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "connection_service": {
+      "type": "string",
+      "default": "mpack_observer",
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "connection_service"
+  ]
+}

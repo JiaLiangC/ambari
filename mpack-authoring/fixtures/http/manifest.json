@@ -14,6 +14,13 @@
           "kind": "file",
           "path": "server.py"
         }
+      },
+      {
+        "id": "data-handler",
+        "source": {
+          "kind": "file",
+          "path": "data-handler.py"
+        }
       }
     ],
     "services": [
@@ -45,7 +52,10 @@
                   "restart",
                   "uninstall",
                   "reload",
-                  "purge"
+                  "purge",
+                  "backup",
+                  "migrate",
+                  "restore"
                 ],
                 "resources": {
                   "packages": [
@@ -95,6 +105,20 @@
                   "portRef": "http.port",
                   "path": "/health",
                   "timeoutSeconds": 5
+                },
+                "dataOperations": {
+                  "backup": {
+                    "artifactRef": "data-handler",
+                    "timeoutSeconds": 30
+                  },
+                  "migrate": {
+                    "artifactRef": "data-handler",
+                    "timeoutSeconds": 30
+                  },
+                  "restore": {
+                    "artifactRef": "data-handler",
+                    "timeoutSeconds": 30
+                  }
                 }
               }
             ]

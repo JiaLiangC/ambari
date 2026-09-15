@@ -162,7 +162,7 @@ public class MpackDAO {
     if (entity == null) {
       return;
     }
-    Long retained = entityManager.createQuery("SELECT COUNT(r) FROM MpackTargetResourceEntity r WHERE (r.mpackId = :id OR r.materializedMpackId = :id) AND r.resourceState NOT IN ('PURGED', 'DETACHED')",
+    Long retained = entityManager.createQuery("SELECT COUNT(r) FROM MpackTargetResourceEntity r WHERE (r.mpackId = :id OR r.materializedMpackId = :id) AND r.resourceState NOT IN ('PURGED', 'DETACHED', 'UNREGISTERED')",
         Long.class).setParameter("id", id).getSingleResult();
     if (retained != 0) {
       throw new IllegalStateException("Managed or retained resources reference this mpack");
@@ -171,7 +171,7 @@ public class MpackDAO {
     // The package lock prevents any new intent from acquiring a reference during deletion.
     while (true) {
       List<MpackTargetResourceEntity> purged = entityManager.createQuery(
-          "SELECT r FROM MpackTargetResourceEntity r WHERE (r.mpackId = :id OR r.materializedMpackId = :id) AND r.resourceState IN ('PURGED', 'DETACHED') ORDER BY r.targetKey",
+          "SELECT r FROM MpackTargetResourceEntity r WHERE (r.mpackId = :id OR r.materializedMpackId = :id) AND r.resourceState IN ('PURGED', 'DETACHED', 'UNREGISTERED') ORDER BY r.targetKey",
           MpackTargetResourceEntity.class).setParameter("id", id).setMaxResults(256).getResultList();
       if (purged.isEmpty()) {
         break;

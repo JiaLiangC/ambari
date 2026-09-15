@@ -448,7 +448,7 @@ public class ServiceImpl implements Service {
       StackId selected = repositoryVersionEntity.getStackId();
       validateMpackSelection(ambariMetaInfo.getService(selected.getStackName(), selected.getStackVersion(), serviceName),
           repositoryVersionEntity);
-    } catch (AmbariException | java.io.IOException error) {
+    } catch (java.io.IOException error) {
       throw new IllegalArgumentException("Repository selection conflicts with service definitions", error);
     }
     ServiceDesiredStateEntity serviceDesiredStateEntity = getServiceDesiredStateEntity();

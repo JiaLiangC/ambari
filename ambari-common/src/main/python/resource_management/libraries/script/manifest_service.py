@@ -32,6 +32,7 @@ from resource_management.core.resources.system import Directory
 from resource_management.core.resources.packaging import Package
 from resource_management.libraries.functions.mpack_host import HostDeployment, HostError
 from resource_management.libraries.functions.mpack_files import FilesDeployment
+from resource_management.libraries.functions.mpack_external import ExternalDatabaseDeployment
 from resource_management.libraries.functions.mpack_oci import OciDeployment
 from resource_management.libraries.functions.mpack_kubernetes import KubernetesDeployment
 from resource_management.libraries.script.script import Script
@@ -81,7 +82,7 @@ class ManifestService(Script):
       local = [item for item in descriptor["service"]["components"] if item["name"] in execution.get("localComponents", [])]
       component = local[0] if len(local) == 1 else None
     adapters = {"host.systemd/v1": HostDeployment, "host.files/v1": FilesDeployment,
-                "oci.container/v1": OciDeployment, "kubernetes.workload/v1": KubernetesDeployment}
+                "external.database/v1": ExternalDatabaseDeployment, "oci.container/v1": OciDeployment, "kubernetes.workload/v1": KubernetesDeployment}
     adapter = adapters.get(component["profiles"][0]["adapter"]) if component else None
     if adapter is None:
       raise HostError("CAPABILITY_UNSUPPORTED", "Component has no supported execution profile")
@@ -89,7 +90,7 @@ class ManifestService(Script):
 
   @staticmethod
   def _ready(deployment, observation):
-    if observation.get("kind") in ("host.files/v1", "kubernetes.workload/v1"):
+    if observation.get("kind") in ("host.files/v1", "kubernetes.workload/v1", "external.database/v1"):
       return observation.get("ready", False)
     return observation["state"] == "active" and int(observation["pid"]) > 0 and deployment._healthy()
 
@@ -136,6 +137,15 @@ class ManifestService(Script):
 
   def adopt(self, env):
     self._run("adopt")
+
+  def backup(self, env):
+    self._run("backup")
+
+  def migrate(self, env):
+    self._run("migrate")
+
+  def restore(self, env):
+    self._run("restore")
 
   def upgrade(self, env):
     self._run("upgrade")

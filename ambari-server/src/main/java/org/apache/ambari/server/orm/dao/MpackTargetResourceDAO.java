@@ -39,7 +39,7 @@ import com.google.inject.persist.Transactional;
 /** Projects existing task intent and verified Agent evidence; never schedules work. */
 @Singleton
 public class MpackTargetResourceDAO {
-  private static final Set<String> MUTATIONS = Set.of("INSTALL", "CONFIGURE", "START", "STOP", "RESTART", "RELOAD", "UPGRADE", "DETACH", "ADOPT", "UNINSTALL", "PURGE");
+  private static final Set<String> MUTATIONS = Set.of("INSTALL", "CONFIGURE", "START", "STOP", "RESTART", "RELOAD", "UPGRADE", "DETACH", "ADOPT", "UNINSTALL", "PURGE", "BACKUP", "MIGRATE", "RESTORE");
   @Inject
   private Provider<EntityManager> managers;
 
@@ -74,9 +74,9 @@ public class MpackTargetResourceDAO {
     }
     String operation = binding.get("operation").getAsString();
     String previousOperation = created ? null : JsonParser.parseString(resource.getTaskBinding()).getAsJsonObject().get("operation").getAsString();
-    if (!created && "PENDING".equals(resource.getResourceState()) && Set.of("DETACH", "ADOPT").contains(previousOperation)
+    if (!created && "PENDING".equals(resource.getResourceState()) && Set.of("DETACH", "ADOPT", "BACKUP", "MIGRATE", "RESTORE").contains(previousOperation)
         && !operation.equals(previousOperation)) {
-      throw new IllegalStateException("Reconcile the pending ownership handoff before another operation");
+      throw new IllegalStateException("Reconcile the pending ownership or data operation before another operation");
     }
     if (!created && "DETACHED".equals(resource.getResourceState()) && !Set.of("DETACH", "ADOPT").contains(operation)) {
       throw new IllegalStateException("Adopt the detached target before modifying its resources");
@@ -152,6 +152,16 @@ public class MpackTargetResourceDAO {
             || !binding.get("targetIncarnation").equals(identity.get("targetIncarnation"))) {
           return;
         }
+        String operationName = binding.get("operation").getAsString();
+        if (Set.of("BACKUP", "MIGRATE", "RESTORE").contains(operationName)) {
+          JsonObject data = observation.getAsJsonObject("dataOperation");
+          if (data == null || !"SUCCEEDED".equals(data.get("state").getAsString())
+              || !operationName.equalsIgnoreCase(data.get("operation").getAsString())
+              || !data.get("evidenceDigest").getAsString().matches("[a-f0-9]{64}")
+              || !"inactive".equals(observation.get("state").getAsString()) || !"0".equals(observation.get("pid").getAsString())) {
+            return;
+          }
+        }
         boolean uninstalled = "UNINSTALL".equals(binding.get("operation").getAsString());
         boolean purged = "PURGE".equals(binding.get("operation").getAsString());
         if ((uninstalled || purged) && (!removed(observation)
@@ -192,7 +202,7 @@ public class MpackTargetResourceDAO {
           resource.setMaterializedMpackId(null);
         }
         resource.setResourceEvidence(serialized);
-        resource.setResourceState(purged ? "PURGED" : detached ? "DETACHED" : uninstalled ? "UNINSTALLED_RETAINED" : "MANAGED");
+        resource.setResourceState(uninstalled && observation.has("kind") && "external.database/v1".equals(observation.get("kind").getAsString()) ? "UNREGISTERED" : purged ? "PURGED" : detached ? "DETACHED" : uninstalled ? "UNINSTALLED_RETAINED" : "MANAGED");
       }
     } catch (RuntimeException malformedReport) {
       // A malformed observation cannot authorize deleting service or data.
@@ -231,6 +241,9 @@ public class MpackTargetResourceDAO {
   }
 
   private boolean removed(JsonObject observation) {
+    if (observation.has("kind") && "external.database/v1".equals(observation.get("kind").getAsString())) {
+      return observation.get("registrationAbsent").getAsBoolean() && "observed".equals(observation.get("ownership").getAsString());
+    }
     if (observation.has("kind") && "kubernetes.workload/v1".equals(observation.get("kind").getAsString())) {
       return !observation.get("exists").getAsBoolean() && observation.get("remainingPods").getAsInt() == 0;
     }
@@ -271,7 +284,7 @@ public class MpackTargetResourceDAO {
         .setParameter("cluster", clusterId).setParameter("service", service).setParameter("incarnation", incarnation)
         .setParameter("host", host).setParameter("component", component).getResultList();
     if (resources.isEmpty() && !neverInstalled || resources.stream().anyMatch(
-        resource -> !Set.of("UNINSTALLED_RETAINED", "PURGED", "DETACHED").contains(resource.getResourceState()))) {
+        resource -> !Set.of("UNINSTALLED_RETAINED", "PURGED", "DETACHED", "UNREGISTERED").contains(resource.getResourceState()))) {
       throw new IllegalStateException("Verified UNINSTALL or DETACH evidence is required before removing this host component");
     }
   }
@@ -281,7 +294,7 @@ public class MpackTargetResourceDAO {
     Long count = managers.get().createQuery("SELECT COUNT(r) FROM MpackTargetResourceEntity r "
         + "WHERE r.clusterId = :cluster AND r.serviceName = :service AND r.resourceState NOT IN :states", Long.class)
         .setParameter("cluster", clusterId).setParameter("service", serviceName)
-        .setParameter("states", Set.of("UNINSTALLED_RETAINED", "PURGED", "DETACHED")).getSingleResult();
+        .setParameter("states", Set.of("UNINSTALLED_RETAINED", "PURGED", "DETACHED", "UNREGISTERED")).getSingleResult();
     if (count != 0) {
       throw new IllegalStateException("Run and verify UNINSTALL or DETACH for every managed target before deleting the service");
     }

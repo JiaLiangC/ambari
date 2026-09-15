@@ -17,10 +17,12 @@
 
 # Mpack implementation plan
 
-This is the single active Ambari implementation plan. The audit remediation below is
-completed; package import/lifecycle P0-P6 and P8 is authorized but paused at the user-requested
-unverified progress checkpoint. Resume only when requested; see the final checkpoint
-section in [status.md](status.md).
+This is the single active Ambari implementation plan. D0-V8 audit remediation is
+complete. P0-P6/P8 resumed on 2026-09-15 from published checkpoint `bc21994064`;
+the implementation batch and consolidated local validation are now recorded in
+[status.md](status.md#current-delivery--2026-09-15). Native runtime, production DB and
+live Server-Agent/provider acceptance remain explicit release gates, not completed
+work inferred from fixture tests.
 The user removed the Kyuubi example on 2026-09-10; this is not a postponement.
 Its dedicated P7 integration and Kyuubi-specific P8 work are removed from the
 current plan. Preserve generic dependency rejection and historical audit evidence.
@@ -28,8 +30,9 @@ The independent review was recorded before source
 changes. Finish the implementation/documentation batch before the consolidated
 compilation, validation and test phase, as requested. The subsequent user request
 authorizes one consolidated commit and publication to origin/AMBARI-14714-mpack-v2-remote.
-That authorization describes the completed audit delivery, not automatic publication
-of the new Store proposal or implementation.
+After the resumed implementation and local validation, the user explicitly authorized
+publishing this delivery to the same branch. Preserve the requested single commit.
+Store implementation remains outside this repository and this publication.
 Do not deploy a live cluster, modify another worktree or overwrite unrelated changes.
 
 ## Ordered work and local acceptance
@@ -83,21 +86,23 @@ item and original repair-order row; missing platform features remain explicit ga
 
 ## Explicit product and environment gates
 
-The current repair scope is a safe, connected host alpha plus existing catalog;
-it is not the entire future general-software platform. The following are real gaps,
-not silently completed tasks or missing-tests-only explanations:
+The current delivery is a bounded connected alpha, not an unrestricted software
+platform. Implemented profile boundaries are in the current status matrix. Local
+completion leaves these external acceptance gates and explicit non-goals:
 
-- OCI, Kubernetes and external database execution: implement runtime-specific native
-  identity, apply/postconditions, cancellation and recovery against real runtimes.
-- Secret runtime resolution, generic observability API, client-only host profiles,
-  same-cluster independent service aliases and multi-package selection require
-  concrete consumers and minimal extensions of existing Ambari contracts.
-- Upgrade/data migration/rollback/adoption/detach/uninstall/purge require explicit
-  compatibility/ownership/retention semantics and separate destructive authorization.
-  The current host contract must reject these rather than guess or delete data.
-- Native Redis/systemd and live server-Agent acceptance, production database fresh/
-  upgrade execution and cross-cluster provider acceptance need environments outside
-  this task's authorized local checks. No live target is deployed here.
+- Execute real HTTP/Redis/systemd, rootful Docker/Podman, stateless Kubernetes and
+  external observer acceptance against disposable authorized environments.
+- Execute live Server-Agent restart/response-loss and production database fresh/upgrade
+  procedures. Seven DDL sources and H2 tests do not prove every production dialect.
+- Validate metric endpoints and LogSearch collectors in their real environment.
+- Shared dependency resolution requires the external platform's actual authorization,
+  binding and provider protocol. Missing providers are rejected; no synthetic binding.
+- Same-cluster service aliases, foreign-resource adoption, purge after service removal,
+  rolling upgrades, remote database mutation, arbitrary shared OS package replacement,
+  Kubernetes PVC/Secret/raw YAML and automatic migration/data rollback are unsupported.
+  They are outside the defined initial contracts, not unfinished generic methods.
+- Store implementation remains in its separately planned future repository; Kyuubi is
+  removed from scope, not deferred.
 
 Do not introduce another identity system, workflow database, binding database,
 authorization service, message bus or distributed transaction manager to hide these
@@ -118,8 +123,8 @@ active instructions. Earlier per-worker/tmux/model/publication directions are ob
 
 Before the broader platform work, complete the user's requested examples,
 English development instructions and user-run validation scripts. Keep one canonical
-set of examples under `mpack-authoring/fixtures`: HTTP, Redis and a multi-service
-YAML package. Expand the existing authoring README into the development guide instead
+set of examples under `mpack-authoring/fixtures`: HTTP, Redis, multi-service
+YAML and an external PostgreSQL observer. Expand the existing authoring README into the development guide instead
 of creating duplicate guides. Reuse compiler/export/verification code for a portable
 validation command, plus an example-suite entry point. Checks must distinguish source,
 host-export and bundle verification, produce meaningful exit codes/diagnostics, leave
@@ -133,9 +138,8 @@ remains reserved for its future repository.
 The earlier authoring usability delivery completed four documented examples, the English
 guide, `validate.py` and seven focused regression tests. Consolidated authoring tests
 (35), example expectations (5), guide command checks and root RAT passed for that
-earlier delivery; exact environment and evidence are recorded in status.md. The current
-three-example revision is unverified until the consolidated run. This does not complete
-the active platform work below.
+earlier delivery; exact environment and evidence are recorded in status.md. The current four-example revision adds an external observer, not Kyuubi. Its new
+validation evidence and bounded platform delivery are recorded in status.
 
 ### Authorized platform delivery
 
@@ -170,11 +174,11 @@ loss, query the generation before considering success; never blindly repeat relo
 This plan covers Ambari package import and software lifecycle only. The independent
 [Store design](store-design.md) owns its S0-S4 plan for later implementation in a new
 repository. Store pages, backend, publisher accounts and publication jobs are not
-Ambari deliverables. The [architecture extension](architecture.md#package-import-and-lifecycle-extension-proposed)
+Ambari deliverables. The [architecture extension](architecture.md#package-import-and-lifecycle-extension)
 owns Ambari design decisions. The user authorized completing every row sequentially,
 then running consolidated compilation, tests and validation. The subsequent
-2026-09-10 scope change removes Kyuubi/P7; all other rows remain active
-implementation work, separate from the completed audit remediation and its evidence.
+2026-09-10 scope change removes Kyuubi/P7; the local implementation of all other rows is recorded below, separately from external
+acceptance and the completed audit remediation evidence.
 Implement P0-P4 first, prepare the P5 acceptance harness, then P6-P8; execute P5 and
 other consolidated checks only after the implementation batch is complete. External
 provider/runtime acceptance requires the corresponding actual contract/environment;
@@ -220,21 +224,26 @@ in a new independent repository according to store-design.md. File fixtures and 
 artifact server suffice for Ambari integration work; no Store infrastructure is needed.
 
 
-### Active implementation ledger (verification deferred)
+### Current implementation ledger
 
-The user requested completing the implementation batch before any consolidated
-compilation, validation or tests. No new passing result is claimed for this batch.
+The source/documentation batch preceded the consolidated run. No real-environment
+acceptance is inferred from the following local completion. Exact test failures,
+corrections and successful reruns are in the single status ledger.
 
-| Work | Source changes in progress | Remaining work before acceptance |
+| Work | Completed local implementation | Release gate / explicit limit |
 | --- | --- | --- |
-| P0 | Publisher Ed25519 export/public-key verification, complete metadata signature, durable release metadata, compatibility comparisons | Final trust/import regression execution; wheel/distribution acceptance |
-| P1 | Existing repository selection, service config mapping and credential metadata cache scope, package conflict checks | Reconcile every Stack/config/UI consumer, regression coverage and consolidated integration |
-| P2 | Shared host uninstall, native absence postcondition, retained path/inode evidence, task-linked same-DB retention records, service/component/catalog removal guards, seven DDL variants and upgrade path | Fault-path/upgrade coverage, lifecycle permission and stale-report review, consolidated checks |
-| P3 | Deterministic `.mpack` transport, binary upload, shared staged importer, approved origin/path policy, no redirects, credential-store references, byte/time bounds | Local artifact server/API fixtures, documentation and consolidated execution |
-| P4 | Upload and release details; package-specific service/host/config install dialog; existing request actions; scoped retained-resource view | Existing-service configuration/observation integration, UI/API failure-recovery tests and consolidated build |
-| P5 | Opt-in disposable Server-Agent import/install/start/stop/uninstall/retention harness added under dev-support/mpack; not executed | Native fault injection and production DB environments remain required; no external acceptance result claimed |
-| P6 | Scoped secrets/reload/purge; compatible artifact upgrade and confirmed-release protection; file-only CLIENT; existing metrics/log projections; bounded DETACH/ADOPT source and regression cases | Finish integration/test-source/documentation closure; generic package-owned data-operation execution/recovery and shared-prerequisite compatibility remain open; no software-specific core lifecycle; consolidated verification deferred |
-| P8 | Shared source review/diff, schema-driven authoring UI/CLI and English guide; local OCI source, shared Script routing and native-result fixture cases | OCI/Kubernetes source closure; external database implementation remains open; consolidated verification deferred |
+| P0 | Ed25519 release identity/trust, complete signed metadata, namespace/package identity, immutable digest and alpha compatibility | Operator trust/key lifecycle; actual deployment remains unaccepted |
+| P1 | Existing service repository selection/resolver, configuration conflict checks, package task/metadata/Agent binding | Live multi-package and multi-cluster acceptance; no same-cluster aliases or cross-Stack Blueprint authority |
+| P2 | Task-linked target evidence, reference-protected removal, native absence, retained inode inventory, purge and seven DDL variants | Production DB fresh/upgrade and live native cleanup; orphan purge unsupported |
+| P3 | Single-file upload and approved-URL import, shared staging/verifier, credential references and bounded transport | Operator origin/trust configuration and production transport acceptance |
+| P4 | Package/service/host/config selection, release and recovery actions, existing requests/RBAC/log/metric paths | Browser/live API and collector acceptance; UI is not authority |
+| P5 | Disposable environment harness, fault-case instructions, wheel build/install and local suites/builds | Real Server-Agent/native/runtime/provider/production DB environment required; P5 production acceptance remains open |
+| P6 | Scoped secrets, acknowledged reload, compatible stopped artifact upgrade, files CLIENT, DETACH/ADOPT, retained purge, package-owned backup/migrate/restore protocol | Real software/native acceptance; non-root trusted package handlers, no automatic rollback or arbitrary shared OS package upgrade |
+| P8 | Shared human/AI source validation/diff, English guide, four examples, OCI and stateless Kubernetes adapters, external database observation/registration | Real engine/API/provider acceptance; external database mutation unsupported; no AI execution bypass |
+
+P7/Kyuubi is removed. The Store has its separate design only; no Store code belongs
+in Ambari. Current delivery adds no second identity, workflow, authorization or
+binding database.
 
 A concrete P1 defect was found during source tracing: StackId splits its string at
 the first hyphen, so authoring package names cannot safely be reused as Stack names.
@@ -307,11 +316,11 @@ Source tracing corrected these issues before consolidated execution:
 - Add an independently distributable authoring wheel definition; copy the single schema
   only into build output. The Store implementation remains outside Ambari.
 
-All new source and regression cases above are unexecuted. The final batch must include
+The consolidated batch included
 MpackConfigurationTest, MpackSecretsTest, MpackTrustTest, the updated encryption fixture,
 HTTP generation/reload cases, Management Packs/Host Logs cases, wheel installation in
 an isolated environment, and Java-to-Python fixtures generated from these current sources.
-Do not reuse the previous HTTP digest or previous passing counts as current evidence.
+Fresh exports and digests were generated for this run; historical passing counts are not reused as current evidence.
 
 
 ### P6 purge boundary
@@ -339,7 +348,7 @@ rows are updated before catalog deletion so a held entity cannot restore a stale
 Secret dispatch checks current service incarnation and selected component package
 before reading credentials. Upload tests cover denial before reading bytes, exact
 temporary staging/cleanup and interrupted or empty input; local transport imports
-retain the verified installed metadata URI. All these tests are written but unexecuted.
+retain the verified installed metadata URI. The corresponding executed results and corrected failures are in status.md.
 
 ### P8 shared authoring and configuration UI
 
@@ -514,3 +523,37 @@ The API concurrency/deletion and Deployment controller semantics are referenced 
 [Kubernetes API concepts](https://kubernetes.io/docs/reference/using-api/api-concepts/)
 and [Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/).
 Source fixtures and real Kubernetes acceptance must be reported separately.
+
+
+### Resumed package handler contract — 2026-09-15
+
+A signed Python artifact is the minimum extension for product-specific data procedures
+and external database probes. Reuse one bounded subprocess transport: a declared
+non-root OS account, fixed Python interpreter, isolated interpreter mode, JSON on
+stdin/stdout, output/time limits and whole-process-group cancellation. This is trusted
+package code under an existing OS account, not a sandbox or a new authorization
+service. No request-supplied program, shell, module path or root handler is permitted.
+Dependencies and database credentials must already be available to that account;
+package import does not install drivers or grant database privileges.
+
+Host `dataOperations` declares backup/migrate/restore handlers. Only stopped owned
+targets with unchanged confirmed package may execute them, without live secrets in
+this initial contract. The handler receives target identity, operation key, non-secret
+configuration and declared data directories. `prepare` returns readiness and a digest
+of preconditions; the receipt stores these before `apply`. `verify` must independently
+query durable product evidence for the same operation key and target. After response
+loss or cancellation, retry invokes verify only, never another apply. Unknown or
+irreversible outcomes require product-specific reconciliation; do not label software
+rollback as data restore. Migration/restore use the existing destructive-data
+permission; backup uses the existing custom-command permission. All commands use the
+existing request/task binding and expected service incarnation. No new scheduler.
+
+External database registration uses the same handler transport for discover/observe.
+The package probe owns protocol/driver and authenticated native database identity
+checks; the declared `nativeIdentity` must be independently confirmed by the probe.
+The operator provides a least-privilege read-only database credential to the declared
+OS account outside package content. Install/configure mean registering a verified
+observation target; uninstall only drops that local registration. No remote database
+creation, configuration mutation, start/stop, delete or purge is advertised. The
+adapter must explicitly distinguish local registration from remote resource ownership.
+This closes a bounded external-observation path, not arbitrary database administration.

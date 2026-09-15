@@ -37,14 +37,19 @@ handling; these mechanisms are implemented but require native acceptance. Comple
 is limited by removing unused simulators/facades instead of operating a second
 workflow, binding store or authorization system.
 
-Verified audit baseline contract: `host-service/v1` with one `host.systemd/v1` profile
-per server component; install/configure/start/stop/restart/status/local service check;
-OS packages, users/groups, isolated directories, declared file artifacts, scalar
-multi-file configuration, foreground executable arguments and loopback TCP/HTTP
-health. A package can contain several services/components. Client-only components,
-secrets at execution, reload, automatic upgrade/migration, adoption, detach/delete/
-purge, OCI, Kubernetes and external database execution are not implemented by this
-contract. Authoring accepts broader profile declarations without promising execution.
+Current executable contracts share the `host-service/v1` delivery descriptor and
+`ManifestService`, with a distinct adapter per profile. `host.systemd/v1` manages
+foreground services, typed multi-file configuration, scoped secret references,
+health and declared lifecycle operations. `host.files/v1` publishes CLIENT files.
+`oci.container/v1` manages local rootful Docker/Podman containers with preloaded pinned
+images. `kubernetes.workload/v1` manages stateless Deployments in an operator-approved
+namespace. `external.database/v1` registers and observes a remote native identity;
+its uninstall unregisters local evidence and never deletes the database. The current
+capability/evidence matrix in status is authoritative about the limits of each profile.
+Software backup/migration/restore uses an optional signed package handler on an already
+verified stopped systemd target; it is not automatic configuration migration or data
+rollback. Arbitrary foreign adoption, orphan purge, rolling upgrade and distributed
+transactions remain outside the supported contract.
 
 A cluster still has its existing Stack/service model. Multiple independent services
 of the same type inside one cluster cannot be invented through aliases. Multiple
@@ -68,8 +73,14 @@ flowchart TD
   S --> DB
   DB --> T[Existing task and metadata delivery; assigned Agent only]
   T --> AG[Existing Agent ActionQueue / Script execution boundary]
-  AG --> H[Shared ManifestService / HostDeployment]
-  H --> N[systemd and existing Package / User / Directory resources]
+  AG --> H[Shared ManifestService: task-bound profile dispatch]
+  H --> N[HostDeployment / FileDeployment: systemd and file resources]
+  H --> OCI[OciDeployment: local engine socket and pinned container]
+  H --> K[KubernetesDeployment: operator-approved TLS API and namespace]
+  H --> E[ExternalDatabaseDeployment: local registration and observation]
+  N --> PH[Optional signed package handler: non-root OS identity]
+  E --> PH
+  PH --> EX[External database / software-owned data procedure]
   H --> L[(Agent receipt: materialization evidence only)]
   N --> O[Observed native identity, invocation and health]
   O --> AG
@@ -89,12 +100,13 @@ supply approval, fencing or execution trust markers.
 | --- | --- | --- | --- |
 | Cluster/service/RBAC/host membership | Existing Ambari DB | Existing controllers; Agent receives scoped projection | Existing PK/FK and authorization; no replacement identities |
 | Package release | `mpacks`, `content_digest`; immutable definition files | MpackManager/DAO; metadata/task generation reads | Catalog lock plus DB constraints; registration marker reconciles crashes |
-| Service package selection | Existing desired repository/Stack relationship | Existing service controller; topology metadata | Blueprint selections constrained to actual Stack; independent package composition deferred |
+| Service package selection | Existing desired repository/Stack relationship | Existing service controller; topology metadata | Existing service repository pins a package; conflict validation and row locks; Blueprint selections stay constrained to the actual Stack |
 | Native binding incarnation | `clusterservices.mpack_target_incarnation` | ClusterServiceDAO; task/service metadata reads | Row lock and conditional initialization; new service row gets a new incarnation |
 | Desired configuration | Existing Ambari configurations and tags | Existing configuration API; tasks/Agent consume | Existing versioned publication; typed host validation before local staging |
 | Operation intent/result | Existing request/stage/task and command persistence | Existing scheduler; Agent reports | Existing task IDs; no second operation DB or autonomous recovery loop |
 | Applied configuration/native evidence | Root-owned Agent deployment `receipt.json`, config generations | Shared host Script; subsequent tasks/status read | Atomic fsync/rename, local flock, task ordering and expected receipt hash |
-| Native process state | systemd unit/InvocationID/health | Native runtime; Agent observes | Exact owned unit and path, timestamped observation; exit code is insufficient |
+| Retained target and confirmed release | `mpack_target_resource` in existing Ambari DB | Task intent writer and authenticated Agent report projection; catalog/UI read | Latest-task match, native postconditions, separate selected/latest-intent/materialized package references; survives service removal |
+| Native resource state | systemd invocation, file publication, OCI engine/container, Kubernetes namespace/Deployment UID, external provider identity | Native runtime/provider; Agent observes | Runtime-specific preconditions and observations; exit code and resource name alone are insufficient |
 | Dependency binding | External shared platform | Shared coordinator; future Mpack client consumes | Platform UUID/incarnation/snapshot/revision/authorization/fence; no fabricated readiness |
 | Catalog staging/quarantine | Filesystem projection, not authority | MpackManager startup/registration/removal | DB decides availability; quarantine retained for operator inspection |
 
@@ -136,7 +148,7 @@ receipt and a 30-second discovery/plan lifetime. The driver serializes one targe
 rejects stale tasks/plans and writes APPLYING before effects. Configuration is typed,
 rendered into an unpublished generation and atomically switched; running generation
 only advances after verified start. Configuration changes restart an active service.
-Host export requires restart semantics; none/reload/migration are unsupported.
+Declared reload requires unchanged invocation and an HTTP configuration-generation acknowledgement. Data migration is a separately authorized explicit package operation; changeEffect=none/migration is rejected.
 Explicit RESTART is one task intent,
 not inherited STOP+START with the same task ID. STOP is independent of invalid desired
 configuration. Status probes the verified running port/config, with desired/published/
@@ -146,8 +158,7 @@ A repeated completed task only observes/verifies. A lost start response can be
 reconciled from a new native InvocationID and matching intent without another start.
 Pending native jobs and interrupted starts without surviving invocation evidence
 stay UNKNOWN without a second start. An explicit server STOP can establish a
-known inactive state before another START. Package replacement is not silently
-called upgrade. Cancellation is a request to stop work, not proof that native
+known inactive state before another START. Compatible stopped artifact upgrades require signed compatibility and unchanged resource/data layout; restoring repository selection is not data rollback. Cancellation is a request to stop work, not proof that native
 side effects stopped; native timeout/cancellation remains UNKNOWN and disables
 automatic Agent retry. Late old tasks cannot overwrite a newer local receipt.
 
@@ -161,15 +172,15 @@ process groups have deadlines/cancellation, discovery/show/probes are bounded, a
 configuration history keeps ten recent plus current/running generations. Existing
 Ambari request/task/log retention remains the platform policy. OS package resource
 execution retains its existing Ambari timeout semantics. Persistent resource
-directories are never pruned; there is no generic purge authorization in this slice.
+directories are never pruned automatically. Explicit PURGE requires SERVICE.PURGE_DATA, matching retained inode evidence and native absence, while the service record still exists.
 
 ## Minimal abstractions, migration and cost
 
 | Decision | Benefit | Implementation / migration cost | Ongoing cost and simpler alternative |
 | --- | --- | --- | --- |
-| Keep existing service/Stack/task/config authority | Preserves RBAC, routing and audit | Add package digest and native incarnation metadata; nullable DDL migration | Two fields and one shared Script; a parallel Deployment/Operation DB is unnecessary |
+| Keep existing service/Stack/task/config authority | Preserves RBAC, routing and audit | Add package digest and native incarnation metadata; nullable DDL migration | A small same-DB target evidence table and shared Script; a parallel Deployment/Operation database is unnecessary |
 | Keep compiler + small profile-specific executor | New Redis/HTTP-like software changes source files only | Strict schema/inventory may reject previously ignored source fields | One schema and scalar runtime projection; copied lifecycle scripts multiply fixes |
-| Emit actual legacy modules and authenticate import | Reuses existing registration/Agent resource delivery | Explicit external HMAC key on builder and Server; rebuild old alpha bundles | One versioned export format; source ZIP remains separate; asymmetric publisher trust is required before public Store imports |
+| Emit actual legacy modules and authenticate import | Reuses existing registration/Agent resource delivery | Ed25519 publisher trust and explicitly enabled alpha HMAC compatibility; rebuild incompatible alpha bundles | One versioned verifier/importer and operator-managed trust file; source ZIP remains separate from deployable transport |
 | Remove parameter dispatcher and simulation execution models | Closes root-command authority hole and duplicate recovery | Queued alpha runtime commands fail; external alpha library consumers must migrate | No command forwarding facades; retain only static capability declarations and ServiceRef |
 | Remove unconsumed Java lifecycle/config facades | Blueprint stops pretending to be live state | Old fields ignored when read; new assertions rejected | Existing task/config models suffice until a concrete new consumer exists |
 | Keep registry/catalog; transactional deletion + reconciliation | Recoverable file/DB ordering | Existing reference constraints and two pending markers | Bounded publication critical section; operator quarantine retention remains necessary |
@@ -181,8 +192,14 @@ vendored artifacts (or declared OS package prerequisites), then uses the same
 validation/export/import/service workflow. A new config scalar touches those source
 files. A new lifecycle semantic or bottom-level runtime requires a versioned contract,
 its own evidence/recovery implementation and focused tests; adding method names to
-all runtimes would not establish equivalent behavior. No arbitrary plugin JS,
-plugin sandbox or generic hook runner is required by the present consumers.
+all runtimes would not establish equivalent behavior. No arbitrary plugin JavaScript, plugin sandbox or workflow DSL is introduced. The
+optional package Python handler is the smallest extension needed by two concrete
+consumers: software data procedures and external resource probes. It runs authenticated
+code under a non-root OS account with bounded JSON I/O, no supplementary groups and
+no shell. This is trusted package execution, not a sandbox: administrators must trust
+that publisher within the account's filesystem/network privileges. A declaration alone
+cannot implement a product migration or identify an external database. Handler evidence
+is execution output in the existing receipt, not a second state authority.
 
 ## External prerequisites and deferred product scope
 
@@ -193,18 +210,16 @@ absent. Cross-cluster approval/config propagation requires a real shared platfor
 not a local UUID or mock. The user removed the Kyuubi example and its dedicated
 integration work from the current scope on 2026-09-10.
 
-OCI needs engine/resource identity and volume/postcondition handling; Kubernetes
-needs API-server/namespace/UID/revision and rollout evidence; external databases need
-scoped credentials/connections and observation contracts. The active P0-P8 batch adds publisher trust, service-scoped package selection,
-uninstall retention, import/lifecycle UI and scoped secrets; these source changes
-are not yet verified. Generic metrics/log routing, full data lifecycle and further
-runtimes remain required work. They are not all current M2 blockers, and are not marked completed by
-retiring unsafe prototypes. Real systemd/Redis, production DB migration and live
-server-Agent acceptance still require appropriate environments.
+OCI/Kubernetes/external observation implementations and focused fixtures now exist.
+Their real native/provider acceptance remains open. Package trust/import, service-scoped
+selection, retention/purge, scoped secrets, client files and existing metrics/log
+projections have local checks recorded in status. LogSearch collectors, real Redis/systemd,
+production DB fresh/upgrade and live server-Agent fault recovery still require appropriate
+environments. Static declarations, fixture output and compilation cannot close these gates.
 
-## Package import and lifecycle extension (proposed)
+## Package import and lifecycle extension
 
-Status: proposed work, not current implementation. The independent third-party Store
+Status: implemented local alpha; current evidence and native gates are in status.md. The independent third-party Store
 has its own [design and future-repository plan](store-design.md). Its website/backend
 will be implemented later in a new repository, never in Ambari. Ambari owns only
 package import and installed software management. The [delivery plan](implementation-plan.md#package-import-and-lifecycle-delivery-plan)
@@ -229,10 +244,10 @@ package definitions. Detach and separately authorized purge remain distinct oper
 Extend MpackManager and the `ManagementPacks` screen for file/URL import and management
 of already imported package versions, trust and compatibility. Reuse service configuration
 and request/task screens. Existing Registry integration may remain compatible; this
-proposal adds no Store browsing, search, publisher/upload portal or embedded third-party
+delivery adds no Store browsing, search, publisher/upload portal or embedded third-party
 pages to Ambari. External publisher upload is distinct from uploading a downloaded file
-to Ambari for import. No proposed endpoint is an implemented API until its resource
-provider, authorization and tests exist.
+to Ambari for import. Actual resource-provider, authorization and test evidence is recorded
+in status; the design alone does not prove runtime acceptance.
 
 Independent packages in existing clusters need service-scoped definition resolution.
 Start with service/component desired repository relationships and trace metadata,

@@ -632,7 +632,7 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
   private org.apache.ambari.server.orm.dao.MpackTargetResourceDAO mpackResources;
 
   @Override
-  public List<Map<String, Object>> getMpackResources(String clusterName, String after) throws AmbariException {
+  public List<Map<String, Object>> getMpackResources(String clusterName, String after) throws AmbariException, AuthorizationException {
     Cluster cluster = clusters.getCluster(clusterName);
     if (!org.apache.ambari.server.security.authorization.AuthorizationHelper.isAuthorized(
         org.apache.ambari.server.security.authorization.ResourceType.CLUSTER, cluster.getResourceId(),

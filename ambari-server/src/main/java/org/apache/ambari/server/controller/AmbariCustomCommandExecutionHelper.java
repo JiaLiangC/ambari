@@ -418,7 +418,7 @@ public class AmbariCustomCommandExecutionHelper {
         }
       }
       commandParams.put(CUSTOM_COMMAND, commandName);
-      if (java.util.Set.of("PURGE", "UPGRADE", "DETACH", "ADOPT").contains(commandName)) {
+      if (java.util.Set.of("PURGE", "UPGRADE", "DETACH", "ADOPT", "BACKUP", "MIGRATE", "RESTORE").contains(commandName)) {
         String expected = actionExecutionContext.getParameters().get("expected_target_incarnation");
         if (expected == null || !expected.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")) {
           throw new AmbariException("Resource mutation requires the target incarnation from resource evidence");

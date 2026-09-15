@@ -1,0 +1,59 @@
+{
+  "apiVersion": "mpack.ambari.apache.org/v2alpha1",
+  "kind": "Mpack",
+  "metadata": {
+    "name": "external-postgresql-observer",
+    "version": "0.1.0",
+    "description": "Observed external database; install/uninstall change local registration only"
+  },
+  "spec": {
+    "artifacts": [
+      {
+        "id": "probe",
+        "source": {
+          "kind": "file",
+          "path": "probe.py"
+        }
+      }
+    ],
+    "services": [
+      {
+        "name": "EXTERNAL_POSTGRESQL",
+        "configurations": [
+          {
+            "name": "database",
+            "schema": "config.schema.json",
+            "changeEffect": "restart"
+          }
+        ],
+        "components": [
+          {
+            "name": "POSTGRESQL_OBSERVER",
+            "category": "CLIENT",
+            "role": "client",
+            "profiles": [
+              {
+                "id": "external",
+                "adapter": "external.database/v1",
+                "capabilities": [
+                  "install",
+                  "configure",
+                  "uninstall",
+                  "observe"
+                ],
+                "resources": {
+                  "runAsUser": "mpack_observer",
+                  "nativeIdentity": "123456789/16384",
+                  "probe": {
+                    "artifactRef": "probe",
+                    "timeoutSeconds": 20
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

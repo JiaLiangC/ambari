@@ -16,8 +16,8 @@
  * limitations under the License.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PackageInstallDialog from "./PackageInstallDialog";
 import type { RegisteredMpack } from "./model";
 
@@ -28,6 +28,7 @@ const pack: RegisteredMpack = {id: 1, mpackId: "http", name: "http", displayName
 const field = {type: "string", description: "", secretReference: false, emptyValid: true, entries: []};
 
 describe("package installation schema projection", () => {
+  afterEach(cleanup);
   beforeEach(() => {
     vi.resetAllMocks();
     lifecycle.hosts.mockResolvedValue(["host.example"]);
@@ -66,7 +67,7 @@ describe("package installation schema projection", () => {
     for (const value of ["synthetic-literal", "secret://mpack.OTHER.auth"]) {
       fireEvent.change(credential, {target: {value}});
       fireEvent.submit(credential.closest("form")!);
-      expect(await screen.findByRole("alert")).toHaveTextContent("Use a scoped credential reference");
+      expect((await screen.findByRole("alert")).textContent).toContain("Use a scoped credential reference");
       expect(lifecycle.install).not.toHaveBeenCalled();
     }
   });

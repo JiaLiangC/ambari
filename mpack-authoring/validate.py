@@ -120,7 +120,8 @@ def check_examples():
   for name, manifest, target, expected in (
       ("http", "http/manifest.json", "host", None),
       ("redis", "redis/manifest.json", "host", None),
-      ("multi-service", "multi-service/manifest.yaml", "host", None)):
+      ("multi-service", "multi-service/manifest.yaml", "host", None),
+      ("external-postgresql", "external-postgresql/manifest.json", "host", None)):
     result = check(ROOT / "fixtures" / manifest, target)
     codes = [item["code"] for item in result["diagnostics"]]
     matched = result["valid"] if expected is None else not result["valid"] and codes == [expected]
@@ -141,7 +142,7 @@ def main(argv=None):
   bundle = commands.add_parser("bundle", help="verify a source ZIP, not legacy mpack.json/definition.tar.gz")
   bundle.add_argument("archive")
   bundle.add_argument("--sha256", required=True, help="SHA-256 obtained through an independently trusted channel")
-  commands.add_parser("examples", help="check included HTTP, Redis and multi-service examples")
+  commands.add_parser("examples", help="check included host, client and external database examples")
   review = commands.add_parser("review", help="validate baseline/candidate sources and report changes without applying them")
   review.add_argument("baseline")
   review.add_argument("candidate")

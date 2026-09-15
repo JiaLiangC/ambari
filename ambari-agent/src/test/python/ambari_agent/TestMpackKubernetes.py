@@ -109,6 +109,7 @@ class TestMpackKubernetes(unittest.TestCase):
     schema["properties"].pop("data_dir")
     (self.payload / "config.schema.json").write_text(json.dumps(schema))
     self.profile = service["components"][0]["profiles"][0]
+    self.profile.pop("dataOperations", None)
     self.profile.update(adapter="kubernetes.workload/v1", capabilities=sorted(KubernetesDeployment.operations),
       resources={"connectionRef": "example", "namespace": "example", "image": "example/software@sha256:" + "b" * 64,
         "runAsUserId": 1000, "replicas": 1, "command": {"environment": {"PORT": {"configRef": "http.port"}, "MESSAGE": {"configRef": "http.message"}}}})

@@ -84,8 +84,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonParseException;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.inject.Inject;
 import com.google.inject.assistedinject.Assisted;
@@ -233,8 +233,8 @@ public class MpackManager {
             .resolve("services").resolve(service).resolve("package/manifest-service.json"));
         if (!previous.getPackageDigest().equals(oldDescriptor.getAsJsonObject("package").get("digest").getAsString())
             || !candidate.getPackageDigest().equals(newDescriptor.getAsJsonObject("package").get("digest").getAsString())
-            || !previous.getName().equals(oldDescriptor.getAsJsonObject("package").get("name").getAsString())
-            || !candidate.getName().equals(newDescriptor.getAsJsonObject("package").get("name").getAsString())
+            || !(previous.getPackageName() == null ? previous.getName() : previous.getPackageName()).equals(oldDescriptor.getAsJsonObject("package").get("name").getAsString())
+            || !(candidate.getPackageName() == null ? candidate.getName() : candidate.getPackageName()).equals(newDescriptor.getAsJsonObject("package").get("name").getAsString())
             || !service.equals(oldDescriptor.getAsJsonObject("service").get("name").getAsString())
             || !service.equals(newDescriptor.getAsJsonObject("service").get("name").getAsString())) {
           throw new IOException("Package descriptor differs from catalog authority");

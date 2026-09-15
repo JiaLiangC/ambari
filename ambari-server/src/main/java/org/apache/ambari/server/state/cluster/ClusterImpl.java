@@ -20,7 +20,6 @@ package org.apache.ambari.server.state.cluster;
 
 import static java.util.stream.Collectors.toList;
 
-import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;

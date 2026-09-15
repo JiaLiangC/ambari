@@ -81,7 +81,7 @@ class AuthoringSafetyTest(unittest.TestCase):
     with self.assertRaises(ManifestError):
       validate_manifest(self.manifest, str(self.root))
     self.manifest["spec"]["artifacts"][0]["source"]["path"] = "payload.tar.gz"
-    self.manifest["spec"]["services"][0]["components"][0]["profiles"][0]["capabilities"] = ["purge"]
+    self.manifest["spec"]["services"][0]["components"][0]["profiles"][0]["capabilities"] = ["unsupported-future-action"]
     with self.assertRaises(CompileError):
       validate_manifest(self.manifest, str(self.root))
 

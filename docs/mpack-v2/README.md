@@ -26,9 +26,9 @@ Design descriptions are not claims of implemented or tested runtime support.
 The independent [Store design](store-design.md) covers the third-party website and
 backend, to be implemented later in a new repository. Ambari provides file/URL import
 and local package/service management, without Store pages. The [Ambari delivery plan](implementation-plan.md#package-import-and-lifecycle-delivery-plan)
-is authorized implementation in progress, separate from the completed audit remediation.
+records the implemented local scope and the remaining real-environment acceptance gates.
 The user removed the Kyuubi example and its dedicated integration work; current
-examples are HTTP, Redis and multi-service YAML. Historical review records retain
+examples are HTTP, Redis, multi-service YAML and an external PostgreSQL observer. Historical review records retain
 their original scope and do not override the active plan.
 
 Package authors should start with the English [development guide and examples](../../mpack-authoring/README.md)

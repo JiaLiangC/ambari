@@ -177,6 +177,18 @@ describe("package lifecycle integration contracts", () => {
       RequestInfo: expect.objectContaining({command: "DETACH", parameters: {expected_target_incarnation: incarnation}}),
     }));
   });
+  it("exposes declared data actions and only the original action while recovery is pending", () => {
+    const resource = {currentServiceTarget: true, category: "MASTER", state: "MANAGED",
+      customCommands: ["BACKUP", "RESTORE", "UNINSTALL"]} as ManagedResource;
+    const actions = managedActions(resource);
+    expect(actions.has("backup")).toBe(true);
+    expect(actions.has("restore")).toBe(true);
+    expect(actions.has("migrate")).toBe(false);
+    expect(actions.has("upgrade")).toBe(false);
+    expect(managedActions({...resource, customCommands: ["UPGRADE"]}).has("upgrade")).toBe(true);
+    expect([...managedActions({...resource, state: "PENDING", operation: "RESTORE"})]).toEqual(["restore"]);
+    expect(managedActions({...resource, category: "CLIENT", state: "UNREGISTERED"}).has("remove")).toBe(true);
+  });
   it("uploads original file bytes without embedding them in a JSON request", async () => {
     api.request.mockResolvedValue({ data: { resources: [] } });
     const file = new File(["deployable fixture"], "release.mpack");

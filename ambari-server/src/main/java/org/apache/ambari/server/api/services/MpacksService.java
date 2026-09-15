@@ -126,6 +126,7 @@ public class MpacksService extends BaseService {
   @Path("imports")
   @jakarta.ws.rs.Consumes(MediaType.APPLICATION_OCTET_STREAM)
   @Produces(MediaType.APPLICATION_JSON)
+  @ApiOperation(value = "Uploads and registers one authenticated management package release")
   public Response uploadMpack(java.io.InputStream input, @Context HttpHeaders headers, @Context UriInfo ui) {
     if (!org.apache.ambari.server.security.authorization.AuthorizationHelper.isAuthorized(
         org.apache.ambari.server.security.authorization.ResourceType.AMBARI, null,

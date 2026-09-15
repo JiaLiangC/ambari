@@ -81,8 +81,10 @@ silently downgrade to unsigned host-service import.
 ## Host execution and configuration
 
 Generated XML selects one shared `ManifestService`, not package-specific lifecycle
-scripts. Executable operations are install/configure/start/stop/restart plus status/local
-service check. Native target discovery is runtime evidence with scope, time and TTL;
+scripts. Capability-gated operations include native lifecycle, compatible artifact
+upgrade, ownership handoff, separate purge and package data handlers. External database
+CLIENT install/uninstall is explicitly local registration/unregistration; it never
+creates or deletes a remote database. Native target discovery is runtime evidence with scope, time and TTL;
 static profile capability declarations are authoring constraints only. A new runtime
 must define its native identity, evidence, unsupported capabilities and recovery.
 
@@ -91,9 +93,10 @@ Defaults/types/ranges/enums/lengths are enforced again before materialization. T
 allow declared scalar substitutions only. `x-resource` fields inject private data
 paths; users cannot override them. `configurationRef` and `directoryRef` are typed
 arguments, not arbitrary request argv. Host-service/v1 now resolves scoped references
-through existing credentials and Agent encryption; consolidated verification is pending.
-General nested configuration remains unsupported. Configuration changes require restart semantics;
-none/reload/migration effects are rejected. Secret source defaults use references,
+through existing credentials and Agent encryption; the current Java-to-Python fixture is recorded in status.
+General nested configuration remains unsupported. Configuration changes declare
+restart or supported verified reload semantics; data migration is a separate explicit
+package operation, not a configuration side effect. Secret source defaults use references,
 and unsupported execution is rejected before mutation. No secrets or raw
 native stderr should enter persisted plans, diagnostics or task output.
 
@@ -145,7 +148,7 @@ Native commands drain bounded output under deadlines and process-group cancellat
 actual loaded/active-PID/health/inactive postconditions decide outcomes. Local receipt
 loss, foreign target or unsupported migration requires explicit investigation. Keep
 data unless a separately authorized purge explicitly targets the verified retained
-incarnation. The active, unverified purge extension below does not authorize arbitrary
+incarnation. The bounded purge extension below does not authorize arbitrary
 paths or promise data recovery.
 
 For a profile declaring `purge`, stop the service through its normal workflow, run
@@ -166,7 +169,7 @@ releasing the catalog reference; immutable package/task identity remains in the 
 row. Restarting under that incarnation is forbidden. No orphan purge after service
 record deletion, implicit data rollback or shared OS package/user deletion is provided.
 
-### Active artifact upgrade and ownership extensions (unverified)
+### Artifact upgrade and ownership extensions
 
 The selected service repository expresses desired software. The same-DB
 `mpack_target_resource.mpack_id` references latest task intent;
@@ -232,3 +235,18 @@ Stable diagnostic categories include SCHEMA_INVALID, CAPABILITY_UNSUPPORTED,
 PACKAGE_CONTENT_CONFLICT, DEPENDENCY_UNRESOLVED, PLAN_STALE, TARGET_CONFLICT,
 AUTHORIZATION_DENIED and OUTCOME_UNKNOWN. Error text must not echo input secrets.
 Unsupported features and external acceptance limits must stay visible in status.
+
+
+## Current extension transport and evidence
+
+Package handlers use `mpack.handler/v1` as documented in the English authoring guide.
+Only signed artifact references select code; request parameters cannot select a
+program or grant privilege. Non-root execution, bounded I/O and deadlines constrain
+the invocation. Package trust and OS/database permissions remain the security boundary;
+there is no plugin sandbox. Software-specific data formats and database protocols stay
+inside packages. A prepared data precondition digest and stable operation key precede
+apply in the existing Agent receipt. UNKNOWN recovery verifies that original key only.
+Core request/task authorization, incarnation binding and catalog references remain
+unchanged. External observation unregisters without remote mutations and yields
+UNREGISTERED; managed files/containers/workloads retain normal uninstall/purge semantics.
+Consolidated validation results, rather than these declarations, establish evidence.
