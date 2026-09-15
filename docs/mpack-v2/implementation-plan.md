@@ -466,6 +466,24 @@ start, update, uninstall or purge. The ordinary task history and independent ret
 resource projection record the handoff; no new ownership database is created.
 
 
+### P6 unreachable-target abandonment
+
+Provide one explicit server-only recovery operation for a permanently unavailable
+Agent or unrecoverable receipt. It operates on one current `MANAGED` or `PENDING`
+target and carries target key, service/host/component identity, incarnation, latest
+task, expected state, typed confirmation and operator reason. Lock the service before
+the target, require both SERVICE.ADD_DELETE_SERVICES and SERVICE.PURGE_DATA, and reject
+every stale field. Persist actor/time/reason/previous state and the last Agent evidence
+as `mpack-abandonment/v1`; set terminal `ABANDONED` without scheduling native work.
+
+Removal gates accept this state while late reports and new intents do not. Catalog
+deletion may clear package FKs but must retain task binding and abandonment evidence.
+The UI must state that native processes/files/containers/workloads/provider records may
+remain and require the exact target phrase. Focused DAO/API/UI tests cover stale input,
+idempotent retry, terminality, deletion admission and request projection. This is an
+emergency relinquishment of Ambari management, not verified cleanup or DETACH.
+
+
 ### P8 local OCI execution boundary
 
 Implement `oci.container/v1` through the existing signed package Script and host task

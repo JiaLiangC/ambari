@@ -52,7 +52,7 @@ import { AppContext } from "../../store/context";
 import { useAuth } from "../../hooks/useAuth";
 import Spinner from "../../components/Spinner";
 import PackageInstallDialog from "./PackageInstallDialog";
-import { managedActions, PackageLifecycle, ManagedResource } from "./packageLifecycle";
+import { abandonmentConfirmation, managedActions, PackageLifecycle, ManagedResource } from "./packageLifecycle";
 import {
   CatalogMpackVersion,
   catalogKey,
@@ -154,6 +154,9 @@ export default function ManagementPacks() {
   const resourceGeneration = useRef(0);
   const [resourceAfter, setResourceAfter] = useState("");
   const [resourceDetails, setResourceDetails] = useState<ManagedResource>();
+  const [abandonResource, setAbandonResource] = useState<ManagedResource>();
+  const [abandonConfirmation, setAbandonConfirmation] = useState("");
+  const [abandonReason, setAbandonReason] = useState("");
   const [serviceAction, setServiceAction] = useState<{cluster: string; service: string; incarnation: string; action: "start" | "stop" | "uninstall" | "purge" | "upgrade" | "detach" | "adopt" | "backup" | "migrate" | "restore" | "remove"}>();
   const [upgradePackageId, setUpgradePackageId] = useState<number>();
   const [purgeConfirmation, setPurgeConfirmation] = useState("");
@@ -268,6 +271,29 @@ export default function ManagementPacks() {
       setServiceAction(undefined); await loadResources(resourceAfter);
     } catch { setOperationError("The service action was rejected or its response was lost. Inspect existing requests and resource evidence before submitting another action."); }
     finally { setBusy(""); }
+  }
+
+  async function executeAbandonment() {
+    if (!abandonResource || !clusterName || !canInstall || !canPurge || mutationBlocked
+      || resourceCluster !== clusterName || !activeServices.has(abandonResource.serviceName)
+      || !managed.some((resource) => resource.currentServiceTarget
+        && resource.targetKey === abandonResource.targetKey
+        && resource.taskId === abandonResource.taskId
+        && resource.state === abandonResource.state)) return;
+    setBusy("abandon");
+    setOperationError("");
+    try {
+      await PackageLifecycle.abandon(clusterName, abandonResource, abandonConfirmation, abandonReason);
+      setAbandonResource(undefined);
+      setAbandonConfirmation("");
+      setAbandonReason("");
+      toast.success("Target ownership was abandoned. Native resources may still exist and require external cleanup.");
+      await loadResources(resourceAfter);
+    } catch (error) {
+      setOperationError(errorMessage(error, "The target could not be abandoned. Refresh its evidence before retrying."));
+    } finally {
+      setBusy("");
+    }
   }
 
   const activeRegistry = registries.find((registry) => registry.id === selectedRegistryId);
@@ -857,6 +883,11 @@ export default function ManagementPacks() {
               {canInstall && resource.currentServiceTarget && resourceCluster === clusterName && activeServices.has(resource.serviceName) && <><Button disabled={mutationBlocked || Boolean(busy) || !managedActions(resource).has("uninstall")} onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "uninstall"})}>Uninstall resources</Button>
                 <Button variant="outline-danger" disabled={mutationBlocked || Boolean(busy) || !managedActions(resource).has("remove")}
                   onClick={() => setServiceAction({cluster: clusterName, service: resource.serviceName, incarnation: resource.targetIncarnation, action: "remove"})}>Remove service record</Button></>}
+              {canInstall && canPurge && resource.currentServiceTarget && resourceCluster === clusterName
+                && activeServices.has(resource.serviceName) && managedActions(resource).has("abandon")
+                && <Button variant="danger" disabled={mutationBlocked || Boolean(busy)} onClick={() => {
+                  setAbandonConfirmation(""); setAbandonReason(""); setAbandonResource(resource);
+                }}>Abandon target</Button>}
             </ButtonGroup></td>
           </tr>)}</tbody></Table>
         {!managed.length && <p>No managed resource evidence is recorded on this page.</p>}
@@ -892,6 +923,29 @@ export default function ManagementPacks() {
         </> : <>This action applies to all assigned components of the service. Stop the service before uninstalling. Uninstall removes owned runtime definitions while retaining data. Removing a service record requires verified uninstall evidence for every target.</>}</Modal.Body>
         <Modal.Footer><Button variant="secondary" disabled={Boolean(busy)} onClick={() => setServiceAction(undefined)}>Cancel</Button>
           <Button variant={serviceAction?.action === "purge" ? "danger" : "primary"} disabled={Boolean(busy) || (serviceAction && ["purge", "migrate", "restore"].includes(serviceAction.action) && purgeConfirmation !== serviceAction.service) || (serviceAction?.action === "upgrade" && !upgradePackageId)} onClick={() => void executeServiceAction()}>Submit</Button></Modal.Footer>
+      </Modal>
+      <Modal show={abandonResource !== undefined} onHide={() => !busy && setAbandonResource(undefined)}>
+        <Modal.Header closeButton={!busy}><Modal.Title>Abandon managed target</Modal.Title></Modal.Header>
+        <Modal.Body>{abandonResource && <>
+          <Alert variant="danger">
+            This does not contact the Agent or delete native resources. Processes, files, containers,
+            Kubernetes workloads, or external registrations may remain. Ambari will permanently stop
+            managing this target and allow its host component, service record, and package references to be removed.
+          </Alert>
+          <Form.Label>Audit reason</Form.Label>
+          <Form.Control as="textarea" rows={3} maxLength={512} value={abandonReason}
+            onChange={(event) => setAbandonReason(event.target.value)} disabled={Boolean(busy)} />
+          <Form.Label className="mt-3">Type <code>{abandonmentConfirmation(abandonResource)}</code> to confirm</Form.Label>
+          <Form.Control value={abandonConfirmation}
+            onChange={(event) => setAbandonConfirmation(event.target.value)} disabled={Boolean(busy)} />
+        </>}</Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" disabled={Boolean(busy)} onClick={() => setAbandonResource(undefined)}>Cancel</Button>
+          <Button variant="danger" disabled={Boolean(busy) || !abandonResource
+            || abandonConfirmation !== abandonmentConfirmation(abandonResource)
+            || abandonReason.trim().length < 10 || /[\u0000-\u001f\u007f-\u009f]/.test(abandonReason.trim())}
+            onClick={() => void executeAbandonment()}>Abandon target</Button>
+        </Modal.Footer>
       </Modal>
       <Modal show={resourceDetails !== undefined} onHide={() => setResourceDetails(undefined)} size="lg">
         <Modal.Header closeButton><Modal.Title>Resource ownership and retention evidence</Modal.Title></Modal.Header>

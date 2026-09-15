@@ -691,6 +691,41 @@ public class AmbariManagementControllerImpl implements AmbariManagementControlle
   }
 
   @Override
+  @Transactional
+  public Map<String, Object> abandonMpackResource(String clusterName, String targetKey,
+      String serviceName, String hostName, String componentName, String targetIncarnation,
+      Long expectedTaskId, String expectedState, String confirmation, String reason)
+      throws AmbariException, AuthorizationException {
+    Cluster cluster = clusters.getCluster(clusterName);
+    if (!AuthorizationHelper.isAuthorized(ResourceType.CLUSTER, cluster.getResourceId(),
+        RoleAuthorization.SERVICE_PURGE_DATA)
+        || !AuthorizationHelper.isAuthorized(ResourceType.CLUSTER, cluster.getResourceId(),
+            RoleAuthorization.SERVICE_ADD_DELETE_SERVICES)) {
+      throw new AuthorizationException("Resource abandonment requires service deletion and data purge authorization");
+    }
+
+    org.apache.ambari.server.orm.entities.ClusterServiceEntityPK key =
+        new org.apache.ambari.server.orm.entities.ClusterServiceEntityPK();
+    key.setClusterId(cluster.getClusterId());
+    key.setServiceName(serviceName);
+    org.apache.ambari.server.orm.entities.ClusterServiceEntity service = mpackServiceDAO.findByPKForUpdate(key);
+    if (service == null || service.getMpackTargetIncarnation() == null
+        || !service.getMpackTargetIncarnation().equals(targetIncarnation)) {
+      throw new IllegalStateException("The service target changed; refresh before abandoning it");
+    }
+
+    org.apache.ambari.server.orm.entities.MpackTargetResourceEntity resource = mpackResources.abandon(
+        cluster.getClusterId(), targetKey, serviceName, hostName, componentName, targetIncarnation,
+        expectedTaskId, expectedState, confirmation, reason, AuthorizationHelper.getAuthenticatedName());
+    Map<String, Object> result = new java.util.LinkedHashMap<>();
+    result.put("targetKey", resource.getTargetKey());
+    result.put("state", resource.getResourceState());
+    result.put("taskId", resource.getTaskId());
+    result.put("evidence", com.google.gson.JsonParser.parseString(resource.getResourceEvidence()));
+    return result;
+  }
+
+  @Override
   public Set<MpackResponse> getMpacks(){
     Collection<Mpack> mpacks = ambariMetaInfo.getMpacks();
     Set<MpackResponse> responseSet = new HashSet<>();

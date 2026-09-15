@@ -62,11 +62,21 @@ does not imply equivalent runtime semantics.
 | Publisher trust, imports, release selection, configuration/RBAC/tasks and retention | Implemented within bounded contracts | Ambari Server/Agent source integration | Server compiled; 152-test run had one fixture failure, corrected 17-test affected run passed; other 140 tests had passed; final Checkstyle/RAT passed |
 | Runtime lifecycle, handlers, recovery and Java-to-Agent interoperability | Implemented within profile limits | Agent plus controlled adapter boundary | Final 128-test Agent/common run passed, zero skips; fresh Java task and encrypted-secret fixtures consumed |
 | Bounded package handler process and data algorithm example | Implemented | Local process/filesystem integration | Real non-root Python child transport and temporary-file backup/migration/restore tested; no native product database claim |
-| Management Packs install/config/lifecycle/recovery UI and host log navigation | Implemented | Existing UI/API contracts | 26 current Management Packs tests passed; unchanged HostLogs/Routes 19 tests passed in initial batch; React production build passed |
+| Management Packs install/config/lifecycle/recovery UI and host log navigation | Implemented | Existing UI/API contracts | 28 current Management Packs tests passed; unchanged HostLogs/Routes 19 tests passed in initial batch; React production build passed |
+| Unreachable target abandonment | Implemented bounded emergency recovery | Server-only audited state transition plus React confirmation; no Agent/native mutation | Exact target identity/state/task/incarnation, dual permission, terminal `ABANDONED`, late-report protection and deletion admission covered by 15 focused Server tests and the 28-test UI run; live browser/RBAC acceptance remains open |
 | Server instance manager | Implemented existing integration | Local Python tests | 23 tests passed |
 | Disposable native acceptance harness | Implemented harness, actual acceptance not run | Requires real Server/Agent/runtime environment | 3 safety/fault tests passed; no live harness invocation |
 | Standalone authoring distribution | Implemented | Local installed wheel | Wheel built, installed into isolated target, installed-module source validation returned valid=true |
 | Production DB, actual containers/Kubernetes/Redis, native provider and log collector acceptance | Not completed | Real runtime / external platform | Not run: no disposable authorized environment supplied; DDL source/H2/fixtures are not substitutes |
+
+For the issue-1 recovery change, focused Server validation used
+`-Dexec.skip=true -DskipPythonTests -Dtest=MpackDAOTest,ClusterServiceTest`: 15 tests
+passed, RAT passed, and Checkstyle reported zero violations. Management Packs Vitest
+passed 28 tests and the React production build passed with the existing Sass and chunk
+size warnings. An earlier Maven invocation omitted the Python skip switches; its then-current
+14 Java tests passed, then the unrelated broad Python phase exited non-zero, so that
+whole command is not counted as a successful validation run. No live browser, Agent,
+native runtime, production database, or role-assignment acceptance was run.
 
 ### Current Redis and other example walkthroughs
 

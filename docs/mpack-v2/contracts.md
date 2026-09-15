@@ -191,6 +191,33 @@ and catalog-reference release; native resources remain external. After removing 
 service record or catalog definition, this adoption path ends. Foreign units and new
 incarnations cannot be adopted by guessing their names.
 
+### Emergency target abandonment
+
+`POST /clusters/{cluster}/mpack_resources/{targetKey}/abandon` is the recovery path
+when a current Agent/receipt cannot be restored and native state therefore cannot be
+verified. It is not an Agent command, successful UNINSTALL, purge, or ownership handoff.
+The Server requires both `SERVICE.ADD_DELETE_SERVICES` and `SERVICE.PURGE_DATA` on the
+cluster. The request must provide the exact service, host, component, current service
+incarnation, latest task ID, expected `MANAGED` or `PENDING` state, an audit reason of
+10-512 non-control characters, and the literal confirmation
+`ABANDON <service>/<component>@<host>`.
+
+The Server locks the current service row and target row and rejects stale or mismatched
+identity/state. Acceptance changes only the durable target projection to terminal
+`ABANDONED`; no task is scheduled and no native system is contacted. Evidence uses
+`mpackAbandonment.format=mpack-abandonment/v1` and records actor, trimmed reason, UTC
+time, previous state, `nativeResourcesMayRemain=true`, and the last Agent evidence.
+The task binding and package/materialized-package references remain until ordinary
+catalog deletion releases those references. An exact retry is idempotent and preserves
+the first audit. Late task reports and new intents cannot replace `ABANDONED`; a new
+service incarnation is required for future management.
+
+`ABANDONED` satisfies host-component and service-record removal admission and permits
+an otherwise unreferenced catalog package to be deleted. Operators remain responsible
+for externally locating, stopping, deleting, or accepting any native resources. This
+state is deliberately distinct from `DETACHED`, whose native identity and ownership
+handoff were positively verified.
+
 `host.files/v1` is a CLIENT resource contract. It shares the host task journal and
 staging flow, but emits file publication/readiness evidence without a PID, invocation
 or unit. Install/configure verify file hashes/modes and the configuration pointer.

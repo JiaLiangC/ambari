@@ -369,3 +369,11 @@ SERVICE.PURGE_DATA and typed service-name confirmation. Pending data operations 
 verification of the original intent, not automatic apply. This is distinct from the
 Classic Stack upgrade workflow and has no rolling-upgrade parity claim. Tests and
 build results are recorded with the consolidated Mpack validation.
+
+The managed-resource extension also provides a bounded emergency action for a current
+target whose Agent or receipt cannot be recovered. Classic has no per-target retained
+resource view or equivalent action. React therefore intentionally adds a dual-authorized
+typed-confirmation dialog that submits the exact target key, service incarnation, task
+and expected state to the Server. The resulting `ABANDONED` state is an audited terminal
+relinquishment, not evidence of uninstall, purge, or handoff; the dialog states that
+native resources may remain. Focused lifecycle/API/DAO tests are the regression boundary.

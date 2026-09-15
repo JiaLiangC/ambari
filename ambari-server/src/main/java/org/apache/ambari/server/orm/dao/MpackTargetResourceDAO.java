@@ -17,6 +17,7 @@
  */
 package org.apache.ambari.server.orm.dao;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -62,6 +63,9 @@ public class MpackTargetResourceDAO {
         + binding.get("hostName").getAsString() + "\n" + binding.get("role").getAsString());
     MpackTargetResourceEntity resource = manager.find(MpackTargetResourceEntity.class, key, LockModeType.PESSIMISTIC_WRITE);
     boolean created = resource == null;
+    if (!created && "ABANDONED".equals(resource.getResourceState())) {
+      throw new IllegalStateException("Abandoned targets are terminal; use a new service incarnation");
+    }
     boolean purge = "PURGE".equals(binding.get("operation").getAsString());
     boolean purgeStarted = !created && "PURGE".equals(JsonParser.parseString(
         resource.getTaskBinding()).getAsJsonObject().get("operation").getAsString());
@@ -136,8 +140,8 @@ public class MpackTargetResourceDAO {
       }
       for (MpackTargetResourceEntity resource : resources) {
         managers.get().refresh(resource, LockModeType.PESSIMISTIC_WRITE);
-        // A late result for a superseded task never replaces the latest intent.
-        if (!taskId.equals(resource.getTaskId())) {
+        // Neither a superseded task nor a late Agent receipt can replace a terminal abandonment.
+        if (!taskId.equals(resource.getTaskId()) || "ABANDONED".equals(resource.getResourceState())) {
           continue;
         }
         JsonObject binding = JsonParser.parseString(resource.getTaskBinding()).getAsJsonObject();
@@ -274,6 +278,73 @@ public class MpackTargetResourceDAO {
         MpackTargetResourceEntity.class).setParameter("id", clusterId).getResultList();
   }
 
+  /**
+   * Relinquishes Ambari's ownership claim when the native target can no longer be
+   * contacted. This records an operator decision; it does not claim native cleanup.
+   */
+  @Transactional
+  public MpackTargetResourceEntity abandon(Long clusterId, String targetKey, String serviceName,
+      String hostName, String componentName, String targetIncarnation, Long expectedTaskId,
+      String expectedState, String confirmation, String reason, String actor) {
+    if (clusterId == null || clusterId <= 0 || targetKey == null || !targetKey.matches("[a-f0-9]{64}")
+        || expectedTaskId == null || expectedTaskId <= 0 || serviceName == null || hostName == null
+        || componentName == null || targetIncarnation == null
+        || !Set.of("MANAGED", "PENDING").contains(expectedState)) {
+      throw new IllegalArgumentException("A complete current target identity is required");
+    }
+    String expectedConfirmation = "ABANDON " + serviceName + "/" + componentName + "@" + hostName;
+    if (!expectedConfirmation.equals(confirmation)) {
+      throw new IllegalArgumentException("The abandonment confirmation does not match the target");
+    }
+    String auditReason = reason == null ? "" : reason.trim();
+    if (auditReason.length() < 10 || auditReason.length() > 512
+        || auditReason.chars().anyMatch(Character::isISOControl)) {
+      throw new IllegalArgumentException("An abandonment reason between 10 and 512 characters is required");
+    }
+    if (actor == null || actor.isBlank()) {
+      throw new IllegalStateException("An authenticated actor is required for abandonment");
+    }
+
+    MpackTargetResourceEntity resource = managers.get().find(
+        MpackTargetResourceEntity.class, targetKey, LockModeType.PESSIMISTIC_WRITE);
+    if (resource == null || !clusterId.equals(resource.getClusterId())
+        || !serviceName.equals(resource.getServiceName()) || !hostName.equals(resource.getHostName())
+        || !componentName.equals(resource.getComponentName())
+        || !targetIncarnation.equals(resource.getTargetIncarnation())
+        || !expectedTaskId.equals(resource.getTaskId())) {
+      throw new IllegalStateException("The managed target changed; refresh before abandoning it");
+    }
+    if ("ABANDONED".equals(resource.getResourceState())) {
+      JsonObject abandonment = JsonParser.parseString(resource.getResourceEvidence()).getAsJsonObject()
+          .getAsJsonObject("mpackAbandonment");
+      if (abandonment == null || !expectedState.equals(abandonment.get("previousState").getAsString())) {
+        throw new IllegalStateException("The managed target changed; refresh before abandoning it");
+      }
+      return resource;
+    }
+    if (!expectedState.equals(resource.getResourceState())) {
+      throw new IllegalStateException("The managed target state changed; refresh before abandoning it");
+    }
+
+    JsonObject abandonment = new JsonObject();
+    abandonment.addProperty("format", "mpack-abandonment/v1");
+    abandonment.addProperty("actor", actor);
+    abandonment.addProperty("reason", auditReason);
+    abandonment.addProperty("recordedAt", Instant.now().toString());
+    abandonment.addProperty("previousState", resource.getResourceState());
+    abandonment.addProperty("nativeResourcesMayRemain", true);
+    if (resource.getResourceEvidence() == null) {
+      abandonment.add("lastAgentEvidence", com.google.gson.JsonNull.INSTANCE);
+    } else {
+      abandonment.add("lastAgentEvidence", JsonParser.parseString(resource.getResourceEvidence()));
+    }
+    JsonObject evidence = new JsonObject();
+    evidence.add("mpackAbandonment", abandonment);
+    resource.setResourceEvidence(evidence.toString());
+    resource.setResourceState("ABANDONED");
+    return resource;
+  }
+
   @RequiresSession
   public void requireHostRemovable(Long clusterId, String service, String incarnation,
       String host, String component, boolean neverInstalled) {
@@ -284,8 +355,8 @@ public class MpackTargetResourceDAO {
         .setParameter("cluster", clusterId).setParameter("service", service).setParameter("incarnation", incarnation)
         .setParameter("host", host).setParameter("component", component).getResultList();
     if (resources.isEmpty() && !neverInstalled || resources.stream().anyMatch(
-        resource -> !Set.of("UNINSTALLED_RETAINED", "PURGED", "DETACHED", "UNREGISTERED").contains(resource.getResourceState()))) {
-      throw new IllegalStateException("Verified UNINSTALL or DETACH evidence is required before removing this host component");
+        resource -> !Set.of("UNINSTALLED_RETAINED", "PURGED", "DETACHED", "UNREGISTERED", "ABANDONED").contains(resource.getResourceState()))) {
+      throw new IllegalStateException("Verified cleanup, handoff, or explicit abandonment is required before removing this host component");
     }
   }
 
@@ -294,9 +365,9 @@ public class MpackTargetResourceDAO {
     Long count = managers.get().createQuery("SELECT COUNT(r) FROM MpackTargetResourceEntity r "
         + "WHERE r.clusterId = :cluster AND r.serviceName = :service AND r.resourceState NOT IN :states", Long.class)
         .setParameter("cluster", clusterId).setParameter("service", serviceName)
-        .setParameter("states", Set.of("UNINSTALLED_RETAINED", "PURGED", "DETACHED", "UNREGISTERED")).getSingleResult();
+        .setParameter("states", Set.of("UNINSTALLED_RETAINED", "PURGED", "DETACHED", "UNREGISTERED", "ABANDONED")).getSingleResult();
     if (count != 0) {
-      throw new IllegalStateException("Run and verify UNINSTALL or DETACH for every managed target before deleting the service");
+      throw new IllegalStateException("Verify cleanup or explicitly abandon every managed target before deleting the service");
     }
   }
 

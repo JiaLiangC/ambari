@@ -17,7 +17,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { managedActions, ManagedResource, PackageLifecycle, packageServices } from "./packageLifecycle";
+import { abandonmentConfirmation, managedActions, ManagedResource, PackageLifecycle, packageServices } from "./packageLifecycle";
 import MpackApi from "../../api/mpacksApi";
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn(), request: vi.fn() }));
@@ -161,11 +161,12 @@ describe("package lifecycle integration contracts", () => {
   it("limits pending handoff and client actions using server component metadata", () => {
     const resource = {currentServiceTarget: true, category: "MASTER", state: "PENDING", operation: "DETACH",
       customCommands: ["DETACH", "ADOPT", "UNINSTALL", "PURGE"]} as ManagedResource;
-    expect([...managedActions(resource)]).toEqual(["detach"]);
+    expect([...managedActions(resource)]).toEqual(["detach", "abandon"]);
     expect([...managedActions({...resource, state: "DETACHED"})]).toEqual(["remove", "adopt"]);
+    expect([...managedActions({...resource, state: "ABANDONED"})]).toEqual(["remove"]);
     expect([...managedActions({...resource, currentServiceTarget: false})]).toEqual([]);
     expect([...managedActions({...resource, category: "CLIENT", state: "MANAGED", operation: "INSTALL", customCommands: ["UNINSTALL"]})])
-      .toEqual(["uninstall"]);
+      .toEqual(["uninstall", "abandon"]);
   });
   it("submits ownership handoff through the same incarnation-pinned custom request", async () => {
     api.get.mockImplementation(async (url: string) => ({data: url.endsWith("/components")
@@ -177,6 +178,37 @@ describe("package lifecycle integration contracts", () => {
       RequestInfo: expect.objectContaining({command: "DETACH", parameters: {expected_target_incarnation: incarnation}}),
     }));
   });
+  it("abandons one exact target with optimistic preconditions and an audit reason", async () => {
+    const resource = {
+      targetKey: "a".repeat(64), serviceName: "HTTP_ECHO", hostName: "host one",
+      componentName: "HTTP_ECHO_SERVER", packageId: 43, taskId: 301, state: "PENDING",
+      targetIncarnation: "00000000-0000-0000-0000-000000000001", currentServiceTarget: true,
+      operation: "UNINSTALL", customCommands: ["UNINSTALL"],
+    } as ManagedResource;
+    const confirmation = abandonmentConfirmation(resource);
+    await PackageLifecycle.abandon("cluster one", resource, confirmation, "Agent host was retired");
+    expect(api.post).toHaveBeenCalledWith(
+      `/clusters/cluster%20one/mpack_resources/${"a".repeat(64)}/abandon`,
+      {MpackResourceAbandonment: {
+        serviceName: "HTTP_ECHO", hostName: "host one", componentName: "HTTP_ECHO_SERVER",
+        targetIncarnation: "00000000-0000-0000-0000-000000000001", taskId: 301,
+        expectedState: "PENDING", confirmation, reason: "Agent host was retired",
+      }},
+    );
+  });
+  it("rejects abandonment when identity, state, confirmation, or reason is stale", async () => {
+    const resource = {
+      targetKey: "a".repeat(64), serviceName: "HTTP_ECHO", hostName: "host.example",
+      componentName: "HTTP_ECHO_SERVER", packageId: 43, taskId: 301, state: "DETACHED",
+      targetIncarnation: "00000000-0000-0000-0000-000000000001", currentServiceTarget: true,
+      operation: "DETACH",
+    } as ManagedResource;
+    await expect(PackageLifecycle.abandon("cluster", resource,
+      abandonmentConfirmation(resource), "Agent host was retired")).rejects.toThrow("current target");
+    await expect(PackageLifecycle.abandon("cluster", {...resource, state: "MANAGED"},
+      "ABANDON wrong", "too short")).rejects.toThrow("current target");
+    expect(api.post).not.toHaveBeenCalled();
+  });
   it("exposes declared data actions and only the original action while recovery is pending", () => {
     const resource = {currentServiceTarget: true, category: "MASTER", state: "MANAGED",
       customCommands: ["BACKUP", "RESTORE", "UNINSTALL"]} as ManagedResource;
@@ -186,7 +218,7 @@ describe("package lifecycle integration contracts", () => {
     expect(actions.has("migrate")).toBe(false);
     expect(actions.has("upgrade")).toBe(false);
     expect(managedActions({...resource, customCommands: ["UPGRADE"]}).has("upgrade")).toBe(true);
-    expect([...managedActions({...resource, state: "PENDING", operation: "RESTORE"})]).toEqual(["restore"]);
+    expect([...managedActions({...resource, state: "PENDING", operation: "RESTORE"})]).toEqual(["restore", "abandon"]);
     expect(managedActions({...resource, category: "CLIENT", state: "UNREGISTERED"}).has("remove")).toBe(true);
   });
   it("uploads original file bytes without embedding them in a JSON request", async () => {

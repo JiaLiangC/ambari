@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
+import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
@@ -44,6 +45,7 @@ import org.apache.ambari.server.ClusterNotFoundException;
 import org.apache.ambari.server.agent.stomp.PrometheusTargetDiscovery;
 import org.apache.ambari.server.api.resources.ResourceInstance;
 import org.apache.ambari.server.api.services.parsers.BodyParseException;
+import org.apache.ambari.server.controller.AmbariManagementController;
 import org.apache.ambari.server.controller.AmbariServer;
 import org.apache.ambari.server.controller.ClusterArtifactResponse;
 import org.apache.ambari.server.controller.ClusterResponse.ClusterResponseWrapper;
@@ -62,6 +64,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -126,12 +129,78 @@ public class ClusterService extends BaseService {
       @jakarta.ws.rs.QueryParam("after") @jakarta.ws.rs.DefaultValue("") String after) {
     try {
       return Response.ok(gson.toJson(java.util.Map.of("items",
-          AmbariServer.getController().getMpackResources(clusterName, after)))).build();
+          getManagementController().getMpackResources(clusterName, after)))).build();
     } catch (org.apache.ambari.server.security.authorization.AuthorizationException denied) {
       return Response.status(Response.Status.FORBIDDEN).entity("{\"message\":\"Resource access is not authorized\"}").build();
     } catch (org.apache.ambari.server.AmbariException | IllegalArgumentException invalid) {
       return Response.status(Response.Status.BAD_REQUEST).entity("{\"message\":\"Resource query could not be completed\"}").build();
     }
+  }
+
+  @POST
+  @Path("{clusterName}/mpack_resources/{targetKey}/abandon")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  @ApiOperation(value = "Explicitly abandons an unreachable managed package target without native cleanup")
+  public Response abandonMpackResource(String body, @PathParam("clusterName") String clusterName,
+      @PathParam("targetKey") String targetKey) {
+    String serviceName;
+    String hostName;
+    String componentName;
+    String targetIncarnation;
+    Long taskId;
+    String expectedState;
+    String confirmation;
+    String reason;
+    try {
+      JsonObject root = JsonParser.parseString(body).getAsJsonObject();
+      JsonObject request = root.getAsJsonObject("MpackResourceAbandonment");
+      if (request == null || !request.has("taskId")) {
+        throw new IllegalArgumentException("Missing abandonment request");
+      }
+      serviceName = requiredString(request, "serviceName");
+      hostName = requiredString(request, "hostName");
+      componentName = requiredString(request, "componentName");
+      targetIncarnation = requiredString(request, "targetIncarnation");
+      taskId = request.get("taskId").getAsLong();
+      expectedState = requiredString(request, "expectedState");
+      confirmation = requiredString(request, "confirmation");
+      reason = requiredString(request, "reason");
+    } catch (RuntimeException invalid) {
+      return Response.status(Response.Status.BAD_REQUEST)
+          .entity("{\"message\":\"Resource abandonment request is invalid\"}").build();
+    }
+
+    try {
+      Map<String, Object> result = getManagementController().abandonMpackResource(
+          clusterName, targetKey, serviceName, hostName, componentName, targetIncarnation,
+          taskId, expectedState, confirmation, reason);
+      return Response.ok(gson.toJson(java.util.Map.of("item", result))).build();
+    } catch (org.apache.ambari.server.security.authorization.AuthorizationException denied) {
+      return Response.status(Response.Status.FORBIDDEN)
+          .entity("{\"message\":\"Resource abandonment is not authorized\"}").build();
+    } catch (IllegalStateException conflict) {
+      return Response.status(Response.Status.CONFLICT)
+          .entity("{\"message\":\"Resource abandonment preconditions did not match\"}").build();
+    } catch (org.apache.ambari.server.AmbariException | IllegalArgumentException invalid) {
+      return Response.status(Response.Status.BAD_REQUEST)
+          .entity("{\"message\":\"Resource abandonment request is invalid\"}").build();
+    }
+  }
+
+  private String requiredString(JsonObject request, String name) {
+    if (!request.has(name) || request.get(name).isJsonNull()) {
+      throw new IllegalArgumentException("Missing " + name);
+    }
+    String value = request.get(name).getAsString();
+    if (value.isEmpty()) {
+      throw new IllegalArgumentException("Empty " + name);
+    }
+    return value;
+  }
+
+  protected AmbariManagementController getManagementController() {
+    return AmbariServer.getController();
   }
 
   // ----- ClusterService ----------------------------------------------------

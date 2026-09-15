@@ -105,7 +105,7 @@ supply approval, fencing or execution trust markers.
 | Desired configuration | Existing Ambari configurations and tags | Existing configuration API; tasks/Agent consume | Existing versioned publication; typed host validation before local staging |
 | Operation intent/result | Existing request/stage/task and command persistence | Existing scheduler; Agent reports | Existing task IDs; no second operation DB or autonomous recovery loop |
 | Applied configuration/native evidence | Root-owned Agent deployment `receipt.json`, config generations | Shared host Script; subsequent tasks/status read | Atomic fsync/rename, local flock, task ordering and expected receipt hash |
-| Retained target and confirmed release | `mpack_target_resource` in existing Ambari DB | Task intent writer and authenticated Agent report projection; catalog/UI read | Latest-task match, native postconditions, separate selected/latest-intent/materialized package references; survives service removal |
+| Retained target and confirmed release | `mpack_target_resource` in existing Ambari DB | Task intent writer, authenticated Agent report projection, and explicitly authorized abandonment; catalog/UI read | Latest-task match, native postconditions, separate selected/latest-intent/materialized package references; survives service removal; abandonment preserves the last evidence and records that native resources may remain |
 | Native resource state | systemd invocation, file publication, OCI engine/container, Kubernetes namespace/Deployment UID, external provider identity | Native runtime/provider; Agent observes | Runtime-specific preconditions and observations; exit code and resource name alone are insufficient |
 | Dependency binding | External shared platform | Shared coordinator; future Mpack client consumes | Platform UUID/incarnation/snapshot/revision/authorization/fence; no fabricated readiness |
 | Catalog staging/quarantine | Filesystem projection, not authority | MpackManager startup/registration/removal | DB decides availability; quarantine retained for operator inspection |
@@ -115,7 +115,11 @@ recreated name from silently inheriting old units/data. One local receipt per bo
 component is necessary to distinguish previous invocation/configuration from desired
 state after a lost response; it contains no permission decisions or competing task
 history. Losing this receipt requires explicit investigation rather than adoption
-by name. Server DB loss requires existing Ambari database recovery.
+by name. If the Agent or receipt cannot be recovered, an operator with both service
+deletion and purge-data permission may explicitly abandon that exact current target.
+This terminal audit decision never asserts native cleanup; it preserves task/package
+identity and last evidence, and warns that resources may still exist. Server DB loss
+requires existing Ambari database recovery.
 
 ## Reliability and failure ownership
 
@@ -276,6 +280,15 @@ if it cascades with service deletion, add a narrowly scoped retained-resource to
 table in the same Ambari DB. This is retention evidence, not another deployment/workflow
 authority. Keep necessary package/recovery references until retention obligations are
 discharged. Missing ownership proof requires investigation, never name-based deletion.
+
+When investigation establishes that a target cannot be contacted or reconciled, the
+bounded emergency exit is server-side abandonment of one exact target. The request is
+pinned to target key, current service incarnation, host, component, latest task and
+expected `MANAGED`/`PENDING` state under the service and target row locks. It requires
+both `SERVICE.ADD_DELETE_SERVICES` and `SERVICE.PURGE_DATA`, a typed target confirmation
+and a durable reason. `ABANDONED` is terminal: late Agent reports and later task intents
+cannot revive it. It permits host-component/service/catalog record removal while making
+no claim that native resources were stopped, deleted or handed to another owner.
 
 Detach releases management without native deletion; adoption validates identity and
 ownership explicitly. Purge targets retained resources with a separately audited

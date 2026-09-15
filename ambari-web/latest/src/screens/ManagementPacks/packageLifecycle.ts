@@ -90,10 +90,11 @@ export function managedActions(resource: ManagedResource): Set<string> {
   const actions = new Set<string>();
   if (!resource.currentServiceTarget) return actions;
   const supports = (command: string) => resource.customCommands?.includes(command);
-  if (["UNINSTALLED_RETAINED", "PURGED", "DETACHED", "UNREGISTERED"].includes(resource.state)) actions.add("remove");
-  if (resource.state === "PURGED") return actions;
+  if (["UNINSTALLED_RETAINED", "PURGED", "DETACHED", "UNREGISTERED", "ABANDONED"].includes(resource.state)) actions.add("remove");
+  if (["PURGED", "ABANDONED"].includes(resource.state)) return actions;
   if (resource.state === "PENDING" && ["PURGE", "DETACH", "ADOPT", "BACKUP", "MIGRATE", "RESTORE"].includes(resource.operation || "")) {
     if (supports(resource.operation!)) actions.add(resource.operation!.toLowerCase());
+    actions.add("abandon");
     return actions;
   }
   if (resource.state === "DETACHED") {
@@ -110,7 +111,12 @@ export function managedActions(resource: ManagedResource): Set<string> {
   if (supports("UNINSTALL")) actions.add("uninstall");
   if (supports("PURGE") && resource.state === "UNINSTALLED_RETAINED") actions.add("purge");
   if (supports("DETACH") && resource.state === "MANAGED") actions.add("detach");
+  if (["MANAGED", "PENDING"].includes(resource.state)) actions.add("abandon");
   return actions;
+}
+
+export function abandonmentConfirmation(resource: ManagedResource): string {
+  return `ABANDON ${resource.serviceName}/${resource.componentName}@${resource.hostName}`;
 }
 
 export const PackageLifecycle = {
@@ -133,6 +139,29 @@ export const PackageLifecycle = {
   async resources(cluster: string, after = ""): Promise<ManagedResource[]> {
     const response = await ambariApi.get(`/clusters/${path(cluster)}/mpack_resources`, { params: { after } });
     return rows(object(response.data).items) as ManagedResource[];
+  },
+  async abandon(cluster: string, resource: ManagedResource, confirmation: string, reason: string) {
+    const auditReason = reason.trim();
+    if (!resource.currentServiceTarget || !/^[a-f0-9]{64}$/.test(resource.targetKey)
+      || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(resource.targetIncarnation)
+      || !Number.isSafeInteger(resource.taskId) || resource.taskId <= 0
+      || !["MANAGED", "PENDING"].includes(resource.state)
+      || confirmation !== abandonmentConfirmation(resource)
+      || auditReason.length < 10 || auditReason.length > 512 || /[\u0000-\u001f\u007f-\u009f]/.test(auditReason)) {
+      throw new Error("A current target, exact confirmation, and audit reason are required.");
+    }
+    return (await ambariApi.post(`/clusters/${path(cluster)}/mpack_resources/${path(resource.targetKey)}/abandon`, {
+      MpackResourceAbandonment: {
+        serviceName: resource.serviceName,
+        hostName: resource.hostName,
+        componentName: resource.componentName,
+        targetIncarnation: resource.targetIncarnation,
+        taskId: resource.taskId,
+        expectedState: resource.state,
+        confirmation,
+        reason: auditReason,
+      },
+    })).data;
   },
   async install(cluster: string, repository: number, service: PackageService,
     assignments: Record<string, string[]>, configurations: PackageService["defaults"]) {

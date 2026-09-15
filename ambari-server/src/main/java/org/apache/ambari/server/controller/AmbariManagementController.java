@@ -1041,6 +1041,11 @@ public interface AmbariManagementController {
 
   List<Map<String, Object>> getMpackResources(String clusterName, String after) throws AmbariException, org.apache.ambari.server.security.authorization.AuthorizationException;
 
+  Map<String, Object> abandonMpackResource(String clusterName, String targetKey, String serviceName,
+      String hostName, String componentName, String targetIncarnation, Long expectedTaskId,
+      String expectedState, String confirmation, String reason)
+      throws AmbariException, org.apache.ambari.server.security.authorization.AuthorizationException;
+
   /***
    * Fetch an mpack based on id
    * @param mpackId

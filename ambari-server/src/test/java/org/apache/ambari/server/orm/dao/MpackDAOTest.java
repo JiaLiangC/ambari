@@ -426,6 +426,88 @@ public class MpackDAOTest {
   }
 
   @Test
+  public void testAbandonmentIsAuditedTerminalAndReleasesDeletionGates() {
+    MpackEntity pack = release("abandon", "d".repeat(64));
+    MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
+    com.google.gson.JsonObject binding = releaseBinding(pack, "lost-agent.example", "STOP");
+    resources.recordIntent(binding.toString(), 400L);
+    String report = stoppedReport(binding, 400L, pack.getContentDigest());
+    resources.recordReport(400L, report);
+    org.apache.ambari.server.orm.entities.MpackTargetResourceEntity before = resources.findByCluster(9L).get(0);
+    String confirmation = "ABANDON HTTP_ECHO/HTTP_ECHO_SERVER@lost-agent.example";
+
+    org.junit.Assert.assertThrows(IllegalArgumentException.class, () -> resources.abandon(9L,
+        before.getTargetKey(), "HTTP_ECHO", "lost-agent.example", "HTTP_ECHO_SERVER",
+        before.getTargetIncarnation(), 400L, "MANAGED", "wrong", "Agent host was retired", "admin"));
+    org.junit.Assert.assertThrows(IllegalStateException.class, () -> resources.abandon(9L,
+        before.getTargetKey(), "HTTP_ECHO", "lost-agent.example", "HTTP_ECHO_SERVER",
+        before.getTargetIncarnation(), 401L, "MANAGED", confirmation, "Agent host was retired", "admin"));
+
+    org.apache.ambari.server.orm.entities.MpackTargetResourceEntity abandoned = resources.abandon(9L,
+        before.getTargetKey(), "HTTP_ECHO", "lost-agent.example", "HTTP_ECHO_SERVER",
+        before.getTargetIncarnation(), 400L, "MANAGED", confirmation, " Agent host was retired ", "admin");
+    assertEquals("ABANDONED", abandoned.getResourceState());
+    com.google.gson.JsonObject audit = com.google.gson.JsonParser.parseString(abandoned.getResourceEvidence())
+        .getAsJsonObject().getAsJsonObject("mpackAbandonment");
+    assertEquals("mpack-abandonment/v1", audit.get("format").getAsString());
+    assertEquals("admin", audit.get("actor").getAsString());
+    assertEquals("Agent host was retired", audit.get("reason").getAsString());
+    assertEquals("MANAGED", audit.get("previousState").getAsString());
+    org.junit.Assert.assertTrue(audit.get("nativeResourcesMayRemain").getAsBoolean());
+    assertNotNull(audit.getAsJsonObject("lastAgentEvidence").getAsJsonObject("mpackOperation"));
+
+    resources.requireHostRemovable(9L, "HTTP_ECHO", before.getTargetIncarnation(),
+        "lost-agent.example", "HTTP_ECHO_SERVER", false);
+    resources.requireRemovable(9L, "HTTP_ECHO");
+    resources.recordReport(400L, report);
+    assertEquals("ABANDONED", resources.findByCluster(9L).get(0).getResourceState());
+    binding.addProperty("operation", "START");
+    org.junit.Assert.assertThrows(IllegalStateException.class,
+        () -> resources.recordIntent(binding.toString(), 401L));
+
+    // A retry after a lost HTTP response preserves the first operator's audit record.
+    resources.abandon(9L, before.getTargetKey(), "HTTP_ECHO", "lost-agent.example",
+        "HTTP_ECHO_SERVER", before.getTargetIncarnation(), 400L, "MANAGED", confirmation,
+        "A different retry reason", "another-admin");
+    com.google.gson.JsonObject retriedAudit = com.google.gson.JsonParser.parseString(
+        resources.findByCluster(9L).get(0).getResourceEvidence()).getAsJsonObject()
+        .getAsJsonObject("mpackAbandonment");
+    assertEquals("admin", retriedAudit.get("actor").getAsString());
+    assertEquals("Agent host was retired", retriedAudit.get("reason").getAsString());
+
+    m_dao.removeCatalog(pack.getId());
+    org.apache.ambari.server.orm.entities.MpackTargetResourceEntity retained = resources.findByCluster(9L).get(0);
+    assertEquals("ABANDONED", retained.getResourceState());
+    org.junit.Assert.assertNull(retained.getMpackId());
+    org.junit.Assert.assertNull(retained.getMaterializedMpackId());
+    assertNotNull(retained.getTaskBinding());
+    assertNotNull(retained.getResourceEvidence());
+  }
+
+  @Test
+  public void testPendingTargetWithoutAgentEvidenceCanBeAbandoned() {
+    MpackEntity pack = release("pending-abandon", "e".repeat(64));
+    MpackTargetResourceDAO resources = m_injector.getInstance(MpackTargetResourceDAO.class);
+    com.google.gson.JsonObject binding = releaseBinding(pack, "unreachable.example", "INSTALL");
+    resources.recordIntent(binding.toString(), 410L);
+    org.apache.ambari.server.orm.entities.MpackTargetResourceEntity pending = resources.findByCluster(9L).get(0);
+
+    resources.abandon(9L, pending.getTargetKey(), "HTTP_ECHO", "unreachable.example",
+        "HTTP_ECHO_SERVER", pending.getTargetIncarnation(), 410L, "PENDING",
+        "ABANDON HTTP_ECHO/HTTP_ECHO_SERVER@unreachable.example",
+        "Agent and receipt are unavailable", "admin");
+
+    org.apache.ambari.server.orm.entities.MpackTargetResourceEntity abandoned = resources.findByCluster(9L).get(0);
+    assertEquals("ABANDONED", abandoned.getResourceState());
+    com.google.gson.JsonObject audit = com.google.gson.JsonParser.parseString(abandoned.getResourceEvidence())
+        .getAsJsonObject().getAsJsonObject("mpackAbandonment");
+    org.junit.Assert.assertTrue(audit.get("lastAgentEvidence").isJsonNull());
+    resources.requireHostRemovable(9L, "HTTP_ECHO", pending.getTargetIncarnation(),
+        "unreachable.example", "HTTP_ECHO_SERVER", false);
+    resources.requireRemovable(9L, "HTTP_ECHO");
+  }
+
+  @Test
   public void testDefaultRepositorySelectionAndDurableUninstallEvidence() throws Exception {
     MpackEntity pack = new MpackEntity();
     pack.setMpackName("RESOURCE_PACKAGE");
