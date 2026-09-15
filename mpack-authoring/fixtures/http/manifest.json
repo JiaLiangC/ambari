@@ -14,13 +14,6 @@
           "kind": "file",
           "path": "server.py"
         }
-      },
-      {
-        "id": "data-handler",
-        "source": {
-          "kind": "file",
-          "path": "data-handler.py"
-        }
       }
     ],
     "services": [
@@ -30,8 +23,7 @@
           {
             "name": "http",
             "schema": "config.schema.json",
-            "template": "config.conf.j2",
-            "changeEffect": "reload"
+            "template": "config.conf.j2"
           }
         ],
         "components": [
@@ -51,11 +43,7 @@
                   "observe",
                   "restart",
                   "uninstall",
-                  "reload",
-                  "purge",
-                  "backup",
-                  "migrate",
-                  "restore"
+                  "purge"
                 ],
                 "resources": {
                   "packages": [
@@ -97,28 +85,13 @@
                   "unit": {
                     "user": "http",
                     "workingDirectory": "data"
-                  },
-                  "reloadSignal": "HUP"
+                  }
                 },
                 "health": {
                   "kind": "http",
                   "portRef": "http.port",
                   "path": "/health",
                   "timeoutSeconds": 5
-                },
-                "dataOperations": {
-                  "backup": {
-                    "artifactRef": "data-handler",
-                    "timeoutSeconds": 30
-                  },
-                  "migrate": {
-                    "artifactRef": "data-handler",
-                    "timeoutSeconds": 30
-                  },
-                  "restore": {
-                    "artifactRef": "data-handler",
-                    "timeoutSeconds": 30
-                  }
                 }
               }
             ]

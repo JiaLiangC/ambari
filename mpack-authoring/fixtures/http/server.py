@@ -21,7 +21,6 @@ import configparser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 import re
-import signal
 
 
 def configuration(path):
@@ -56,14 +55,4 @@ if __name__ == "__main__":
   server = HTTPServer(("127.0.0.1", values["port"]), HealthHandler)
   server.configuration = values
 
-  def reload_configuration(*_):
-    try:
-      pending = configuration(args.config)
-      if pending["port"] != server.server_port:
-        return  # Listener changes require a restart; never acknowledge them.
-      server.configuration = pending
-    except (OSError, ValueError, KeyError, configparser.Error):
-      return  # Keep serving the previous validated generation.
-
-  signal.signal(signal.SIGHUP, reload_configuration)
   server.serve_forever()

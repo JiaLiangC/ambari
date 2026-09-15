@@ -22,8 +22,7 @@
         "configurations": [
           {
             "name": "database",
-            "schema": "config.schema.json",
-            "changeEffect": "restart"
+            "schema": "config.schema.json"
           }
         ],
         "components": [

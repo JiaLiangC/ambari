@@ -22,11 +22,15 @@ import os
 import time
 
 from resource_management.libraries.functions.mpack_host import HostDeployment, HostError, _hash
+from resource_management.libraries.functions.mpack_evidence import lifecycle_evidence
 
 
 class FilesDeployment(HostDeployment):
   runtime_profile = "host.files/v1"
   operations = frozenset({"install", "configure", "uninstall", "purge", "observe"})
+
+  def _initialize_runtime(self, units):
+    pass  # File publication has no native service unit.
 
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
@@ -91,10 +95,16 @@ class FilesDeployment(HostDeployment):
             or path.stat().st_mode & 0o777 != evidence["mode"] or _hash(path.read_bytes()) != evidence["sha256"]):
           ready = False
           break
-    return {"kind": self.runtime_profile, "identity": self.identity, "target": str(self.root),
+    publication_absent = not current.exists() and not current.is_symlink()
+    released = (not installed and publication_absent
+      and receipt.get("operation") in ("uninstall", "purge"))
+    disposition = lifecycle_evidence(released, "absent" if released else "managed",
+      "purged" if released and receipt.get("purged") else "retained" if released else "managed",
+      "released" if released else "managed")
+    return dict({"kind": self.runtime_profile, "identity": self.identity, "target": str(self.root),
             "state": "installed" if installed else "absent", "ready": ready,
-            "publicationAbsent": not current.exists() and not current.is_symlink(),
-            "observedAt": time.time(), "publishedConfigGeneration": receipt.get("publishedConfigGeneration")}
+            "publicationAbsent": publication_absent,
+            "observedAt": time.time(), "publishedConfigGeneration": receipt.get("publishedConfigGeneration")}, **disposition)
 
   def verify(self, action, configs):
     observation = self.observe()
@@ -104,6 +114,9 @@ class FilesDeployment(HostDeployment):
       if action != "purge" or set(path.name for path in self.root.iterdir()) <= {"receipt.json", "operation.lock"}:
         return observation
     raise HostError("OUTCOME_UNKNOWN", "Client file publication could not be verified", "UNKNOWN")
+
+  def ready(self, observation):
+    return observation.get("ready", False)
 
   def _uninstall(self, configs, receipt):
     receipt["retainedResources"] = self._retained_resources()

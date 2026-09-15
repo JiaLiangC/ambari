@@ -26,7 +26,8 @@ class ConformanceTest(unittest.TestCase):
   def test_reference_fixtures_are_valid(self):
     directory = os.path.join(os.path.dirname(__file__), "..", "..", "..", "fixtures", "conformance")
     summaries = validate_fixture_directory(os.path.realpath(directory))
-    self.assertEqual(5, len(summaries))
+    self.assertEqual(["cross-cluster-dependency.json", "external-database.json", "http-host.json"],
+                     [item["path"] for item in summaries])
     self.assertTrue(all(item["valid"] for item in summaries))
 
 

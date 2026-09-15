@@ -41,8 +41,7 @@ import urllib.request
 import uuid
 
 
-HOST_OPERATIONS = frozenset({"install", "configure", "start", "stop", "restart", "reload", "upgrade", "detach", "adopt", "uninstall", "purge", "observe", "backup", "migrate", "restore"})
-DATA_OPERATIONS = frozenset({"backup", "migrate", "restore"})
+HOST_OPERATIONS = frozenset({"install", "configure", "start", "stop", "restart", "uninstall", "purge", "observe"})
 
 
 class HostError(Exception):
@@ -187,10 +186,7 @@ class HostDeployment:
     self.root = Path(root) / self.target
     self.runtime_root = Path(runtime_root) / self.target
     self.secret_values = {}
-    self.unit = self.target + ".service"
-    if len(self.unit) > 255:
-      raise HostError("CAPABILITY_UNSUPPORTED", "Service/component names exceed the native unit limit")
-    self.unit_path = Path(units) / self.unit
+    self._initialize_runtime(units)
     self.runner = runner or NativeRunner()
     self.cancel = cancel
     self.provision = provision
@@ -200,6 +196,12 @@ class HostDeployment:
                         for item in self.resources.get("directories", [])}
     if self.service.get("requires"):
       raise HostError("DEPENDENCY_UNRESOLVED", "No shared binding consumer is configured for this host contract")
+
+  def _initialize_runtime(self, units):
+    self.unit = self.target + ".service"
+    if len(self.unit) > 255:
+      raise HostError("CAPABILITY_UNSUPPORTED", "Service/component names exceed the native unit limit")
+    self.unit_path = Path(units) / self.unit
 
   def _source(self, relative):
     candidate = self.payload / relative
@@ -300,6 +302,7 @@ class HostDeployment:
             "capabilities": sorted(set(self.profile["capabilities"]) & HOST_OPERATIONS)}
 
   def observe(self):
+    from resource_management.libraries.functions.mpack_evidence import lifecycle_evidence
     receipt = self._receipt()
     self._owned(receipt)
     code, output = self.runner.run(["/usr/bin/systemctl", "show", self.unit,
@@ -312,13 +315,21 @@ class HostDeployment:
       raise HostError("OUTCOME_UNKNOWN", "Native process identity could not be observed", "UNKNOWN")
     if values["LoadState"] != "not-found" and (values.get("Id") != self.unit or values.get("FragmentPath") != str(self.unit_path)):
       raise HostError("TARGET_CONFLICT", "Native unit identity differs from the bound target")
-    return {"identity": self.identity, "target": self.unit, "observedAt": time.time(),
+    runtime_absent = values["LoadState"] == "not-found" and values.get("ActiveState") == "inactive" and values.get("MainPID", "0") == "0"
+    released = runtime_absent and receipt.get("operation") in ("uninstall", "purge")
+    disposition = lifecycle_evidence(released, "absent" if released else "managed",
+      "purged" if released and receipt.get("purged") else "retained" if released else "managed",
+      "released" if released else "managed")
+    return dict({"identity": self.identity, "target": self.unit, "observedAt": time.time(),
       "receiptState": receipt.get("state"),
       "publishedConfigGeneration": receipt.get("publishedConfigGeneration"),
       "runningConfigGeneration": receipt.get("runningConfigGeneration"),
       "state": values.get("ActiveState", "unknown"), "loadState": values["LoadState"],
       "subState": values.get("SubState"), "pid": values.get("MainPID", "0"),
-      "invocationId": values.get("InvocationID", ""), "job": values.get("Job", "")}
+      "invocationId": values.get("InvocationID", ""), "job": values.get("Job", "")}, **disposition)
+
+  def ready(self, observation):
+    return observation["state"] == "active" and int(observation["pid"]) > 0 and self._healthy()
 
   def _receipt(self):
     path = self.root / "receipt.json"
@@ -333,29 +344,8 @@ class HostDeployment:
     _atomic(self.root / "receipt.json", json.dumps(receipt, sort_keys=True).encode())
 
   def _release_layout(self):
-    return _json_hash({"resources": {key: value for key, value in self.resources.items()
-                                   if key not in ("command", "reloadSignal")},
+    return _json_hash({"resources": {key: value for key, value in self.resources.items() if key != "command"},
                        "configurations": sorted(config["name"] for config in self.service.get("configurations", []))})
-
-  def _check_upgrade(self, receipt, current, generation):
-    policy = self.profile.get("upgradePolicy", {})
-    previous = receipt.get("materializedPackage", {})
-    release = self.descriptor["package"]
-    source = receipt.get("materializedPackageDigest")
-    if source == self.package_digest:
-      completed = receipt.get("lastUpgrade", {})
-      if completed.get("toDigest") != self.package_digest or receipt.get("publishedConfigGeneration") != generation:
-        raise HostError("TARGET_CONFLICT", "No matching artifact update requires recovery")
-      source = completed.get("fromDigest")
-    if (policy.get("configuration") != "compatible" or policy.get("data") != "unchanged"
-        or source not in policy.get("fromPackageDigests", [])
-        or not previous.get("name") or previous.get("name") != release.get("name")
-        or receipt.get("resourceLayout") != self._release_layout()
-        or not any(isinstance(argument, dict) and "artifactRef" in argument
-                   for argument in self.resources.get("command", {}).get("arguments", []))):
-      raise HostError("CAPABILITY_UNSUPPORTED", "Artifact update requires declared compatibility and unchanged owned resources")
-    if current["state"] != "inactive" or current["pid"] != "0" or current["loadState"] != "loaded":
-      raise HostError("TARGET_CONFLICT", "Stop the installed target before updating its artifacts")
 
   def _installed_file_digest(self, generation):
     paths = ["releases/" + self.package_digest + "/" + item["path"] for item in self.descriptor["artifacts"]]
@@ -368,19 +358,6 @@ class HostDeployment:
         raise HostError("TARGET_CONFLICT", "Published file identity has changed")
       inventory[relative] = {"sha256": _hash(path.read_bytes()), "mode": path.stat().st_mode & 0o777}
     return _json_hash(inventory)
-
-  def _check_handoff(self, action, receipt, current, configs, generation):
-    if (action == "adopt" and not receipt.get("detached") and receipt.get("operation") != "adopt"
-        or receipt.get("materializedPackageDigest") != self.package_digest
-        or receipt.get("resourceLayout") != self._release_layout()
-        or receipt.get("publishedConfigGeneration") != generation
-        or not receipt.get("publicationDigest")
-        or (self.task_binding or {}).get("secretGenerations")
-        or receipt.get("publicationDigest") != self._installed_file_digest(generation)
-        or receipt.get("unitHash") != _hash(self._unit_content(configs, generation))):
-      raise HostError("TARGET_CONFLICT", "Ownership handoff requires the unchanged verified publication and existing detached identity")
-    if current["state"] != "inactive" or current["pid"] != "0" or current["loadState"] != "loaded":
-      raise HostError("TARGET_CONFLICT", "Stop the verified target before handing off ownership")
 
   def _owned(self, receipt):
     if self.unit_path.exists() or self.unit_path.is_symlink():
@@ -510,15 +487,9 @@ class HostDeployment:
       environment += "Environment=" + quote(name + "=" + self._resolve(value, configs, generation)) + "\n"
     if any(isinstance(value, dict) and "secretRef" in value for value in command.get("environment", {}).values()):
       environment += "EnvironmentFile=" + quote(str(self.root / "config" / "current" / "environment")) + "\n"
-    reload_command = ""
-    if "reload" in self.profile["capabilities"]:
-      reload_signal = self.resources.get("reloadSignal")
-      if reload_signal not in ("HUP", "USR1", "USR2"):
-        raise HostError("SCHEMA_INVALID", "Reload requires an explicit supported signal")
-      reload_command = "\nExecReload=/bin/kill -" + reload_signal + " $MAINPID"
     return ("[Unit]\nDescription=Ambari managed service\n[Service]\nType=simple\n" + environment + "User=" + user + group_line
       + "\nWorkingDirectory=" + str(directory) + "\nExecStart=" + " ".join(map(quote, argv))
-      + reload_command + "\nRestart=no\n[Install]\nWantedBy=multi-user.target\n").encode()
+      + "\nRestart=no\n[Install]\nWantedBy=multi-user.target\n").encode()
 
   def _native(self, action):
     argv = ["/usr/bin/systemctl", action]
@@ -593,17 +564,6 @@ class HostDeployment:
     return False
 
   def verify(self, action, configs):
-    if action in DATA_OPERATIONS:
-      receipt = self._receipt()
-      evidence = receipt.get("dataOperation", {})
-      if evidence.get("operation") != action or evidence.get("state") != "SUCCEEDED":
-        raise HostError("OUTCOME_UNKNOWN", "Package data operation is not verified", "UNKNOWN")
-      self._verify_data_handler(action, configs, evidence)
-      observation = self.observe()
-      if observation["state"] != "inactive" or observation["pid"] != "0":
-        raise HostError("OUTCOME_UNKNOWN", "Data handler changed the stopped target", "UNKNOWN")
-      observation["dataOperation"] = evidence
-      return observation
     deadline = time.monotonic() + 30
     while True:
       observation = self.observe()
@@ -612,24 +572,12 @@ class HostDeployment:
       if action == "purge" and observation["loadState"] == "not-found" and observation["state"] == "inactive" and observation["pid"] == "0":
         if set(path.name for path in self.root.iterdir()) <= {"receipt.json", "operation.lock"}:
           return observation
-      if action in ("detach", "adopt") and observation["loadState"] == "loaded" and observation["state"] == "inactive" and observation["pid"] == "0":
-        if self._receipt().get("detached", False) == (action == "detach"):
-          return observation
       if action == "stop" and observation["state"] == "inactive" and observation["pid"] == "0":
         return observation
       if action in ("start", "restart") and observation["state"] == "active" and int(observation["pid"]) > 0 and self._healthy(configs):
         return observation
-      if action == "reload" and observation["state"] == "active" and int(observation["pid"]) > 0:
-        before = self._receipt().get("beforeObservation", {})
-        if not before.get("invocationId") or observation["invocationId"] != before["invocationId"]:
-          raise HostError("OUTCOME_UNKNOWN", "Process changed during reload", "UNKNOWN")
-        if self._healthy(configs, self._generation(configs)):
-          return observation
       if action in ("install", "configure") and observation["loadState"] == "loaded":
         return observation
-      if action == "upgrade" and observation["loadState"] == "loaded" and observation["state"] == "inactive" and observation["pid"] == "0":
-        if self._receipt().get("publishedConfigGeneration") == self._generation(configs):
-          return observation
       if self.cancel is not None and self.cancel.is_set():
         raise HostError("OUTCOME_UNKNOWN", "Verification canceled", "UNKNOWN")
       if time.monotonic() >= deadline:
@@ -659,41 +607,6 @@ class HostDeployment:
         or metadata.get("mpack_content_digest") != self.package_digest):
       raise HostError("PLAN_STALE", "Service metadata superseded the persisted task binding")
 
-  def _verify_data_handler(self, action, configs, evidence):
-    from resource_management.libraries.functions.mpack_handler import PackageHandler
-    handler = PackageHandler(self, self.profile["dataOperations"][action], self.resources["unit"]["user"])
-    result = handler.call("verify", action, evidence["key"], configs, evidence["preconditionDigest"])
-    if result["result"] != "SUCCEEDED":
-      raise HostError("OUTCOME_UNKNOWN", "Package data operation needs durable-result reconciliation", "UNKNOWN")
-    return result
-
-  def _data_operation(self, action, configs, receipt, interrupted=False):
-    from resource_management.libraries.functions.mpack_handler import PackageHandler
-    handler = PackageHandler(self, self.profile["dataOperations"][action], self.resources["unit"]["user"])
-    generation = self._generation(configs)
-    pending = receipt.get("dataOperation", {})
-    if pending and (pending.get("state") == "UNKNOWN" or interrupted and pending.get("key") == receipt.get("dataAttemptKey")):
-      if pending["operation"] != action or pending["configGeneration"] != generation:
-        raise HostError("OUTCOME_UNKNOWN", "Recover the original package data operation with its original configuration", "UNKNOWN")
-      result = self._verify_data_handler(action, configs, pending)
-    else:
-      key = receipt.get("dataAttemptKey") if interrupted else None
-      key = key or _json_hash({"intent": receipt["intentDigest"], "taskId": receipt["taskId"]})
-      receipt["dataAttemptKey"] = key
-      self._save(receipt)
-      prepared = handler.call("prepare", action, key, configs)
-      if prepared["result"] != "READY":
-        raise HostError("TARGET_CONFLICT", "Package data operation preconditions were not confirmed")
-      pending = {"operation": action, "key": key, "configGeneration": generation,
-                 "preconditionDigest": prepared["evidenceDigest"], "state": "UNKNOWN"}
-      receipt["dataOperation"] = pending
-      self._save(receipt)
-      handler.call("apply", action, key, configs, pending["preconditionDigest"])
-      result = self._verify_data_handler(action, configs, pending)
-    pending.update(state="SUCCEEDED", evidenceDigest=result["evidenceDigest"])
-    receipt["dataOperation"] = pending
-    self._save(receipt)
-
   def _observation_stamp(self, observation):
     return {field: observation.get(field) for field in ("state", "loadState", "invocationId", "job")}
 
@@ -716,18 +629,13 @@ class HostDeployment:
       if self._observation_stamp(current) != self._observation_stamp(plan["observation"]):
         raise HostError("PLAN_STALE", "Native state changed after planning")
       action = plan["operation"]
-      data_pending = receipt.get("dataOperation", {})
-      if data_pending.get("state") == "UNKNOWN" and action not in (data_pending["operation"], "stop"):
-        raise HostError("OUTCOME_UNKNOWN", "Verify the pending package data operation before other mutations", "UNKNOWN")
-      if receipt.get("detached") and action not in ("detach", "adopt"):
-        raise HostError("TARGET_CONFLICT", "Adopt the detached target before managing its resources")
       if (receipt.get("purged") or receipt.get("operation") == "purge") and action != "purge":
         raise HostError("TARGET_CONFLICT", "Purge has begun; finish purge and use a new service incarnation")
       if action not in ("stop", "uninstall", "purge") and current.get("job") not in (None, "", "0", "0 /"):
         raise HostError("OUTCOME_UNKNOWN", "Native job is still pending; observe or explicitly stop", "UNKNOWN")
       materialized_digest = receipt.get("materializedPackageDigest", receipt.get("packageDigest"))
-      if materialized_digest not in (None, self.package_digest) and action not in ("stop", "uninstall", "purge", "upgrade"):
-        raise HostError("CAPABILITY_UNSUPPORTED", "This host profile does not declare binary/data upgrade compatibility")
+      if materialized_digest not in (None, self.package_digest) and action not in ("stop", "uninstall", "purge"):
+        raise HostError("CAPABILITY_UNSUPPORTED", "The installed package differs from this immutable service definition")
       task = str(self.command.get("taskId", ""))
       if not task.isdigit() or int(task) <= 0:
         raise HostError("SCHEMA_INVALID", "Mutation requires an existing Ambari task ID")
@@ -743,22 +651,10 @@ class HostDeployment:
                 "identity": self.identity, "taskId": task, "packageDigest": self.package_digest,
                 "materializedPackageDigest": receipt.get("materializedPackageDigest"),
                 "retainedResources": receipt.get("retainedResources", []),
-                "detached": receipt.get("detached", False),
                 "purged": receipt.get("purged", False), "purgedResources": receipt.get("purgedResources", [])}
       interrupted = receipt.get("state") in ("APPLYING", "UNKNOWN")
       if interrupted and receipt.get("intentDigest") != key and action not in ("stop", "uninstall", "purge"):
         raise HostError("OUTCOME_UNKNOWN", "Previous task must be reconciled or explicitly stopped", "UNKNOWN")
-      if interrupted and action == "reload":
-        # A matching acknowledgement resolves response loss without sending the signal again.
-        observed = self.verify("reload", configs)
-        receipt.update(state="SUCCEEDED", taskId=task, runningConfigGeneration=plan["configGeneration"],
-                       publishedConfigGeneration=plan["configGeneration"])
-        self._save(receipt)
-        return {"state": "SUCCEEDED", "recovered": True, "observation": observed,
-                "identity": self.identity, "taskId": task, "packageDigest": self.package_digest,
-                "runningConfigGeneration": plan["configGeneration"],
-                "materializedPackageDigest": receipt.get("materializedPackageDigest"),
-                "publishedConfigGeneration": plan["configGeneration"]}
       if interrupted and action in ("start", "restart") and receipt.get("intentDigest") == key:
         observed = self.observe()
         before = receipt.get("beforeObservation", {})
@@ -780,24 +676,6 @@ class HostDeployment:
         raise HostError("OUTCOME_UNKNOWN", "Interrupted start has no surviving invocation evidence; explicitly stop before retry", "UNKNOWN")
       if action in ("install", "configure", "start", "restart"):
         self._check_ports(configs, current, receipt)
-      if action == "upgrade":
-        self._check_upgrade(receipt, current, plan["configGeneration"])
-      if action in ("detach", "adopt"):
-        self._check_handoff(action, receipt, current, configs, plan["configGeneration"])
-      if action in DATA_OPERATIONS:
-        if (self.runtime_profile != "host.systemd/v1" or not self.profile.get("dataOperations", {}).get(action)
-            or materialized_digest != self.package_digest or current.get("loadState") != "loaded"
-            or current["state"] != "inactive" or current.get("pid") != "0"
-            or (self.task_binding or {}).get("secretGenerations")):
-          raise HostError("CAPABILITY_UNSUPPORTED", "Package data operations require the verified stopped release and declared handler")
-      if action == "reload":
-        if (current["state"] != "active" or not current.get("invocationId")
-            or self.profile.get("health", {}).get("kind") != "http"
-            or self._declared_ports(configs) != receipt.get("runningPorts", [])
-            or any(config.get("changeEffect", "restart") != "reload" for config in self.service.get("configurations", []))
-            or any(isinstance(value, dict) and "secretRef" in value for value in self.resources["command"].get("environment", {}).values())
-            or _hash(self._unit_content(configs, plan["configGeneration"])) != receipt.get("unitHash")):
-          raise HostError("CAPABILITY_UNSUPPORTED", "This change requires restart rather than reload")
       if action == "purge":
         if not receipt.get("retainedResources") or not (
             receipt.get("operation") == "uninstall" and receipt.get("state") == "SUCCEEDED"
@@ -812,17 +690,9 @@ class HostDeployment:
       try:
         if self.cancel is not None and self.cancel.is_set():
           raise HostError("OUTCOME_UNKNOWN", "Task canceled before mutation", "UNKNOWN")
-        if action in DATA_OPERATIONS:
-          self._data_operation(action, configs, receipt, interrupted)
-        if action in ("install", "configure", "start", "restart", "upgrade"):
+        if action in ("install", "configure", "start", "restart"):
           self._publish(configs, plan["configGeneration"], receipt)
-        if action == "reload":
-          self._load_secrets()
-          self._stage(configs, plan["configGeneration"])
-          receipt["publishedConfigGeneration"] = plan["configGeneration"]
-          self._save(receipt)
-          self._native("reload")
-        elif action in ("start", "restart"):
+        if action in ("start", "restart"):
           current = self.observe()
           if current["state"] == "active" and (action == "restart" or receipt.get("runningConfigGeneration") != plan["configGeneration"]
               or receipt.get("runningPackageDigest") != self.package_digest):
@@ -831,11 +701,6 @@ class HostDeployment:
             self._native("start")
           receipt["runningConfigGeneration"] = plan["configGeneration"]
           receipt["runningPackageDigest"] = self.package_digest
-        elif action in ("detach", "adopt"):
-          receipt["detached"] = action == "detach"
-          if action == "detach":
-            receipt["retainedResources"] = self._retained_resources()
-          self._save(receipt)
         elif action == "purge":
           self._purge_files()
           receipt["purgedResources"] = [dict(resource, disposition="receipt-only" if resource["path"] == str(self.root) else "purged")
@@ -848,11 +713,7 @@ class HostDeployment:
             self._native("stop")
         observation = self.verify(action, configs)
         receipt["state"] = "SUCCEEDED"
-        if action in ("install", "configure", "start", "restart", "upgrade"):
-          if action == "upgrade" and materialized_digest != self.package_digest:
-            receipt["lastUpgrade"] = {"fromDigest": materialized_digest, "toDigest": self.package_digest,
-                                      "taskId": task, "data": "unchanged"}
-            receipt["releaseHistory"] = (receipt.get("releaseHistory", []) + [receipt.get("materializedPackage", {})])[-10:]
+        if action in ("install", "configure", "start", "restart"):
           receipt["materializedPackage"] = dict(self.descriptor["package"])
           receipt["materializedPackageDigest"] = self.package_digest
           receipt["resourceLayout"] = self._release_layout()
@@ -864,25 +725,23 @@ class HostDeployment:
             receipt["unitHash"] = _hash(self.unit_path.read_bytes())
             receipt.pop("pendingUnitHash", None)
           self._clear_runtime_secrets()
-        if action in ("start", "restart", "reload"):
+        if action in ("start", "restart"):
           receipt["runningConfigGeneration"] = plan["configGeneration"]
           receipt["runningProbe"] = self._probe_config(configs)
           receipt["runningPorts"] = self._declared_ports(configs)
         self._save(receipt)
         # Retention cleanup must not turn an already verified operation UNKNOWN.
         # A later successful task retries this bounded projection cleanup.
-        if action not in ("detach", "adopt"):
-          with contextlib.suppress(OSError):
-            self._prune_configurations(receipt)
-            self._prune_runtime_secrets(receipt)
-            self._prune_releases(receipt)
+        with contextlib.suppress(OSError):
+          self._prune_configurations(receipt)
+          self._prune_runtime_secrets(receipt)
+          self._prune_releases(receipt)
         return {"state": "SUCCEEDED", "observation": observation,
                 "publishedConfigGeneration": receipt.get("publishedConfigGeneration"),
                 "runningConfigGeneration": receipt.get("runningConfigGeneration"),
                 "taskId": task, "packageDigest": self.package_digest, "identity": self.identity,
                 "materializedPackageDigest": receipt.get("materializedPackageDigest"),
                 "retainedResources": receipt.get("retainedResources", []),
-                "detached": receipt.get("detached", False),
                 "purged": receipt.get("purged", False), "purgedResources": receipt.get("purgedResources", [])}
       except HostError as error:
         receipt["state"] = error.state
@@ -902,7 +761,7 @@ class HostDeployment:
     self._stage(configs, generation)
     receipt["publicationDigest"] = None if self.secret_values else self._installed_file_digest(generation)
     # Save ownership evidence before publication, so a lost response never
-    # adopts a name. The exclusive target lock protects these two writes.
+    # claims a name. The exclusive target lock protects these two writes.
     receipt["pendingUnitHash"] = _hash(content)
     self._save(receipt)
     _atomic(self.unit_path, content, 0o644)
@@ -1100,7 +959,6 @@ class HostDeployment:
       return
     protected = {self.package_digest, receipt.get("materializedPackageDigest"),
                  receipt.get("runningPackageDigest")}
-    protected.update(release.get("digest") for release in receipt.get("releaseHistory", []))
     for path in release_root.iterdir():
       if (re.fullmatch(r"[a-f0-9]{64}", path.name) and path.name not in protected
           and path.is_dir() and not path.is_symlink()):

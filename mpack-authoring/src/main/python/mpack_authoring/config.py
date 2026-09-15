@@ -36,7 +36,7 @@ class ConfigValue:
   def __post_init__(self):
     if self.sensitive and not isinstance(self.value, SecretRef):
       raise ValueError("Sensitive configuration requires a secret reference")
-    if self.effect not in {"none", "reload", "restart", "migration"}:
+    if self.effect not in {"none", "restart"}:
       raise ValueError("Unsupported configuration change effect")
 
   def redacted(self):

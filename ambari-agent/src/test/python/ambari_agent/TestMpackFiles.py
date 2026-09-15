@@ -72,6 +72,7 @@ class TestMpackFiles(unittest.TestCase):
     return deployment.apply(deployment.plan(action))
 
   def test_client_publication_and_retention_have_no_native_process_semantics(self):
+    self.assertFalse(self.deployment("status").observe()["managementReleased"])
     result = self.apply("install")
     self.assertEqual("host.files/v1", result["observation"]["kind"])
     self.assertTrue(result["observation"]["ready"])
@@ -86,6 +87,9 @@ class TestMpackFiles(unittest.TestCase):
     self.command["taskId"] = 2
     result = self.apply("uninstall")
     self.assertTrue(result["observation"]["publicationAbsent"])
+    self.assertTrue(result["observation"]["managementReleased"])
+    self.assertEqual("absent", result["observation"]["runtimeDisposition"])
+    self.assertEqual("retained", result["observation"]["dataDisposition"])
     self.assertTrue(executable.exists())
     self.assertTrue(result["retainedResources"])
     self.command["taskId"] = 3

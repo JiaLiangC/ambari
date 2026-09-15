@@ -51,7 +51,7 @@ copy under an `examples` directory. Copy one whole directory before editing.
 
 | Example | What it demonstrates | Validation scope and prerequisites |
 | --- | --- | --- |
-| [HTTP](fixtures/http/manifest.json) | Local Python artifact, user, private directory, scalar config and HTTP health | Source build and host export; target needs Python 3 and systemd. The small server binds loopback and answers `/health`; its port and message come from the rendered config. Reload requires an HTTP acknowledgement of the rendered generation. |
+| [HTTP](fixtures/http/manifest.json) | Local Python artifact, user, private directory, scalar config and HTTP health | Source build and host export; target needs Python 3 and systemd. The small server binds loopback and answers `/health`; its port and message come from the rendered config. |
 | [Redis](fixtures/redis/manifest.json) | OS package prerequisite, rendered config passed through `configurationRef`, foreground process and retained data | Source build and host export; target must provide the declared `redis` OS package and `redis-server`. Adjust package naming for the supported OS. The bundle does not vendor Redis or pin its upstream binary version. |
 | [Multi-service YAML](fixtures/multi-service/manifest.yaml) | Two server services and a file-only CLIENT, distinct config types/ports, one reused schema, `directoryRef` and HTTP health | Source build and host export; server targets need Python 3/systemd. The optional `host.files/v1` client publishes configuration and a CLI artifact without starting a process. Runtime acceptance is pending. |
 
@@ -103,14 +103,12 @@ Redis deployment. Actual runtime acceptance is recorded in
    Reuse compatible users/packages and choose distinct ports when co-locating services.
 
 5. Declare actual health checks and supported behavior. TCP/HTTP probes require a
-   scoped `portRef`; HTTP probes use a local path. Configuration changes use restart
-   or the generation-acknowledged reload contract below. Each profile rejects unsupported
-   capabilities. File clients, local OCI, stateless Kubernetes and external observers
-   have their own contracts below; unresolved shared dependencies and unsupported
-   changeEffect values fail export. Native uninstall, scoped secrets, acknowledged
-   reload, stopped artifact upgrade and same-target handoff have local coverage.
-   Purge and package migrate/restore require separate destructive authorization.
-   Package data handlers never imply automatic configuration migration or rollback.
+   scoped `portRef`; HTTP probes use a local path. Configuration changes restart an
+   active systemd service. Each profile rejects unsupported capabilities. File clients
+   and external observers have their own contracts below; unresolved shared
+   dependencies fail export. Uninstall retains data and purge requires separate
+   destructive authorization. Reload, upgrade, ownership handoff and package data
+   procedures are not supported capabilities.
 
 6. Validate, inspect generated content and then build. For authoring-only
    sources, explicitly choose `--target source`. A requirement lock describes needed
@@ -311,9 +309,9 @@ For local `.mpack` imports, the catalog's source URI points to its verified inst
 their artifact URL. Publisher identity and content digest remain the immutable release
 identity in both cases; a local source URI does not establish publisher trust.
 
-These newly implemented import/lifecycle paths are undergoing the authorized P0-P8
-implementation batch. Their consolidated tests and native acceptance are pending; see
-[the active ledger](../docs/mpack-v2/implementation-plan.md#current-implementation-ledger).
+The consolidated authoring, Agent, Server and React tests for these paths are recorded
+in [the current status](../docs/mpack-v2/status.md). Real native and production-database
+acceptance remains open.
 
 
 ## Scoped execution credentials
@@ -343,19 +341,6 @@ Stopping/uninstalling clears those files; the next start resolves credentials ag
 A changed credential between task persistence and dispatch returns `PLAN_STALE`.
 References and keyed generation fingerprints, never plaintext, are retained in tasks.
 
-## Acknowledged reload
-
-The HTTP example implements the source-side acknowledgement for this contract, with native acceptance pending.
-Declare `reload` capability, `resources.reloadSignal` (`HUP`, `USR1` or `USR2`), HTTP
-health and `changeEffect: reload`. Render `{{ mpack_config_generation }}` into the
-config. After validation and actual in-process application, the software must return
-that token in `X-Ambari-Config-Generation` at its local health endpoint. The adapter
-requires matching generation and an unchanged invocation. Sending a signal is not an
-acknowledgement. Port/unit changes, restart-only config and environment secrets require
-restart. A missing acknowledgement leaves `UNKNOWN`; recovery observes before any
-retry, or the operator explicitly stops and starts through the existing workflow.
-Redis retains restart semantics and does not claim this HTTP acknowledgement contract.
-
 ## Standalone distribution
 
 The compiler can be packaged without building Ambari. The wheel contains the canonical
@@ -381,8 +366,8 @@ Use `category: CLIENT`, `role: client` and `host.files/v1` for files/configurati
 consumed by a user-invoked CLI. Supported actions are install, configure, observe,
 uninstall and separately authorized purge. Declare vendored executable artifact IDs
 in `resources.executableArtifacts`; files are published as 0755 only when explicitly
-listed. No daemon, port, health endpoint, start, stop or reload is implied. This profile
-currently rejects live secrets and upgrades to another package digest.
+listed. No daemon, port, health endpoint, start or stop is implied. This profile
+currently rejects live secrets and another package digest.
 
 The multi-service YAML package includes `STATIC_WEB_CLIENT`. Its executable and
 configuration are under the existing incarnation-scoped Agent deployment directory:
@@ -393,24 +378,6 @@ published file hashes/modes; uninstall withdraws the config publication and reta
 files/data until purge. Local filesystem and fresh Java-to-Agent fixture checks passed;
 actual host installation remains a separate native acceptance requirement.
 
-
-## Compatible artifact updates and ownership handoff
-
-A `host.systemd/v1` profile may declare `upgrade` plus `upgradePolicy` with explicit
-`fromPackageDigests`, `configuration: compatible` and `data: unchanged`. Stop the
-service, select the imported candidate in Ambari, then submit the existing UPGRADE
-request pinned to its digest and target incarnation. Resource layout and package
-identity must remain unchanged. Starting is a separate action. This does not upgrade
-Redis's shared OS package, migrate data or provide an automatic rollback. Failed
-updates preserve the last confirmed release reference; selecting that release restores
-metadata and requires native verification before another start.
-
-Declare `detach` and `adopt` together only for non-secret server profiles. Both require
-a stopped, verified target. Detach leaves its unit, files and data for external
-management; adopt reclaims only the same target while the service incarnation and
-package still exist. Changed publication, foreign units or a recreated service fail
-admission. Complete a pending handoff before other operations. Remove the service
-record only after deciding that the external owner will manage those retained resources.
 
 ## Existing metrics and log integrations
 
@@ -444,60 +411,12 @@ claim that log ingestion has been verified.
 
 ## Software and runtime extension boundary
 
-Keep product-specific installation recipes, configuration, readiness semantics and
-upgrade/data compatibility in your Mpack. Ambari's core manages validation, identity,
+Keep product-specific installation recipes, configuration and readiness semantics in
+your Mpack. Ambari's core manages validation, identity,
 permissions, requests/tasks and shared runtime execution. Adding another product to
 an existing runtime must not require Java/Agent/UI branches for its software name.
 Declare only capabilities backed by an implemented execution/verification/recovery
 contract. A manifest declaration alone does not supply a missing executor.
-
-The local `oci.container/v1` implementation currently accepts rootful Docker or Podman,
-a preloaded `name@sha256:<digest>` image, a non-root host `runAsUser`, scoped directory
-`mounts`, and optional literal command/environment entries. Configuration files appear
-at `/etc/ambari-config/current/<configuration-name>.conf`; resource-backed configuration
-fields use their declared container paths. Image provisioning is an external
-prerequisite, so an offline source bundle does not include the OCI image automatically.
-Install creates a stopped container; configure publishes files and start/restart applies
-them. Uninstall removes only the bound container, and a separately authorized purge
-removes owned retained host data. Images, shared users/packages and foreign volumes
-are never removed. No arbitrary engine flags, daemon credentials, image pulls,
-live secrets, OCI upgrade or ownership handoff are supported by this slice.
-CLI-response fixtures passed the consolidated local run; no real Docker/Podman deployment was performed. See the status ledger for executed evidence.
-
-
-## Package data procedures
-
-The HTTP example declares `dataOperations.backup/migrate/restore`, each naming the
-locked Python `data-handler` artifact. The example operates only on a bounded
-`records.json` document in its own data directory: version one to version two, with
-a verified current backup required before migration. It is a demonstration of a
-software-owned format, not a Redis backup implementation. Seed that document only in
-an explicitly disposable runtime environment; source validation does not create data.
-
-Stop the service, submit BACKUP with the current `expected_target_incarnation`, and
-read the verified operation key from resource evidence. Set the example's
-`http.restore_backup` to that key before MIGRATE or RESTORE. Review the package's
-compatibility requirements first. All procedures use existing custom request/task
-APIs; migration/restore require SERVICE.PURGE_DATA and an explicit UI confirmation.
-The package writes durable intent before its data change and verifies actual output
-bytes. A retry after UNKNOWN only verifies the original key. Restore is an explicit
-data operation, never an automatic software rollback. If verify cannot establish an
-outcome, inspect the package's data/intent with the software maintainer; no generic
-force-success or reapply operation is provided. History is bounded and never silently
-purges backups. Retained backups on the same host are not disaster-recovery storage.
-
-The `mpack.handler/v1` protocol uses a single JSON stdin request and stdout result.
-Requests include phase, operation, operationKey, targetIdentity, packageDigest,
-configurations, declared directories and preconditionDigest. Results echo protocol,
-phase, operationKey and targetIdentity, and return result plus evidenceDigest (SHA-256).
-`prepare` returns READY; `apply` performs the package procedure; `verify` independently
-checks durable results and returns SUCCEEDED or UNKNOWN. Only bound digest/status
-evidence is retained by the platform. No raw handler stdout/stderr is logged. The
-handler runs under the declared non-root unit account with Python isolated mode,
-fixed environment, deadlines and bounded output. This is trusted signed package code,
-not a sandbox. Its artifact and parent directories must be root controlled. Python
-3.9+ and dependencies must be provisioned before execution. Live secret delivery to
-data handlers is unsupported; do not place credentials in their configuration.
 
 ## External database observer example
 
@@ -520,25 +439,3 @@ conventions are in the Mpack probe, not Ambari core. See the primary PostgreSQL
 [control-data reference](https://www.postgresql.org/docs/current/functions-info.html)
 and [connection service reference](https://www.postgresql.org/docs/current/libpq-pgservice.html).
 No real PostgreSQL deployment is claimed by the offline example checks.
-
-## Kubernetes connection setup and support
-
-`kubernetes.workload/v1` currently handles a stateless apps/v1 Deployment with scalar
-command/environment configuration and an HTTP/TCP readiness probe. Set connectionRef,
-namespace, immutable image digest, non-zero runAsUserId and 1..32 replicas. Local
-install creates zero replicas; start scales to the declared count; stop waits for all
-owned Pods to disappear. Configure requires stop first. Uninstall uses UID and
-resourceVersion preconditions with foreground deletion. Secrets, PVCs, Services,
-Ingress, raw YAML, exec credential plugins and rolling upgrades are unsupported.
-
-The operator provisions `/etc/ambari-agent/mpack/kubernetes/<cluster-id>/<connectionRef>/`
-with root-owned mode-0600 `connection.json`, `ca.pem`, `client.pem`, and
-`client-key.pem`. The JSON contains exactly `server` (HTTPS origin) and `namespace`.
-Keep credential files out of packages and source control. Native Kubernetes RBAC must
-permit discovery, reading the designated namespace and its Pods/ReplicaSets, and
-get/create/update/delete of Deployments in that namespace. Use a dedicated namespace
-and credential policy; the transport does not create namespace authorization itself.
-Endpoint/CA identity and namespace UID are pinned in the receipt; replacing them is
-not transparent credential rotation. Reconcile existing targets before changing
-trust anchors. Failed lookups never prove resource absence; terminating Pods keep
-uninstall UNKNOWN until observation confirms completion.

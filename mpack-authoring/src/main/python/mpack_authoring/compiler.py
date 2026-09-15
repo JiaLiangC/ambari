@@ -206,7 +206,7 @@ def _references(manifest, root):
     for config_index, config in enumerate(configurations):
       if not isinstance(config, dict):
         raise CompileError("configuration must be an object", path="spec.services[{}].configurations[{}]".format(service_index, config_index))
-      _check_keys(config, {"name", "schema", "template", "changeEffect", "defaults",
+      _check_keys(config, {"name", "schema", "template", "defaults",
                            "description"}, "spec.services[{}].configurations[{}]".format(service_index, config_index))
       for field in ("schema", "template"):
         if config.get(field) is not None:
@@ -239,7 +239,7 @@ def _references(manifest, root):
       _check_keys(component, {"name", "category", "role", "cardinality", "profiles", "softwareVersion"}, component_path)
       for profile_index, profile in enumerate(component.get("profiles", [])):
         path = "spec.services[{}].components[{}].profiles[{}]".format(service_index, component_index, profile_index)
-        _check_keys(profile, {"id", "adapter", "capabilities", "resources", "health", "upgradePolicy", "dataOperations"}, path)
+        _check_keys(profile, {"id", "adapter", "capabilities", "resources", "health"}, path)
         try:
           supported = profile_capabilities(profile["adapter"])
         except (KeyError, ValueError) as error:
@@ -251,7 +251,7 @@ def _references(manifest, root):
           raise CompileError("{} declares unsupported capabilities: {}".format(
               path, ", ".join(sorted(unsupported))), code="CAPABILITY_UNSUPPORTED", path=path)
         resources = profile.get("resources", {})
-        for artifact_ref in _find_artifact_refs([resources, profile.get("dataOperations", {})]):
+        for artifact_ref in _find_artifact_refs(resources):
           if artifact_ref not in known["artifacts"]:
             raise CompileError("unknown artifact reference {}".format(artifact_ref),
                                code="PACKAGE_CONTENT_CONFLICT", path=path)

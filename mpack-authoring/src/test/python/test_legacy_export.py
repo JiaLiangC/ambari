@@ -33,70 +33,6 @@ from mpack_authoring.legacy import export_legacy
 
 
 class LegacyExportTest(unittest.TestCase):
-  def test_kubernetes_export_preserves_native_scope_and_shared_script(self):
-    import shutil
-    with tempfile.TemporaryDirectory() as root:
-      source = Path(root) / "source"
-      shutil.copytree(Path(__file__).resolve().parents[3] / "fixtures/http", source)
-      manifest = source / "manifest.json"
-      value = json.loads(manifest.read_text())
-      service = value["spec"]["services"][0]
-      service["configurations"][0].pop("template")
-      service["configurations"][0]["changeEffect"] = "restart"
-      schema = json.loads((source / "config.schema.json").read_text())
-      schema["properties"].pop("data_dir")
-      (source / "config.schema.json").write_text(json.dumps(schema))
-      profile = service["components"][0]["profiles"][0]
-      profile.pop("dataOperations", None)
-      profile.update(adapter="kubernetes.workload/v1",
-        capabilities=["install", "configure", "start", "stop", "uninstall", "purge", "observe"],
-        resources={"connectionRef": "example", "namespace": "example", "image": "example/software@sha256:" + "a" * 64,
-          "runAsUserId": 1000, "replicas": 1, "command": {"environment": {"PORT": {"configRef": "http.port"}}}})
-      manifest.write_text(json.dumps(value))
-      output = Path(root) / "export"
-      export_legacy(str(manifest), str(output), b"fixture-key")
-      with tarfile.open(output / "definition.tar.gz") as archive:
-        module = archive.extractfile("definition/modules/HTTP_ECHO.tar.gz").read()
-      with tarfile.open(fileobj=io.BytesIO(module), mode="r:gz") as archive:
-        descriptor = json.loads(archive.extractfile("package/manifest-service.json").read())
-        actual = descriptor["service"]["components"][0]["profiles"][0]
-        self.assertEqual(profile["resources"], actual["resources"])
-        self.assertEqual("kubernetes.workload/v1", actual["adapter"])
-
-  def test_oci_export_uses_shared_script_and_declares_external_image_prerequisite(self):
-    import shutil
-    with tempfile.TemporaryDirectory() as root:
-      source = Path(root) / "source"
-      shutil.copytree(Path(__file__).resolve().parents[3] / "fixtures/http", source)
-      manifest = source / "manifest.json"
-      value = json.loads(manifest.read_text())
-      service = value["spec"]["services"][0]
-      service["configurations"][0]["changeEffect"] = "restart"
-      profile = service["components"][0]["profiles"][0]
-      image = "localhost/example@sha256:" + "a" * 64
-      profile.pop("dataOperations", None)
-      profile.update(adapter="oci.container/v1", capabilities=["install", "configure", "start", "stop", "uninstall", "purge", "observe"],
-        resources={"engine": "podman", "image": image, "runAsUser": "http",
-          "users": [{"name": "http"}],
-          "directories": [{"path": "data", "owner": "http", "persistent": True, "retention": "retain"}],
-          "mounts": [{"directoryRef": "data", "containerPath": "/data"}],
-          "ports": [{"name": "listener", "configRef": "http.port", "protocol": "tcp"}]})
-      manifest.write_text(json.dumps(value))
-      output = Path(root) / "export"
-      export_legacy(str(manifest), str(output), b"fixture-key")
-      metadata = json.loads((output / "mpack.json").read_text())
-      self.assertEqual([image], metadata["installationPrerequisites"]["containerImages"])
-      with tarfile.open(output / "definition.tar.gz") as archive:
-        module = archive.extractfile("definition/modules/HTTP_ECHO.tar.gz").read()
-      with tarfile.open(fileobj=io.BytesIO(module), mode="r:gz") as archive:
-        descriptor = json.loads(archive.extractfile("package/manifest-service.json").read())
-        self.assertEqual("oci.container/v1", descriptor["service"]["components"][0]["profiles"][0]["adapter"])
-      for invalid in ("/etc", "/proc/sys"):
-        profile["resources"]["mounts"][0]["containerPath"] = invalid
-        manifest.write_text(json.dumps(value))
-        with self.assertRaises(CompileError):
-          export_legacy(str(manifest), str(Path(root) / "invalid"), b"fixture-key")
-
   def test_external_probe_export_has_only_local_registration_commands(self):
     source = Path(__file__).resolve().parents[3] / "fixtures/external-postgresql/manifest.json"
     with tempfile.TemporaryDirectory() as root:
@@ -109,28 +45,6 @@ class LegacyExportTest(unittest.TestCase):
         self.assertEqual("CLIENT", component.findtext("category"))
         self.assertEqual(["UNINSTALL"], [value.findtext("name") for value in component.findall("customCommands/customCommand")])
         self.assertIn("package/payload/probe.py", archive.getnames())
-
-  def test_data_operation_declarations_require_handlers_and_reject_root_or_foreign_semantics(self):
-    import shutil
-    with tempfile.TemporaryDirectory() as root:
-      source = Path(root) / "source"
-      shutil.copytree(Path(__file__).resolve().parents[3] / "fixtures/http", source)
-      manifest = source / "manifest.json"
-      value = json.loads(manifest.read_text())
-      profile = value["spec"]["services"][0]["components"][0]["profiles"][0]
-      profile["dataOperations"] = {}
-      profile["capabilities"] = [item for item in profile["capabilities"] if item not in ("backup", "migrate", "restore")]
-      profile["capabilities"].append("backup")
-      manifest.write_text(json.dumps(value))
-      with self.assertRaises(CompileError):
-        export_legacy(str(manifest), str(Path(root) / "invalid"), b"fixture-key")
-      profile["dataOperations"] = {"backup": {"artifactRef": "server"}}
-      manifest.write_text(json.dumps(value))
-      export_legacy(str(manifest), str(Path(root) / "valid"), b"fixture-key")
-      profile["dataOperations"]["restore"] = {"artifactRef": "server"}
-      manifest.write_text(json.dumps(value))
-      with self.assertRaises(CompileError):
-        export_legacy(str(manifest), str(Path(root) / "invalid-extra"), b"fixture-key")
 
   def test_schema_projects_existing_ambari_types_constraints_and_enum_entries(self):
     from mpack_authoring.legacy import _config_xml
@@ -253,18 +167,18 @@ class LegacyExportTest(unittest.TestCase):
         export_legacy(str(source / "manifest.json"), str(Path(root) / "output"), b"fixture-key")
       self.assertEqual("DEPENDENCY_UNRESOLVED", result.exception.code)
 
-  def test_host_export_cannot_promise_no_effect_for_changed_configuration(self):
+  def test_removed_lifecycle_fields_are_rejected(self):
     import shutil
     fixture = Path(__file__).resolve().parents[3] / "fixtures/http"
     with tempfile.TemporaryDirectory() as root:
       source = Path(root) / "source"
       shutil.copytree(fixture, source)
       manifest = json.loads((source / "manifest.json").read_text())
-      manifest["spec"]["services"][0]["configurations"][0]["changeEffect"] = "none"
+      manifest["spec"]["services"][0]["components"][0]["profiles"][0]["upgradePolicy"] = {}
       (source / "manifest.json").write_text(json.dumps(manifest))
       with self.assertRaises(CompileError) as result:
         export_legacy(str(source / "manifest.json"), str(Path(root) / "output"), b"fixture-key")
-      self.assertEqual("CAPABILITY_UNSUPPORTED", result.exception.code)
+      self.assertEqual("SCHEMA_INVALID", result.exception.code)
 
   def test_host_export_rejects_constraints_templates_and_secret_execution(self):
     import shutil

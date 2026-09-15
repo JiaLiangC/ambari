@@ -32,7 +32,6 @@ spec:
         - name: website
           schema: config.schema.json
           template: client.conf.j2
-          changeEffect: restart
           defaults:
             port: 18100
       components:
@@ -82,7 +81,6 @@ spec:
       configurations:
         - name: status
           schema: config.schema.json
-          changeEffect: restart
           defaults:
             port: 18101
       components:

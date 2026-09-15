@@ -48,7 +48,7 @@ class CompilerTest(unittest.TestCase):
         "artifacts": [{"id": "server", "source": {"kind": "file", "path": "server.py"}}],
         "dependencies": [{"slot": "database", "interface": "jdbc", "versionRange": ">=1"}],
         "services": [{"name": "ECHO", "requires": [], "configurations": [
-          {"name": "echo", "schema": "config.json", "changeEffect": "restart"}],
+          {"name": "echo", "schema": "config.json"}],
           "components": [{"name": "SERVER", "profiles": [{
             "id": "linux", "adapter": "host.systemd/v1",
             "capabilities": ["install", "observe"],

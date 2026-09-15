@@ -75,6 +75,7 @@ class TestMpackExternal(unittest.TestCase):
     return deployment.apply(deployment.plan(action))
 
   def test_registration_observes_identity_and_can_unregister_during_provider_loss(self):
+    self.assertFalse(self.deployment("status").observe()["managementReleased"])
     self.assertTrue(self.apply("install")["observation"]["ready"])
     self.assertTrue(self.apply("install")["replayed"])
     self.available = False
@@ -83,6 +84,9 @@ class TestMpackExternal(unittest.TestCase):
     self.command["taskId"] = 2
     result = self.apply("uninstall")
     self.assertTrue(result["observation"]["registrationAbsent"])
+    self.assertTrue(result["observation"]["managementReleased"])
+    self.assertEqual("external", result["observation"]["runtimeDisposition"])
+    self.assertEqual("external", result["observation"]["dataDisposition"])
     self.assertEqual("observed", result["observation"]["ownership"])
     self.assertTrue(set(self.phases) <= {"discover", "observe"})
     self.assertFalse((self.root / "units").exists())
@@ -91,6 +95,6 @@ class TestMpackExternal(unittest.TestCase):
     self.native_identity = "123456789/999"
     with self.assertRaisesRegex(HostError, "native database identity"):
       self.apply("install")
-    for action in ("start", "stop", "purge", "upgrade"):
+    for action in ("start", "stop", "purge", "upgrade", "reload", "detach", "backup"):
       with self.assertRaises(HostError):
         self.apply(action)

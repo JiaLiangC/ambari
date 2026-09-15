@@ -15,8 +15,7 @@
           {
             "name": "redis",
             "schema": "config.schema.json",
-            "template": "config.conf.j2",
-            "changeEffect": "restart"
+            "template": "config.conf.j2"
           }
         ],
         "components": [

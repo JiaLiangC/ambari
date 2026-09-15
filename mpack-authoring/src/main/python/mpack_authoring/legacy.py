@@ -154,7 +154,7 @@ def _service_xml(service, version):
     _xml(script, "script", "scripts/manifest_service.py")
     _xml(script, "scriptType", "PYTHON")
     _xml(script, "timeout", "600")
-    commands = sorted(set(component["profiles"][0]["capabilities"]) & {"uninstall", "reload", "upgrade", "purge", "detach", "adopt", "backup", "migrate", "restore"})
+    commands = sorted(set(component["profiles"][0]["capabilities"]) & {"uninstall", "purge"})
     if commands:
       customs = _xml(child, "customCommands")
       for action in commands:
@@ -219,9 +219,6 @@ def export_legacy(manifest_path, output_directory, signing_key, signature_algori
     "systemExecutables": sorted({profile.get("resources", {}).get("command", {}).get("program", "")
       for service in manifest["spec"]["services"] for component in service["components"]
       for profile in component["profiles"] if profile["adapter"] == "host.systemd/v1"} - {""}),
-    "containerImages": sorted({profile["resources"]["image"] for service in manifest["spec"]["services"]
-      for component in service["components"] for profile in component["profiles"]
-      if profile["adapter"] in ("oci.container/v1", "kubernetes.workload/v1")}),
     "runtimeProfiles": sorted({profile["adapter"] for service in manifest["spec"]["services"]
       for component in service["components"] for profile in component["profiles"]}),
     "hostRunAsUsers": sorted({profile.get("resources", {}).get("unit", {}).get("user", "")
@@ -275,17 +272,15 @@ def export_legacy(manifest_path, output_directory, signing_key, signature_algori
     if secret_defaults:
       metadata["secretConfigurationDefaults"][service["name"]] = secret_defaults
     for component in service["components"]:
-      if len(component["profiles"]) != 1 or component["profiles"][0]["adapter"] not in ("host.systemd/v1", "host.files/v1", "oci.container/v1", "kubernetes.workload/v1", "external.database/v1"):
+      if len(component["profiles"]) != 1 or component["profiles"][0]["adapter"] not in ("host.systemd/v1", "host.files/v1", "external.database/v1"):
         raise CompileError("Host export requires one explicit host profile per component",
                            code="CAPABILITY_UNSUPPORTED")
       profile = component["profiles"][0]
       resources = profile.get("resources", {})
       client = profile["adapter"] == "host.files/v1"
-      oci = profile["adapter"] == "oci.container/v1"
-      kubernetes = profile["adapter"] == "kubernetes.workload/v1"
       external = profile["adapter"] == "external.database/v1"
       if (client or external) != (component.get("category") == "CLIENT"):
-        raise CompileError("CLIENT components require host.files/v1; host.systemd/v1 requires a server component",
+        raise CompileError("CLIENT components require host.files/v1 or external.database/v1; host.systemd/v1 requires a server component",
                            code="CAPABILITY_UNSUPPORTED")
       if client:
         if (set(resources) - {"packages", "users", "directories", "executableArtifacts"}
@@ -297,94 +292,20 @@ def export_legacy(manifest_path, output_directory, signing_key, signature_algori
           raise CompileError("Client executable artifact is undeclared", code="PACKAGE_CONTENT_CONFLICT")
       elif "executableArtifacts" in resources:
         raise CompileError("Executable artifact publication belongs to host.files/v1", code="CAPABILITY_UNSUPPORTED")
-      if oci:
-        allowed = {"engine", "image", "runAsUser", "users", "directories", "ports", "command", "mounts", "limits"}
-        if (set(resources) - allowed or resources.get("engine") not in ("docker", "podman")
-            or not resources.get("runAsUser")
-            or not re.fullmatch(r"[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64}", resources.get("image", ""))
-            or _has_secret_reference(service)
-            or any(field.get("x-sensitive") for config in service.get("configurations", [])
-                   for field in json.loads(payload[config["schema"]]).get("properties", {}).values())):
-          raise CompileError("OCI requires a local engine, immutable image, scoped user and no live secrets", code="CAPABILITY_UNSUPPORTED")
-        destinations = []
-        mounted_directories = set()
-        for mount in resources.get("mounts", []):
-          destination = mount["containerPath"]
-          if (mount["directoryRef"] not in {item["path"] for item in resources.get("directories", [])}
-              or mount["directoryRef"] in mounted_directories
-              or destination in ("/", "/proc", "/sys", "/dev", "/etc", "/etc/ambari-config")
-              or destination.startswith(("/proc/", "/sys/", "/dev/", "/etc/ambari-config/"))
-              or any(destination == prior or destination.startswith(prior + "/") or prior.startswith(destination + "/") for prior in destinations)):
-            raise CompileError("OCI mounts must map distinct declared data directories", code="TARGET_CONFLICT")
-          destinations.append(destination)
-          mounted_directories.add(mount["directoryRef"])
-        command = resources.get("command", {})
-        if command and not command.get("program", "").startswith("/"):
-          raise CompileError("OCI entrypoint must be an absolute in-container executable", code="SCHEMA_INVALID")
-        for argument in command.get("arguments", []):
-          if not isinstance(argument, str) and (not isinstance(argument, dict) or set(argument) not in ({"configurationRef"}, {"directoryRef"})):
-            raise CompileError("OCI arguments accept literals or mounted file/directory references", code="CAPABILITY_UNSUPPORTED")
-        if any(not isinstance(value, str) for value in command.get("environment", {}).values()):
-          raise CompileError("OCI environment changes require another image/package declaration", code="CAPABILITY_UNSUPPORTED")
-      elif not kubernetes and not external and set(resources) & {"engine", "runAsUser", "mounts", "limits", "connectionRef", "runAsUserId"}:
-        raise CompileError("Container resource fields require oci.container/v1", code="CAPABILITY_UNSUPPORTED")
-      if kubernetes:
-        if (set(resources) - {"connectionRef", "namespace", "image", "replicas", "runAsUserId", "command", "limits"}
-            or not resources.get("connectionRef") or not resources.get("runAsUserId")
-            or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", resources.get("namespace", ""))
-            or not re.fullmatch(r"[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64}", resources.get("image", ""))
-            or not 1 <= resources.get("replicas", 1) <= 32
-            or profile.get("health", {}).get("kind") not in ("http", "tcp")
-            or set(resources.get("limits", {})) - {"memoryMiB", "cpus"}
-            or _has_secret_reference(service)
-            or any(config.get("template") for config in service.get("configurations", []))
-            or component["name"] in service.get("observability", {}).get("metrics", {})):
-          raise CompileError("Kubernetes requires stateless scoped workloads, scalar environment and readiness; host metrics/templates are unsupported",
-                             code="CAPABILITY_UNSUPPORTED")
-        command = resources.get("command", {})
-        if command.get("program") and not command["program"].startswith("/"):
-          raise CompileError("Kubernetes entrypoint must be absolute")
-        for expression in command.get("arguments", []) + list(command.get("environment", {}).values()):
-          if not isinstance(expression, str) and (not isinstance(expression, dict) or set(expression) != {"configRef"}):
-            raise CompileError("Kubernetes command accepts literals or scalar config references", code="CAPABILITY_UNSUPPORTED")
+      if not external and "runAsUser" in resources:
+        raise CompileError("runAsUser belongs to an external observer", code="CAPABILITY_UNSUPPORTED")
       if external:
         if (set(resources) - {"probe", "runAsUser", "nativeIdentity"} or not resources.get("runAsUser")
             or resources.get("runAsUser") == "root" or not resources.get("nativeIdentity") or not resources.get("probe") or "health" in profile
             or _has_secret_reference(service) or any(config.get("template") for config in service.get("configurations", []))):
           raise CompileError("External database supports a package probe and local registration only", code="CAPABILITY_UNSUPPORTED")
-      handlers = profile.get("dataOperations", {})
-      requested_data = set(profile["capabilities"]) & {"backup", "migrate", "restore"}
-      if set(handlers) != requested_data or handlers and (profile["adapter"] != "host.systemd/v1" or _has_secret_reference(service) or resources.get("unit", {}).get("user") == "root"):
-        raise CompileError("Data capabilities require matching host handlers without live secrets", code="CAPABILITY_UNSUPPORTED")
-      for handler in list(handlers.values()) + ([resources["probe"]] if external else []):
+      for handler in [resources["probe"]] if external else []:
         artifact = next((item for item in compiled["artifacts"] if item["id"] == handler["artifactRef"]), None)
         if artifact is None or not artifact["path"].endswith(".py"):
           raise CompileError("Package handlers require a declared Python artifact", code="CAPABILITY_UNSUPPORTED")
-      if "upgrade" in profile["capabilities"]:
-        policy = profile.get("upgradePolicy", {})
-        if (policy.get("configuration") != "compatible" or policy.get("data") != "unchanged"
-            or not policy.get("fromPackageDigests")
-            or not any(isinstance(argument, dict) and "artifactRef" in argument
-                       for argument in resources.get("command", {}).get("arguments", []))):
-          raise CompileError("Upgrade requires a declared compatible artifact transition with unchanged data",
-                             code="CAPABILITY_UNSUPPORTED")
-      elif "upgradePolicy" in profile:
-        raise CompileError("Upgrade policy requires the upgrade capability", code="CAPABILITY_UNSUPPORTED")
-      if {"detach", "adopt"} & set(profile["capabilities"]):
-        if (not {"detach", "adopt"} <= set(profile["capabilities"])
-            or _has_secret_reference(service)
-            or any(field.get("x-sensitive") for config in service.get("configurations", [])
-                   for field in json.loads(payload[config["schema"]]).get("properties", {}).values())):
-          raise CompileError("Ownership handoff requires both detach/adopt and no live secrets", code="CAPABILITY_UNSUPPORTED")
-      reloadable = "reload" in profile["capabilities"]
-      if reloadable and (resources.get("reloadSignal") not in ("HUP", "USR1", "USR2")
-          or profile.get("health", {}).get("kind") != "http"
-          or _has_secret_reference(resources.get("command", {}).get("environment", {}))):
-        raise CompileError("Reload requires a signal, HTTP generation acknowledgement and no environment secrets",
-                           code="CAPABILITY_UNSUPPORTED")
       if any(_has_secret_reference(argument) for argument in resources.get("command", {}).get("arguments", [])):
         raise CompileError("Secret values cannot appear in process arguments", code="CAPABILITY_UNSUPPORTED")
-      if not client and not oci and not kubernetes and not external and (not resources.get("command", {}).get("program") or not resources.get("unit", {}).get("user")):
+      if not client and not external and (not resources.get("command", {}).get("program") or not resources.get("unit", {}).get("user")):
         raise CompileError("Host export requires a program and unit user")
       for directory in resources.get("directories", []):
         if directory["path"].startswith("/") or "/" in directory["path"] or directory["path"] in (".", ".."):
@@ -395,16 +316,11 @@ def export_legacy(manifest_path, output_directory, signing_key, signature_algori
         raise CompileError("Working directory must reference a declared directory")
       for config in service.get("configurations", []):
         schema = json.loads(payload[config["schema"]])
-        if (kubernetes or external) and any(field.get("x-resource") or field.get("x-sensitive") for field in schema.get("properties", {}).values()):
-          raise CompileError("Kubernetes scalar environment does not accept host paths or live secrets", code="CAPABILITY_UNSUPPORTED")
-        if handlers and any(field.get("x-sensitive") for field in schema.get("properties", {}).values()):
-          raise CompileError("Data handlers do not accept live secrets", code="CAPABILITY_UNSUPPORTED")
+        if external and any(field.get("x-resource") or field.get("x-sensitive") for field in schema.get("properties", {}).values()):
+          raise CompileError("External observers do not accept host paths or live secrets", code="CAPABILITY_UNSUPPORTED")
         if any(field.get("x-resource") and field["x-resource"] not in directories
                for field in schema.get("properties", {}).values()):
           raise CompileError("Configuration references an undeclared managed directory")
-        if oci and any(field.get("x-resource") and field["x-resource"] not in mounted_directories
-                       for field in schema.get("properties", {}).values()):
-          raise CompileError("OCI configuration directories require a declared container mount")
         if config.get("template"):
           template = payload[config["template"]].decode("utf-8")
           references = re.findall(r"\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}", template)
@@ -413,10 +329,6 @@ def export_legacy(manifest_path, output_directory, signing_key, signature_algori
             raise CompileError("mpack_config_generation is a reserved renderer field")
           if "{{" in remainder or "{%" in template or "{#" in template or set(references) - set(schema.get("properties", {})) - {"mpack_config_generation"}:
             raise CompileError("Host templates support declared scalar fields only", code="CAPABILITY_UNSUPPORTED")
-      effects = {config.get("changeEffect", "restart") for config in service.get("configurations", [])}
-      if effects - {"restart", "reload"} or ("reload" in effects and not reloadable):
-        raise CompileError("Host configuration requires restart or a declared verified reload capability",
-                           code="CAPABILITY_UNSUPPORTED")
     module_entries = {"metainfo.xml": _service_xml(service, metadata["version"])}
     metrics = {}
     for component, definition in service.get("observability", {}).get("metrics", {}).items():

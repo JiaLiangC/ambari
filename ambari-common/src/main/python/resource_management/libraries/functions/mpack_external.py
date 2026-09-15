@@ -20,12 +20,16 @@ limitations under the License.
 
 import time
 from resource_management.libraries.functions.mpack_host import HostDeployment, HostError, _json_hash
+from resource_management.libraries.functions.mpack_evidence import lifecycle_evidence
 from resource_management.libraries.functions.mpack_handler import PackageHandler
 
 
 class ExternalDatabaseDeployment(HostDeployment):
   runtime_profile = "external.database/v1"
   operations = frozenset({"install", "configure", "uninstall", "observe"})
+
+  def _initialize_runtime(self, units):
+    pass  # Registration observes an externally managed runtime.
 
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
@@ -74,9 +78,12 @@ class ExternalDatabaseDeployment(HostDeployment):
     active = receipt.get("registered", False)
     deregister = self.command.get("roleCommand") == "UNINSTALL" or self.command.get("commandParams", {}).get("custom_command") == "UNINSTALL"
     evidence = self._probe("observe") if active and not deregister else None
-    return {"kind": self.runtime_profile, "identity": self.identity, "state": "registered" if active else "absent",
+    released = not active and receipt.get("operation") == "uninstall"
+    disposition = lifecycle_evidence(released, "external", "external", "external")
+    return dict({"kind": self.runtime_profile, "identity": self.identity, "state": "registered" if active else "absent",
       "target": _json_hash(self.resources["nativeIdentity"]), "ready": bool(evidence), "registrationAbsent": not active,
-      "ownership": "observed", "evidenceDigest": evidence["evidenceDigest"] if evidence else None, "observedAt": time.time()}
+      "ownership": "observed", "evidenceDigest": evidence["evidenceDigest"] if evidence else None,
+      "observedAt": time.time()}, **disposition)
 
   def _check_ports(self, configs, observation, receipt):
     pass
@@ -95,3 +102,6 @@ class ExternalDatabaseDeployment(HostDeployment):
     if action in ("install", "configure") and observation["ready"] or action == "uninstall" and observation["registrationAbsent"]:
       return observation
     raise HostError("OUTCOME_UNKNOWN", "External registration postcondition is unavailable", "UNKNOWN")
+
+  def ready(self, observation):
+    return observation.get("ready", False)

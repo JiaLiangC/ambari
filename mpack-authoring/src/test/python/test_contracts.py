@@ -55,6 +55,11 @@ class ContractTest(unittest.TestCase):
   def test_external_profile_manages_registration_without_remote_mutation(self):
     self.assertEqual(frozenset({"install", "configure", "uninstall", "observe"}), profile_capabilities("external.database/v1"))
 
+  def test_container_and_orchestrator_profiles_are_not_platform_contracts(self):
+    for removed_profile in ("oci.container/v1", "kubernetes.workload/v1"):
+      with self.assertRaisesRegex(ValueError, "Unsupported runtime profile"):
+        profile_capabilities(removed_profile)
+
 
 if __name__ == "__main__":
   unittest.main()

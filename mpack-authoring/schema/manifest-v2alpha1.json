@@ -176,14 +176,6 @@
                       "type": "string",
                       "minLength": 1
                     },
-                    "changeEffect": {
-                      "enum": [
-                        "none",
-                        "reload",
-                        "restart",
-                        "migration"
-                      ]
-                    },
                     "defaults": {
                       "type": "object"
                     },
@@ -268,39 +260,12 @@
                             "minItems": 1,
                             "uniqueItems": true
                           },
-                          "dataOperations": {
-                            "type": "object", "additionalProperties": false,
-                            "properties": {
-                              "backup": {"$ref": "#/$defs/handler"},
-                              "migrate": {"$ref": "#/$defs/handler"},
-                              "restore": {"$ref": "#/$defs/handler"}
-                            }
-                          },
-                          "upgradePolicy": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {
-                              "fromPackageDigests": {
-                                "type": "array",
-                                "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-                                "minItems": 1,
-                                "maxItems": 32,
-                                "uniqueItems": true
-                              },
-                              "configuration": {"const": "compatible"},
-                              "data": {"const": "unchanged"}
-                            },
-                            "required": ["fromPackageDigests", "configuration", "data"]
-                          },
                           "resources": {
                             "type": "object",
                             "properties": {
                               "executableArtifacts": {
                                 "type": "array", "uniqueItems": true,
                                 "items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"}
-                              },
-                              "reloadSignal": {
-                                "enum": ["HUP", "USR1", "USR2"]
                               },
                               "packages": {
                                 "type": "array",
@@ -553,62 +518,7 @@
                               },
                               "probe": {"$ref": "#/$defs/handler"},
                               "nativeIdentity": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9_.:/-]+$"},
-                              "engine": {"enum": ["docker", "podman"]},
-                              "runAsUser": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"},
-                              "runAsUserId": {"type": "integer", "minimum": 1, "maximum": 2147483647},
-                              "connectionRef": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"},
-                              "mounts": {
-                                "type": "array", "maxItems": 32,
-                                "items": {
-                                  "type": "object", "additionalProperties": false,
-                                  "required": ["directoryRef", "containerPath"],
-                                  "properties": {
-                                    "directoryRef": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"},
-                                    "containerPath": {"type": "string", "pattern": "^/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$", "maxLength": 256}
-                                  }
-                                }
-                              },
-                              "limits": {
-                                "type": "object", "additionalProperties": false,
-                                "properties": {
-                                  "memoryMiB": {"type": "integer", "minimum": 64, "maximum": 65536},
-                                  "cpus": {"type": "integer", "minimum": 1, "maximum": 64},
-                                  "pids": {"type": "integer", "minimum": 16, "maximum": 4096}
-                                }
-                              },
-                              "image": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "namespace": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "name": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "replicas": {
-                                "type": "integer",
-                                "minimum": 0
-                              },
-                              "artifactRef": {
-                                "type": "string",
-                                "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
-                              },
-                              "endpoint": {
-                                "type": "object",
-                                "properties": {
-                                  "configRef": {
-                                    "type": "string",
-                                    "minLength": 1
-                                  }
-                                },
-                                "required": [
-                                  "configRef"
-                                ],
-                                "additionalProperties": false
-                              }
+                              "runAsUser": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"}
                             },
                             "required": [],
                             "additionalProperties": false

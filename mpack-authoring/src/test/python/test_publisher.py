@@ -68,39 +68,8 @@ class PublisherTest(unittest.TestCase):
     with self.assertRaises(CompileError):
       export_legacy(str(self.source / "manifest.json"), str(self.root / "output"), b"invalid", "Ed25519")
 
-  def test_artifact_upgrade_exports_only_explicit_data_unchanged_transitions(self):
-    profile = self.manifest["spec"]["services"][0]["components"][0]["profiles"][0]
-    profile["capabilities"].append("upgrade")
-    manifest_path = self.source / "manifest.json"
-    manifest_path.write_text(json.dumps(self.manifest))
-    with self.assertRaises(CompileError):
-      export_legacy(str(manifest_path), str(self.root / "missing-policy"), self.private, "Ed25519")
-    profile["upgradePolicy"] = {"fromPackageDigests": ["a" * 64], "configuration": "compatible", "data": "unchanged"}
-    manifest_path.write_text(json.dumps(self.manifest))
-    export_legacy(str(manifest_path), str(self.root / "compatible"), self.private, "Ed25519")
-    profile["upgradePolicy"]["data"] = "migration"
-    manifest_path.write_text(json.dumps(self.manifest))
-    from mpack_authoring.manifest import ManifestError
-    with self.assertRaises(ManifestError):
-      export_legacy(str(manifest_path), str(self.root / "migration"), self.private, "Ed25519")
-    profile["upgradePolicy"]["data"] = "unchanged"
-    profile["resources"]["command"]["arguments"] = []
-    manifest_path.write_text(json.dumps(self.manifest))
-    with self.assertRaises(CompileError):
-      export_legacy(str(manifest_path), str(self.root / "external-binary"), self.private, "Ed25519")
-
-  def test_reload_requires_native_signal_and_generation_capable_health(self):
-    profile = self.manifest["spec"]["services"][0]["components"][0]["profiles"][0]
-    profile["health"] = {"kind": "process"}
-    (self.source / "manifest.json").write_text(json.dumps(self.manifest))
-    with self.assertRaisesRegex(CompileError, "acknowledgement"):
-      export_legacy(str(self.source / "manifest.json"), str(self.root / "rejected"), self.private, "Ed25519")
-
   def test_secret_reference_export_keeps_credentials_out_of_artifacts(self):
     profile = self.manifest["spec"]["services"][0]["components"][0]["profiles"][0]
-    profile.pop("dataOperations", None)
-    profile["capabilities"] = [name for name in profile["capabilities"] if name not in ("backup", "migrate", "restore")]
-
     import tarfile
     reference = "secret://mpack.HTTP_ECHO.password"
     schema_path = self.source / "config.schema.json"

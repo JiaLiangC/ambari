@@ -16,11 +16,6 @@
       "type": "string",
       "default": "ok",
       "maxLength": 1024
-    },
-    "restore_backup": {
-      "type": "string",
-      "default": "",
-      "maxLength": 64
     }
   },
   "required": [
