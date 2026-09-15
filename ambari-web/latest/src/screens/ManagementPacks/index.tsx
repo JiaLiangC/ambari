@@ -437,13 +437,23 @@ export default function ManagementPacks() {
     setOperationError("");
     try {
       if (uploadFile) {
-        await MpackApi.uploadPackage(uploadFile);
+        if (uploadFile.name.endsWith(".mpack-bundle")) {
+          const result = await MpackApi.uploadCollection(uploadFile);
+          const failures = result.packages.filter((item) => item.status < 200 || item.status >= 300);
+          if (failures.length) {
+            setOperationError(`Collection import: ${result.packages.length - failures.length} registered, ${failures.length} rejected. Review existing registrations before retrying.`);
+          }
+          if (failures.length < result.packages.length) toast.success("Management pack definitions registered.");
+        } else {
+          await MpackApi.uploadPackage(uploadFile);
+          toast.success("Management pack registered successfully.");
+        }
       } else {
         await MpackApi.registerFromUri(directUri!.trim());
+        toast.success("Management pack registered successfully.");
       }
       setUploadFile(undefined);
       setDirectUri(undefined);
-      toast.success("Management pack registered successfully.");
       await load();
     } catch (error) {
       setOperationError(errorMessage(error, "The management pack could not be registered."));
@@ -903,8 +913,8 @@ export default function ManagementPacks() {
         <Modal.Header closeButton={!busy}><Modal.Title>Import Management Pack</Modal.Title></Modal.Header>
         <Modal.Body>
           <Form.Group className="mb-3">
-            <Form.Label>Deployable package file (.mpack)</Form.Label>
-            <Form.Control type="file" accept=".mpack" disabled={Boolean(busy)} onChange={(event) => {
+            <Form.Label>Package or collection file</Form.Label>
+            <Form.Control type="file" accept=".mpack,.mpack-bundle" disabled={Boolean(busy)} onChange={(event) => {
               setUploadFile((event.target as HTMLInputElement).files?.[0]);
               setDirectUri("");
             }} />

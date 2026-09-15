@@ -126,4 +126,13 @@ describe("package lifecycle integration contracts", () => {
     expect(api.request).toHaveBeenCalledWith(expect.objectContaining({ url: "/mpacks/imports", data: file,
       headers: { "Content-Type": "application/octet-stream" } }));
   });
+  it("uploads a full offline collection through the separate collection endpoint", async () => {
+    api.request.mockResolvedValue({ data: { packages: [{ path: "packages/0001.mpack", status: 201 }] } });
+    const file = new File(["collection fixture"], "full.mpack-bundle");
+    expect(await MpackApi.uploadCollection(file)).toEqual({ packages: [expect.objectContaining({ status: 201 })] });
+    expect(api.request).toHaveBeenCalledWith(expect.objectContaining({
+      url: "/mpacks/imports/collections", data: file,
+      headers: { "Content-Type": "application/octet-stream" },
+    }));
+  });
 });

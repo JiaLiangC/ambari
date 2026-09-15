@@ -162,6 +162,14 @@ const MpackApi = {
     return response.data;
   },
 
+  uploadCollection: async (file: File): Promise<{packages: Array<{path: string; status: number}>}> => {
+    const response = await ambariApi.request({
+      url: "/mpacks/imports/collections", method: "POST", data: file,
+      headers: { "Content-Type": "application/octet-stream" }, timeout: 600000,
+    });
+    return response.data;
+  },
+
   deleteMpack: async (mpackId: number) => {
     const response = await ambariApi.request({
       url: `/mpacks/${mpackId}`,
