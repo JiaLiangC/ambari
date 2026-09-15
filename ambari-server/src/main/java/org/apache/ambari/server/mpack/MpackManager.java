@@ -28,7 +28,6 @@ import java.io.OutputStream;
 import java.io.Reader;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileAlreadyExistsException;
@@ -106,14 +105,11 @@ public class MpackManager {
   private static final String MIN_JDK_PROPERTY = "min-jdk";
   private static final String MAX_JDK_PROPERTY = "max-jdk";
   private static final String DEFAULT_JDK_VALUE = "1.8";
-  private static final int CONNECT_TIMEOUT_MILLIS = 30_000;
-  private static final int READ_TIMEOUT_MILLIS = 60_000;
   private static final long MAX_METADATA_BYTES = 1024L * 1024L;
   private static final long MAX_ARCHIVE_BYTES = 512L * 1024L * 1024L;
   private static final long MAX_EXPANDED_BYTES = 2L * 1024L * 1024L * 1024L;
   private static final int MAX_ARCHIVE_ENTRIES = 100_000;
   private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.-]*");
-  private static final Set<String> SUPPORTED_URI_SCHEMES = Set.of("file", "http", "https");
   private static final Logger LOG = LoggerFactory.getLogger(MpackManager.class);
 
   protected final ConcurrentMap<Long, Mpack> mpackMap = new ConcurrentHashMap<>();
@@ -122,6 +118,7 @@ public class MpackManager {
   private final StackDAO stackDAO;
   private final File stackRoot;
   private final Object registrationLock = new Object();
+  private final MpackArtifactFetcher artifactFetcher = new MpackArtifactFetcher();
   @Inject
   private Configuration configuration;
   private static final String REGISTRATION_PENDING = ".ambari-registration-pending";
@@ -215,35 +212,6 @@ public class MpackManager {
 
   public Map<Long, Mpack> getMpackMap() {
     return Collections.unmodifiableMap(mpackMap);
-  }
-
-  public void validateUpgrade(Long previousId, Long candidateId, String service) throws IOException {
-    synchronized (registrationLock) {
-      validateIdentifier(service, "service");
-      Mpack previous = mpackMap.get(previousId);
-      Mpack candidate = mpackMap.get(candidateId);
-      if (previous == null || candidate == null || previous.getPackageDigest() == null || candidate.getPackageDigest() == null
-          || !previous.getName().equals(candidate.getName())) {
-        throw new IOException("Artifact update requires two available authored packages");
-      }
-      try {
-        com.google.gson.JsonObject oldDescriptor = MpackConfiguration.read(finalMpackDirectory(previous)
-            .resolve("services").resolve(service).resolve("package/manifest-service.json"));
-        com.google.gson.JsonObject newDescriptor = MpackConfiguration.read(finalMpackDirectory(candidate)
-            .resolve("services").resolve(service).resolve("package/manifest-service.json"));
-        if (!previous.getPackageDigest().equals(oldDescriptor.getAsJsonObject("package").get("digest").getAsString())
-            || !candidate.getPackageDigest().equals(newDescriptor.getAsJsonObject("package").get("digest").getAsString())
-            || !(previous.getPackageName() == null ? previous.getName() : previous.getPackageName()).equals(oldDescriptor.getAsJsonObject("package").get("name").getAsString())
-            || !(candidate.getPackageName() == null ? candidate.getName() : candidate.getPackageName()).equals(newDescriptor.getAsJsonObject("package").get("name").getAsString())
-            || !service.equals(oldDescriptor.getAsJsonObject("service").get("name").getAsString())
-            || !service.equals(newDescriptor.getAsJsonObject("service").get("name").getAsString())) {
-          throw new IOException("Package descriptor differs from catalog authority");
-        }
-        MpackUpgrade.validate(oldDescriptor, newDescriptor);
-      } catch (RuntimeException invalid) {
-        throw new IOException("Package artifact update metadata is invalid");
-      }
-    }
   }
 
   public void validateConfiguration(Long packageId, String service, String type, Map<String, String> properties)
@@ -429,45 +397,12 @@ public class MpackManager {
   }
 
   private URI parseMpackUri(String value) {
-    if (StringUtils.isBlank(value)) {
-      throw new IllegalArgumentException("Mpack URI must not be empty");
-    }
-    try {
-      URI uri = new URI(value).normalize();
-      String scheme = StringUtils.lowerCase(uri.getScheme());
-      if (!uri.isAbsolute() || !SUPPORTED_URI_SCHEMES.contains(scheme)) {
-        throw new IllegalArgumentException("Unsupported mpack URI scheme: " + uri.getScheme());
-      }
-      if (uri.getRawUserInfo() != null) {
-        throw new IllegalArgumentException("Mpack URI must not contain user information");
-      }
-      if (uri.getRawQuery() != null) {
-        throw new IllegalArgumentException("Mpack URLs use configured credential references, not query parameters");
-      }
-      if (uri.getRawFragment() != null) {
-        throw new IllegalArgumentException("Mpack URI must not contain a fragment");
-      }
-      if (("http".equals(scheme) || "https".equals(scheme))
-          && StringUtils.isBlank(uri.getHost())) {
-        throw new IllegalArgumentException("Mpack URI must contain a host");
-      }
-      if ("file".equals(scheme) && StringUtils.isNotBlank(uri.getHost())
-          && !"localhost".equalsIgnoreCase(uri.getHost())) {
-        throw new IllegalArgumentException("Mpack URI must not reference a remote file host");
-      }
-      return uri;
-    } catch (URISyntaxException e) {
-      throw new IllegalArgumentException("Invalid mpack URI", e);
-    }
+    return artifactFetcher.parse(value);
   }
 
   private URI resolveDefinitionUri(URI metadataUri, String definition) {
     validateRelativeArchivePath(definition, "mpack definition");
-    URI resolved = metadataUri.resolve(".").resolve(definition).normalize();
-    if (!StringUtils.equalsIgnoreCase(metadataUri.getScheme(), resolved.getScheme())) {
-      throw new IllegalArgumentException("Mpack definition must use the metadata URI scheme");
-    }
-    return resolved;
+    return artifactFetcher.resolve(metadataUri, definition);
   }
 
   private void unpackRelease(Path transport, Path directory) throws IOException {
@@ -504,92 +439,7 @@ public class MpackManager {
   }
 
   private void download(URI source, Path target, long maximumBytes) throws IOException {
-    URLConnection connection = source.toURL().openConnection();
-    java.net.HttpURLConnection http = connection instanceof java.net.HttpURLConnection
-        ? (java.net.HttpURLConnection) connection : null;
-    if (http != null) {
-      http.setInstanceFollowRedirects(false);
-      applyDownloadPolicy(source, http);
-    }
-    connection.setUseCaches(false);
-    connection.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
-    connection.setReadTimeout(READ_TIMEOUT_MILLIS);
-    long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(120);
-    try {
-      if (http != null && http.getResponseCode() != 200) {
-        throw new IOException("Artifact source did not return HTTP 200; redirects are not accepted");
-      }
-      long declaredLength = connection.getContentLengthLong();
-      if (declaredLength > maximumBytes) {
-        throw new IOException("Remote content exceeds the allowed size");
-      }
-      Files.createDirectories(target.getParent());
-      try (InputStream input = new BufferedInputStream(connection.getInputStream());
-          OutputStream output = new BufferedOutputStream(Files.newOutputStream(target,
-              StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))) {
-        byte[] buffer = new byte[65536];
-        long total = 0;
-        int count;
-        while ((count = input.read(buffer)) != -1) {
-          total += count;
-          if (total > maximumBytes || System.nanoTime() > deadline) {
-            throw new IOException("Artifact transfer exceeded size or duration limit");
-          }
-          output.write(buffer, 0, count);
-        }
-        if (declaredLength >= 0 && declaredLength != total) {
-          throw new IOException("Artifact source returned incomplete content");
-        }
-      }
-    } finally {
-      if (http != null) {
-        http.disconnect();
-      }
-    }
-  }
-
-  private void applyDownloadPolicy(URI source, java.net.HttpURLConnection connection) throws IOException {
-    String policyFile = configuration == null ? null : configuration.getProperty("mpack.download.policy.file");
-    if (StringUtils.isBlank(policyFile)) {
-      throw new IOException("Network package imports require an administrator-configured artifact source policy");
-    }
-    Path policyPath = Paths.get(policyFile);
-    if (!Files.isRegularFile(policyPath, java.nio.file.LinkOption.NOFOLLOW_LINKS) || Files.size(policyPath) > MAX_METADATA_BYTES) {
-      throw new IOException("Invalid artifact source policy file");
-    }
-    try {
-      JsonObject policy = JsonParser.parseString(Files.readString(policyPath)).getAsJsonObject();
-      String origin = source.getScheme().toLowerCase(java.util.Locale.ROOT) + "://"
-          + source.getHost().toLowerCase(java.util.Locale.ROOT) + ":"
-          + (source.getPort() < 0 ? ("https".equalsIgnoreCase(source.getScheme()) ? 443 : 80) : source.getPort());
-      JsonObject sources = policy.getAsJsonObject("sources");
-      JsonObject allowed = sources == null ? null : sources.getAsJsonObject(origin);
-      String prefix = allowed == null ? null : allowed.get("pathPrefix").getAsString();
-      if (prefix == null || !prefix.startsWith("/") || !prefix.endsWith("/")
-          || !source.normalize().getPath().startsWith(prefix) || source.getRawPath().contains("%")) {
-        throw new IOException("Artifact URL is outside the approved origin and path");
-      }
-      if (allowed.has("credential")) {
-        if (!"https".equalsIgnoreCase(source.getScheme())) {
-          throw new IOException("Private artifact sources require HTTPS");
-        }
-        JsonObject reference = allowed.getAsJsonObject("credential");
-        org.apache.ambari.server.security.credential.Credential credential = artifactCredentials.getCredential(
-            reference.get("cluster").getAsString(), reference.get("alias").getAsString());
-        char[] token = MpackSecrets.credentialKey(credential);
-        if (token == null || token.length == 0 || token.length > 8192) {
-          throw new IOException("Invalid artifact bearer credential");
-        }
-        for (char value : token) {
-          if (value < 33 || value > 126) {
-            throw new IOException("Invalid artifact bearer credential");
-          }
-        }
-        connection.setRequestProperty("Authorization", "Bearer " + new String(token));
-      }
-    } catch (org.apache.ambari.server.AmbariException | RuntimeException invalidPolicy) {
-      throw new IOException("Artifact source policy or credential resolution failed");
-    }
+    artifactFetcher.download(source, target, maximumBytes, configuration, artifactCredentials);
   }
 
   private long copyLimited(InputStream input, OutputStream output, long maximumBytes) throws IOException {
