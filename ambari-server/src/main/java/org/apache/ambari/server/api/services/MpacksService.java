@@ -169,6 +169,47 @@ public class MpacksService extends BaseService {
     }
   }
 
+  /** Upload an offline collection; every inner release uses the ordinary signed importer. */
+  @POST
+  @Path("imports/collections")
+  @jakarta.ws.rs.Consumes(MediaType.APPLICATION_OCTET_STREAM)
+  @Produces(MediaType.APPLICATION_JSON)
+  @ApiOperation(value = "Uploads and registers all releases from one offline collection")
+  public Response uploadCollection(java.io.InputStream input, @Context HttpHeaders headers, @Context UriInfo ui) {
+    if (!org.apache.ambari.server.security.authorization.AuthorizationHelper.isAuthorized(
+        org.apache.ambari.server.security.authorization.ResourceType.AMBARI, null,
+        org.apache.ambari.server.security.authorization.RoleAuthorization.AMBARI_MANAGE_STACK_VERSIONS)) {
+      return Response.status(Response.Status.FORBIDDEN)
+          .entity("{\"message\":\"Collection import is not authorized\"}").build();
+    }
+    try (MpackCollectionReader.Stage staged = MpackCollectionReader.read(input)) {
+      java.util.List<java.util.Map<String, Object>> results = new java.util.ArrayList<>();
+      boolean failed = false;
+      for (MpackCollectionReader.PackageEntry entry : staged.packages) {
+        String body = new com.google.gson.Gson().toJson(java.util.Map.of("MpackInfo",
+            java.util.Map.of("mpack_uri", entry.file.toUri().toString())));
+        int status;
+        try {
+          Response response = handleRequest(headers, body, ui, Request.Type.POST, createMpackResource(null));
+          status = response.getStatus();
+        } catch (RuntimeException failure) {
+          status = 500;
+        }
+        failed |= status < 200 || status >= 300;
+        results.add(java.util.Map.of("path", entry.path, "status", status));
+        if (status == 500) {
+          break;
+        }
+      }
+      return Response.status(failed ? 207 : 201)
+          .entity(new com.google.gson.Gson().toJson(java.util.Map.of("packages", results))).build();
+    } catch (java.io.IOException | RuntimeException failure) {
+      // Archive content, names, key material and filesystem locations never enter responses.
+      return Response.status(Response.Status.BAD_REQUEST)
+          .entity("{\"message\":\"Collection upload or inventory is invalid\"}").build();
+    }
+  }
+
   /***
    * Handles: GET /mpacks/{id}
    * Return a specific mpack given an id

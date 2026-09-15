@@ -116,6 +116,104 @@ public class MpacksServiceTest extends BaseServiceTest{
     }
   }
 
+  @org.junit.Test
+  public void testCollectionDenialDoesNotReadBody() {
+    org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+        org.apache.ambari.server.security.TestAuthenticationFactory.createServiceAdministrator());
+    try {
+      java.io.InputStream body = new java.io.InputStream() {
+        @Override
+        public int read() {
+          throw new AssertionError("Unauthorized collection must not be consumed");
+        }
+      };
+      org.junit.Assert.assertEquals(403, new MpacksService().uploadCollection(body, null, null).getStatus());
+    } finally {
+      org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
+  }
+
+  @org.junit.Test
+  public void testCollectionRegistersAllReleasesAndReportsPartialFailures() throws Exception {
+    org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+        org.apache.ambari.server.security.TestAuthenticationFactory.createAdministrator());
+    java.util.List<java.nio.file.Path> submitted = new java.util.ArrayList<>();
+    MpacksService service = new MpacksService() {
+      @Override
+      protected ResourceInstance createResource(Resource.Type type, Map<Resource.Type, String> ids) {
+        return null;
+      }
+
+      @Override
+      protected jakarta.ws.rs.core.Response handleRequest(HttpHeaders headers, String body, UriInfo ui,
+          Request.Type method, ResourceInstance resource) {
+        String source = com.google.gson.JsonParser.parseString(body).getAsJsonObject()
+            .getAsJsonObject("MpackInfo").get("mpack_uri").getAsString();
+        java.nio.file.Path path = java.nio.file.Path.of(java.net.URI.create(source));
+        submitted.add(path);
+        try {
+          org.junit.Assert.assertArrayEquals(submitted.size() == 1 ? "first release".getBytes() :
+              "second release".getBytes(), java.nio.file.Files.readAllBytes(path));
+        } catch (java.io.IOException failure) {
+          throw new AssertionError(failure);
+        }
+        return jakarta.ws.rs.core.Response.status(submitted.size() == 1 ? 201 : 403).build();
+      }
+    };
+    try {
+      jakarta.ws.rs.core.Response result = service.uploadCollection(
+          new java.io.ByteArrayInputStream(MpackCollectionReaderTest.valid()), null, null);
+      org.junit.Assert.assertEquals(207, result.getStatus());
+      org.junit.Assert.assertEquals(2, submitted.size());
+      com.google.gson.JsonArray entries = com.google.gson.JsonParser.parseString(result.getEntity().toString())
+          .getAsJsonObject().getAsJsonArray("packages");
+      org.junit.Assert.assertEquals(201, entries.get(0).getAsJsonObject().get("status").getAsInt());
+      org.junit.Assert.assertEquals(403, entries.get(1).getAsJsonObject().get("status").getAsInt());
+      for (java.nio.file.Path path : submitted) {
+        org.junit.Assert.assertFalse(java.nio.file.Files.exists(path));
+      }
+    } finally {
+      org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
+  }
+
+  @org.junit.Test
+  public void testCollectionReportsFirstRegistrationWhenLaterHandlerFails() throws Exception {
+    org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+        org.apache.ambari.server.security.TestAuthenticationFactory.createAdministrator());
+    java.util.List<java.nio.file.Path> submitted = new java.util.ArrayList<>();
+    MpacksService service = new MpacksService() {
+      @Override
+      protected ResourceInstance createResource(Resource.Type type, Map<Resource.Type, String> ids) {
+        return null;
+      }
+
+      @Override
+      protected jakarta.ws.rs.core.Response handleRequest(HttpHeaders headers, String body, UriInfo ui,
+          Request.Type method, ResourceInstance resource) {
+        String source = com.google.gson.JsonParser.parseString(body).getAsJsonObject()
+            .getAsJsonObject("MpackInfo").get("mpack_uri").getAsString();
+        submitted.add(java.nio.file.Path.of(java.net.URI.create(source)));
+        if (submitted.size() == 2) {
+          throw new IllegalStateException("sensitive exception detail must not reach the client");
+        }
+        return jakarta.ws.rs.core.Response.status(201).build();
+      }
+    };
+    try {
+      jakarta.ws.rs.core.Response result = service.uploadCollection(
+          new java.io.ByteArrayInputStream(MpackCollectionReaderTest.valid()), null, null);
+      org.junit.Assert.assertEquals(207, result.getStatus());
+      org.junit.Assert.assertEquals(2, submitted.size());
+      org.junit.Assert.assertFalse(result.getEntity().toString().contains("sensitive exception detail"));
+      for (java.nio.file.Path path : submitted) {
+        org.junit.Assert.assertFalse(java.nio.file.Files.exists(path));
+      }
+    } finally {
+      org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
+  }
+
   @Override
   public List<BaseServiceTest.ServiceTestInvocation> getTestInvocations() throws Exception {
     List<BaseServiceTest.ServiceTestInvocation> listInvocations = new ArrayList<>();
